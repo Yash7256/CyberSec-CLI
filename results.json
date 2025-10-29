@@ -1,0 +1,197 @@
+{
+  "target": "example.com",
+  "ip": "23.192.228.80",
+  "scan_type": "tcp_connect",
+  "timestamp": "2025-10-09 17:46:12.076609",
+  "results": [
+    {
+      "port": 21,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 22,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 23,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 25,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 53,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 80,
+      "state": "open",
+      "service": "http",
+      "banner": "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nETag: \"bc2473a18e003bdb249eba5ce893033f:1760028122.592274\"\r\nLast-Modified: Thu, 09 Oct 2025 16:42:02 GMT\r\nCache-Control: max-age=86000\r\nDate: Thu, 09 Oct 2025 17:46:11 GMT\r\nContent-Length: 513\r\nConnection: close\r\nX-N: S\r\n\r\n<!doctype html><html lang=\"en\"><head><title>Example Domain</title><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>body{background:#eee;width:60vw;margin:15vh auto;font-family:system-ui,sans-serif}h1{font-size:1.5em}div{opacity:0.8}a:link,a:visited{color:#348}</style><body><div><h1>Example Domain</h1><p>This domain is for use in documentation examples without needing permission. Avoid use in operations.<p><a href=\"https://iana.org/domains/example\">Learn more</a></div></body></html>",
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 110,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 111,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 135,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 139,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 143,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 443,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 445,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 993,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 995,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 1723,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 3306,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 3389,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 5900,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 8080,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 8443,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    }
+  ]
+}
