@@ -1,0 +1,1112 @@
+{
+  "timestamp": "2025-11-05T11:19:34.848943",
+  "runtime_seconds": 300.5354907512665,
+  "interface": null,
+  "anomalies_detected": 1475,
+  "network_anomalies": 0,
+  "security_alerts": 598,
+  "bytes_processed": 0,
+  "connections_tracked": 0,
+  "anomalies": [
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341304.4597123",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 150 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 150,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341305.4658818",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 151 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 151,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341306.4563854",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 152 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 152,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341307.4649873",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 153 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 153,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341308.470947",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 154 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 154,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341309.4681454",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 155 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 155,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341310.472865",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 156 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 156,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341311.4746597",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 157 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 157,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341312.4722846",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 158 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 158,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341313.4782128",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 159 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 159,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341314.472501",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 160 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 160,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341315.4768884",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 161 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 161,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341316.4816144",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 162 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 162,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341317.4766734",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 163 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 163,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341318.4834287",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 166 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 166,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341319.484922",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 167 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 167,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341320.4809391",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 168 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 168,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341321.4872527",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 169 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 169,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341322.489288",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 170 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 170,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341323.4871428",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 171 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 171,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341324.493479",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 172 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 172,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341325.4989405",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 173 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 173,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341326.493549",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 174 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 174,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341327.49926",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 175 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 175,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341328.5036824",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 176 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 176,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341329.4960837",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 177 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 177,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341330.5051641",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 178 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 178,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341331.5095623",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 179 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 179,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341332.499995",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 180 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 180,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341333.5092862",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 181 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 181,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341334.5134745",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 182 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 182,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341335.513976",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 183 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 183,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341336.51425",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 184 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 184,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341337.5186484",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 185 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 185,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341338.5191448",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 186 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 186,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341339.5215397",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 187 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 187,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341340.517795",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 188 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 188,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341341.525166",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 189 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 189,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341342.5295742",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 190 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 190,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341343.5224683",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 191 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 191,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341344.5283608",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 192 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 192,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341345.536226",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 194 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 194,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341346.5258255",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 195 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 195,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341347.534428",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 196 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 196,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341348.5366282",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 197 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 197,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341349.5392144",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 198 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 198,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341350.5388193",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 200 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 200,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341351.5355492",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 201 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 201,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341352.5456061",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 202 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 202,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341353.5477908",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 203 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 203,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341354.5462284",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 204 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 204,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341355.549665",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 205 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 205,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341356.552931",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 206 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 206,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341357.5454574",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 207 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 207,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341358.5539494",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 208 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 208,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341359.559683",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 209 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 209,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341360.5510707",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 210 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 210,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341361.5570884",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 211 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 211,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341362.5624108",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 212 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 212,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341363.555775",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 213 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 213,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341364.5631378",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 214 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 214,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341365.5657103",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 215 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 215,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341366.560947",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 216 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 216,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341367.5675745",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 217 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 217,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341368.5718558",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 218 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 218,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341369.5706809",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 219 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 219,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341370.576678",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 220 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 220,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341371.5693743",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 221 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 221,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341372.575256",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 222 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 222,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341373.5787702",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 223 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 223,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341374.5739315",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 224 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 224,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341375.5848343",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 227 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 227,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341376.5859573",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 228 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 228,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341377.5800955",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 229 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 229,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341378.591428",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 232 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 232,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341379.590645",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 233 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 233,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341380.5942435",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 234 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 234,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341381.593421",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 235 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 235,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341382.5898607",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 236 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 236,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341383.5944207",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 237 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 237,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341384.5979264",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 238 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 238,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341385.5920634",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 239 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 239,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341386.601248",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 240 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 240,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341387.6055677",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 241 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 241,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341388.5997555",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 242 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 242,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341389.6071537",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 243 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 243,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341390.6119227",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 244 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 244,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341391.6048925",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 245 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 245,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341392.610326",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 246 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 246,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341393.6175709",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 247 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 247,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341394.6092598",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 248 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 248,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341395.6171103",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 249 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 249,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341396.6197455",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 250 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 250,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341397.6134892",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 251 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 251,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341398.622758",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 252 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 252,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341399.6238945",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 253 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 253,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341400.6184626",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 254 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 254,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341401.630445",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 255 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 255,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341402.6307657",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 256 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 256,
+        "bytes_transferred": 0
+      }
+    },
+    {
+      "type": "connection_pattern",
+      "timestamp": "1762341403.6328485",
+      "score": 9.0,
+      "description": "Multiple connections to 127.0.0.1: 257 active connections",
+      "metadata": {
+        "host": "127.0.0.1",
+        "connection_count": 257,
+        "bytes_transferred": 0
+      }
+    }
+  ]
+}

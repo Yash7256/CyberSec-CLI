@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
 from cybersec_cli.tools.network import PortScanner, ScanType, PortResult, PortState
-from cybersec_cli.utils.formatters import format_scan_results
+from cybersec_cli.utils.formatters import format_scan_results, format_scan_results_table, format_scan_results_list
 
 console = Console()
 
@@ -158,39 +158,43 @@ def scan_command(
             results = asyncio.run(scan_with_progress())
             scanner.results = sorted(results, key=lambda x: x.port)
         
-        # Format and display results
-        output_text = format_scan_results(scanner, format)
-        
+        # Format and display results using the enhanced formatter
         if format == "table":
-            # For table format, we need to render it to the console
-            console.print(output_text)
+            # For table format, use the rich table with all features
+            console.print(format_scan_results(scanner, format_type="table"))
             
-            # If saving to file, convert table to string first
+            # If saving to file, convert to markdown for better readability
             if output:
-                from io import StringIO
                 from rich.console import Console as RichConsole
+                from rich.terminal_theme import MONOKAI
                 
-                # Create a string buffer to capture the table output
-                buffer = StringIO()
-                file_console = RichConsole(file=buffer, force_terminal=True, width=120)
-                file_console.print(output_text)
-                table_output = buffer.getvalue()
-        else:
-            # For non-table formats, just print directly
-            console.print(output_text)
-            table_output = output_text
+                # Create a console that writes to a file
+                with open(output, 'w') as f:
+                    file_console = RichConsole(file=f, force_terminal=True, force_interactive=False, width=120)
+                    file_console.print(format_scan_results(scanner, format_type="table"))
+                
+                console.print(f"\n[green]Results saved to {output}[/green]")
+                
+        elif format == "list":
+            # For list format, use the enhanced list formatter
+            console.print(format_scan_results(scanner, format_type="list"))
+            
+            if output:
+                with open(output, 'w') as f:
+                    f.write(format_scan_results(scanner, format_type="list"))
+                console.print(f"\n[green]Results saved to {output}[/green]")
+                
+        else:  # json format
+            # For JSON, use the scanner's built-in JSON method
+            json_output = scanner.to_json()
+            console.print_json(json_output)
+            
+            if output:
+                with open(output, 'w') as f:
+                    f.write(json_output)
+                console.print(f"\n[green]Results saved to {output}[/green]")
         
-        # Save to file if requested
-        if output:
-            output_path = Path(output)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            if format == "json":
-                output_path.write_text(scanner.to_json())
-            else:
-                output_path.write_text(table_output)
-            
-            console.print(f"\n[green]Results saved to {output_path}[/green]")
+        # File saving is now handled in the format-specific blocks above
         
         # Show summary
         open_ports = len([r for r in scanner.results if r.state.name == "OPEN"])

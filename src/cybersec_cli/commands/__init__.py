@@ -16,3 +16,7 @@ def register_commands(cli):
     # Add more commands here as they are implemented
     from .harden import harden_command
     cli.add_command(harden_command)
+
+    # Register anomaly detection commands
+    from .anomaly import register_commands as register_anomaly_commands
+    register_anomaly_commands(cli)

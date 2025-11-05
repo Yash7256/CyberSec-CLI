@@ -1,0 +1,44 @@
+{
+  "target": "ggits.org",
+  "ip": "162.251.80.12",
+  "scan_type": "tcp_connect",
+  "timestamp": "2025-11-05 10:28:33.827241",
+  "results": [
+    {
+      "port": 80,
+      "state": "open",
+      "service": "http",
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 443,
+      "state": "open",
+      "service": "https",
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 8080,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    },
+    {
+      "port": 8443,
+      "state": "closed",
+      "service": null,
+      "banner": null,
+      "protocol": "tcp",
+      "reason": null,
+      "ttl": null
+    }
+  ]
+}
