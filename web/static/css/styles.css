@@ -1,0 +1,122 @@
+/* Custom styles for CyberSec-CLI Web Interface */
+
+/* Terminal scrollbar styling */
+#terminal::-webkit-scrollbar {
+    width: 8px;
+}
+
+#terminal::-webkit-scrollbar-track {
+    background: #1a202c;
+}
+
+#terminal::-webkit-scrollbar-thumb {
+    background: #4a5568;
+    border-radius: 4px;
+}
+
+#terminal::-webkit-scrollbar-thumb:hover {
+    background: #718096;
+}
+
+/* Command input styling */
+#commandInput {
+    caret-color: #68d391; /* Green cursor to match theme */
+    width: 100%;
+    font-family: 'Fira Code', 'Courier New', monospace;
+}
+
+/* Terminal output styling */
+.terminal-output {
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.terminal-command {
+    color: #68d391; /* Green for commands */
+    margin-bottom: 0.5rem;
+}
+
+.terminal-output-error {
+    color: #fc8181; /* Red for errors */
+}
+
+.terminal-output-success {
+    color: #68d391; /* Green for success messages */
+}
+
+.terminal-output-info {
+    color: #63b3ed; /* Blue for info messages */
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    #terminal {
+        height: 60vh;
+    }
+    
+    .grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Animation for blinking cursor */
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+#commandInput::after {
+    content: '|';
+    animation: blink 1s step-end infinite;
+    color: #68d391;
+    margin-left: 2px;
+}
+
+/* Custom scrollbar for the entire page */
+::-webkit-scrollbar {
+    width: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a202c;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #4a5568;
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #718096;
+}
+
+/* Button hover effects */
+button {
+    transition: all 0.2s ease-in-out;
+}
+
+button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Status indicators */
+.status-connected {
+    color: #68d391;
+}
+
+.status-disconnected {
+    color: #fc8181;
+}
+
+.status-connecting {
+    color: #f6e05e;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}

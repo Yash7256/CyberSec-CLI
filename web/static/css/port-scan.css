@@ -1,0 +1,125 @@
+/* Port Scan Container */
+.port-scan-container {
+    margin: 1rem 0;
+    font-family: 'Fira Code', 'Courier New', monospace;
+    background-color: #1a202c;
+    border-radius: 0.75rem;
+    overflow: hidden;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+    border: 1px solid #2d3748;
+}
+
+/* Port Scan Results */
+.port-scan-results {
+    padding: 1rem;
+}
+
+.port-scan-results h3 {
+    border-bottom: 2px solid #2d3748;
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.25rem;
+    font-weight: 600;
+    letter-spacing: 0.025em;
+}
+
+/* Custom scrollbar for better visibility */
+.port-scan-results::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.port-scan-results::-webkit-scrollbar-track {
+    background: #1a202c;
+    border-radius: 4px;
+}
+
+.port-scan-results::-webkit-scrollbar-thumb {
+    background: #4a5568;
+    border-radius: 4px;
+}
+
+.port-scan-results::-webkit-scrollbar-thumb:hover {
+    background: #718096;
+}
+
+/* Port card animations */
+.port-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid transparent;
+}
+
+.port-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+    border-color: rgba(66, 153, 225, 0.2);
+}
+
+/* Badge styling */
+.risk-badge {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 9999px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: all 0.2s ease-in-out;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+}
+
+.status-open {
+    background-color: #4299e1; /* blue-500 */
+    box-shadow: 0 0 8px #4299e1;
+}
+
+.status-closed {
+    background-color: #f56565; /* red-500 */
+    box-shadow: 0 0 8px #f56565;
+}
+
+.status-filtered {
+    background-color: #ecc94b; /* yellow-500 */
+    box-shadow: 0 0 8px #ecc94b;
+}
+
+/* Severity colors */
+.severity-critical {
+    color: #e53e3e; /* red-600 */
+}
+
+.severity-high {
+    color: #e53e3e; /* red-600 */
+}
+
+.severity-medium {
+    color: #d69e2e; /* yellow-600 */
+}
+
+.severity-low {
+    color: #3182ce; /* blue-600 */
+}
+
+.severity-info {
+    color: #718096; /* gray-500 */
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .port-detail-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .port-meta {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+}
