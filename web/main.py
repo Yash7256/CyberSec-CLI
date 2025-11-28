@@ -14,6 +14,19 @@ import subprocess
 from datetime import datetime
 from cybersec_cli.utils.logger import log_forced_scan
 
+# Optional Redis-backed rate limiting (if aioredis is available and REDIS_URL set)
+REDIS_URL = os.getenv('REDIS_URL')
+_redis = None
+try:
+    if REDIS_URL:
+        import asyncio as _asyncio
+        import aioredis
+        _redis = aioredis.from_url(REDIS_URL)
+        logger.info('Redis configured for rate limiting')
+except Exception:
+    _redis = None
+    logger.debug('Redis not available or REDIS_URL not set; falling back to in-memory rate limiting')
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,6 +65,20 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
+
+def ensure_allowlists():
+    # Ensure allowlist/denylist files exist (empty by default)
+    try:
+        repo_reports = os.path.join(os.path.dirname(BASE_DIR), 'reports')
+        os.makedirs(repo_reports, exist_ok=True)
+        for fn in ('allowlist.txt', 'denylist.txt'):
+            path = os.path.join(repo_reports, fn)
+            if not os.path.exists(path):
+                open(path, 'a').close()
+    except Exception:
+        logger.debug('Failed to ensure allowlist/denylist files')
+
+ensure_allowlists()
 
 def save_scan_result(target: str, ip: Optional[str], command: str, output: str) -> int:
     try:
@@ -266,6 +293,45 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # Intercept 'scan' commands to perform a quick reachability check
             parts = command.strip().split()
+            # denylist/allowlist check
+            try:
+                repo_reports = os.path.join(os.path.dirname(BASE_DIR), 'reports')
+                deny_path = os.path.join(repo_reports, 'denylist.txt')
+                allow_path = os.path.join(repo_reports, 'allowlist.txt')
+                def is_in_file(path, val):
+                    if not os.path.exists(path):
+                        return False
+                    try:
+                        with open(path, 'r', encoding='utf-8') as f:
+                            for line in f:
+                                if line.strip() and line.strip().lower() == val.lower():
+                                    return True
+                    except Exception:
+                        return False
+                    return False
+                if len(parts) >= 2:
+                    tgt = parts[1]
+                    # If denylisted, block immediately
+                    if is_in_file(deny_path, tgt):
+                        await websocket.send_text(json.dumps({
+                            'type': 'denied',
+                            'message': f'Target {tgt} is deny-listed and cannot be scanned.'
+                        }))
+                        continue
+                    # If allowlist exists and target not in allowlist, notify client (will still follow pre-scan warning flow)
+                    # (This is informational; enforcement can be stricter if desired)
+                    try:
+                        with open(allow_path, 'r', encoding='utf-8') as f:
+                            allow_lines = [l.strip() for l in f if l.strip()]
+                        if allow_lines and tgt not in allow_lines:
+                            await websocket.send_text(json.dumps({
+                                'type': 'allowlist_notice',
+                                'message': f'Target {tgt} is not in allowlist. Proceed with caution.'
+                            }))
+                    except Exception:
+                        pass
+            except Exception:
+                pass
             # derive client id for rate-limiting and concurrency
             client_host = None
             try:

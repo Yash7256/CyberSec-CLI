@@ -18,7 +18,10 @@ const responseTimeSpan = document.getElementById('responseTime');
 // Connect to WebSocket
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${protocol}${window.location.host}/ws/command`;
+    // Attach token from localStorage if present
+    const token = (localStorage.getItem('wsToken') || '').trim();
+    const tokenQuery = token ? `?token=${encodeURIComponent(token)}` : '';
+    const wsUrl = `${protocol}${window.location.host}/ws/command${tokenQuery}`;
     
     try {
         socket = new WebSocket(wsUrl);
@@ -317,6 +320,36 @@ document.querySelectorAll('button[onclick^="executeCommand"]').forEach(btn => {
         const command = btn.getAttribute('onclick').match(/'([^']+)'/)[1];
         executeCommand(command);
     };
+});
+
+// Settings drawer behavior
+const openSettingsBtn = document.getElementById('openSettingsBtn');
+const settingsDrawer = document.getElementById('settingsDrawer');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const wsTokenInput = document.getElementById('wsTokenInput');
+
+function openSettings() {
+    settingsDrawer.classList.remove('hidden');
+}
+function closeSettings() {
+    settingsDrawer.classList.add('hidden');
+}
+
+openSettingsBtn.addEventListener('click', () => {
+    // populate from localStorage
+    wsTokenInput.value = localStorage.getItem('wsToken') || '';
+    openSettings();
+});
+closeSettingsBtn.addEventListener('click', closeSettings);
+saveSettingsBtn.addEventListener('click', () => {
+    const val = wsTokenInput.value.trim();
+    if (val) localStorage.setItem('wsToken', val);
+    else localStorage.removeItem('wsToken');
+    addOutput('Settings saved. Reconnecting WebSocket to apply token...', 'info');
+    closeSettings();
+    if (socket && socket.readyState === WebSocket.OPEN) socket.close(1000);
+    setTimeout(connectWebSocket, 300);
 });
 
 // Parse port scan output into structured data
