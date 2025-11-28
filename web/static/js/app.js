@@ -121,6 +121,21 @@ function connectWebSocket() {
                         return;
                     }
                 }
+
+                // Handle pre-scan warnings (target resolved but not reachable on common ports)
+                if (parsedMessage && parsedMessage.type === 'pre_scan_warning') {
+                    const msg = parsedMessage.message || `Target ${parsedMessage.target} resolved to ${parsedMessage.ip} but did not respond on common web ports.`;
+                    // Show a confirm dialog to the user
+                    const proceed = window.confirm(msg + '\n\nClick OK to force the scan, or Cancel to abort.');
+                    if (proceed) {
+                        // Send the original command back with force:true
+                        socket.send(JSON.stringify({ command: parsedMessage.original_command, force: true }));
+                        addOutput(`User confirmed forced scan for ${parsedMessage.target}`, 'warning');
+                    } else {
+                        addOutput(`Scan aborted by user for ${parsedMessage.target}`, 'info');
+                    }
+                    return;
+                }
                 
                 // Handle plain text messages
                 if (!parsedMessage) {

@@ -103,6 +103,7 @@ class PortScanner:
                  rate_limit: int = 0,
                  service_detection: bool = True,
                  banner_grabbing: bool = True,
+                 require_reachable: bool = False,
                  logger=None):
         """
         Initialize the port scanner.
@@ -146,6 +147,7 @@ class PortScanner:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self.rate_limit = rate_limit
         self.last_request_time = 0
+        self.require_reachable = require_reachable
         
         # Log scanning parameters for debugging
         self.logger.info(f"Initializing port scanner for target: {target}")
@@ -169,6 +171,17 @@ class PortScanner:
                 )
                 self.logger.error(error_msg)
                 raise ValueError(error_msg) from e
+
+        # Optional quick reachability check (synchronous, lightweight)
+        if self.require_reachable:
+            try:
+                if not self._quick_reachable_check():
+                    raise ValueError(
+                        f"Target '{self.target}' ({self.ip}) did not respond on common ports (80/443)."
+                    )
+            except Exception as e:
+                # re-raise as ValueError for callers
+                raise ValueError(str(e)) from e
     
     def _parse_ports(self, ports: Union[List[int], str, int]) -> Set[int]:
         """Parse ports from various input formats."""
@@ -299,6 +312,24 @@ class PortScanner:
             3389: b"\x03\x00\x00\x0b\x06\xd0\x00\x00\x12\x34\x00"  # RDP
         }
         return probes.get(port, None)
+
+    def _quick_reachable_check(self, ports: Optional[List[int]] = None, timeout: float = 1.0) -> bool:
+        """
+        Synchronous quick reachability check that attempts to TCP-connect to one
+        of a small set of common service ports (80, 443 by default).
+
+        Returns True if any port accepts a TCP connection, False otherwise.
+        """
+        check_ports = ports or [80, 443]
+        for p in check_ports:
+            try:
+                with socket.create_connection((self.ip, p), timeout=timeout):
+                    self.logger.debug(f"Quick reachability: port {p} is open on {self.ip}")
+                    return True
+            except Exception:
+                continue
+        self.logger.debug(f"Quick reachability: no response on ports {check_ports} for {self.ip}")
+        return False
     
     async def scan(self) -> List[PortResult]:
         """

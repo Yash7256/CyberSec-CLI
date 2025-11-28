@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 import os
 from pathlib import Path
+import socket
 import asyncio
 import json
 import logging
@@ -77,11 +78,56 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            command = json.loads(data).get("command", "")
-            
+            payload = json.loads(data)
+            command = payload.get("command", "")
+            force = payload.get("force", False)
+
             if not command:
                 continue
-                
+
+            # Intercept 'scan' commands to perform a quick reachability check
+            parts = command.strip().split()
+            if len(parts) >= 2 and parts[0].lower() == 'scan' and not force:
+                target = parts[1]
+                # Resolve hostname
+                try:
+                    ip = socket.gethostbyname(target)
+                except socket.gaierror:
+                    await websocket.send_text(json.dumps({
+                        "type": "pre_scan_error",
+                        "message": f"Could not resolve hostname '{target}'. Please check the name and try again.",
+                        "target": target
+                    }))
+                    continue
+
+                # Async quick check for common service ports (80, 443)
+                async def _probe_ports(ip_to_check: str, ports=(80, 443), timeout=1.0):
+                    for p in ports:
+                        try:
+                            reader, writer = await asyncio.wait_for(
+                                asyncio.open_connection(ip_to_check, p), timeout=timeout
+                            )
+                            writer.close()
+                            await writer.wait_closed()
+                            return True, p
+                        except Exception:
+                            continue
+                    return False, None
+
+                reachable, port_ok = await _probe_ports(ip)
+                if not reachable:
+                    # Send a pre-scan warning to client and ask for confirmation
+                    await websocket.send_text(json.dumps({
+                        "type": "pre_scan_warning",
+                        "target": target,
+                        "ip": ip,
+                        "reachable": False,
+                        "message": f"Target resolved to {ip} but no response on common web ports (80/443). Send the same command with {{\"force\": true}} to proceed.",
+                        "original_command": command
+                    }))
+                    # Don't run the scan yet – wait for client confirmation
+                    continue
+
             # Execute the command and stream output
             process = await asyncio.create_subprocess_shell(
                 f"python -m cybersec_cli {command}",
