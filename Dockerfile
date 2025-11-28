@@ -20,10 +20,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy requirements
-COPY requirements.txt web/requirements.txt ./requirements_web.txt ./
+COPY requirements.txt ./
+COPY web/requirements.txt ./web_requirements.txt
 
 # Combine requirements and install
-RUN cat requirements.txt requirements_web.txt | sort -u > combined_requirements.txt && \
+RUN if [ -f web_requirements.txt ]; then \
+    cat requirements.txt web_requirements.txt | sort -u > combined_requirements.txt; \
+    else \
+    cp requirements.txt combined_requirements.txt; \
+    fi && \
     pip install --upgrade pip setuptools wheel && \
     pip install -r combined_requirements.txt
 
