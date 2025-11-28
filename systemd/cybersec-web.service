@@ -1,0 +1,48 @@
+[Unit]
+Description=CyberSec CLI Web Service
+Documentation=https://github.com/Yash7256/cybersec-cli
+After=network.target
+Wants=cybersec-web.service
+
+[Service]
+Type=simple
+User=cybersec
+Group=cybersec
+WorkingDirectory=/home/cybersec/cybersec-cli
+Environment="PATH=/home/cybersec/cybersec-cli/venv/bin"
+EnvironmentFile=/home/cybersec/.cybersec/.env
+EnvironmentFile=-/etc/default/cybersec-web
+
+# Start command
+ExecStart=/home/cybersec/cybersec-cli/venv/bin/uvicorn web.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 4 \
+    --log-level info
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=60s
+StartLimitBurst=3
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/home/cybersec/.cybersec /home/cybersec/cybersec-cli/reports /home/cybersec/cybersec-cli/logs
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=512
+MemoryLimit=2G
+CPUQuota=50%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cybersec-web
+
+[Install]
+WantedBy=multi-user.target

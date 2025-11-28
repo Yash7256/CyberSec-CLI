@@ -1,3 +1,9 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production.local
+
 # Python
 __pycache__/
 *.py[cod]
@@ -16,33 +22,157 @@ parts/
 sdist/
 var/
 wheels/
+pip-wheel-metadata/
+share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+MANIFEST
 
-# Virtual Environment
+# Virtual environments
 venv/
 ENV/
-.env
+env/
 .venv
+env.bak/
+venv.bak/
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
 *~
-
-# Logs and databases
-*.log
-*.sql
-*.sqlite
-
-# OS generated files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+/databases/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Reports
+reports/
+results/
+*.json
+*.csv
+*.xlsx
+
+# Temporary files
+*.tmp
+*.temp
+temp_*
+.tmp/
+
+# OS
+.DS_Store
 Thumbs.db
+.directory
+
+# Docker
+.dockerignore
+docker-compose.override.yml
+
+# Certificates
+*.pem
+*.key
+*.crt
+*.csr
+certs/
+
+# API Keys and secrets
+secrets/
+.aws/
+.gcp/
+credentials.json
+
+# Node modules (for web frontend if needed)
+node_modules/
+package-lock.json
+yarn.lock
+
+# Sensitive data files
+scan_results_*.json
+scan_results_*.csv
+private_keys/
+tokens/
+
+# IDE files
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
+.vscode/*.code-snippets
+
+# macOS
+.AppleDouble
+.LSOverride
+._*
+.apdisk
+
+# Linux
+.directory
+.Trash*
+
+# Windows
+desktop.ini
+[Dd]esktop.ini
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Python type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Linting
+.pylint/
+
+# Editor backups
+*~
+*.swp
+*.swo
+*.*~
+.#*
+
+# Build artifacts
+/dist/
+/build/
+/.eggs/
+*.egg-info/
+**/*.egg
+
+# Coverage
+.coverage*
+htmlcov/
+
+# Other
+.AppleDouble
+.LSOverride
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.env.vault
+.envrc
+.dirlocals
+.zshenv
