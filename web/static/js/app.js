@@ -124,16 +124,8 @@ function connectWebSocket() {
 
                 // Handle pre-scan warnings (target resolved but not reachable on common ports)
                 if (parsedMessage && parsedMessage.type === 'pre_scan_warning') {
-                    const msg = parsedMessage.message || `Target ${parsedMessage.target} resolved to ${parsedMessage.ip} but did not respond on common web ports.`;
-                    // Show a confirm dialog to the user
-                    const proceed = window.confirm(msg + '\n\nClick OK to force the scan, or Cancel to abort.');
-                    if (proceed) {
-                        // Send the original command back with force:true
-                        socket.send(JSON.stringify({ command: parsedMessage.original_command, force: true }));
-                        addOutput(`User confirmed forced scan for ${parsedMessage.target}`, 'warning');
-                    } else {
-                        addOutput(`Scan aborted by user for ${parsedMessage.target}`, 'info');
-                    }
+                    // Show a richer modal confirmation rather than a plain confirm()
+                    showPreScanModal(parsedMessage);
                     return;
                 }
                 
@@ -440,3 +432,59 @@ document.getElementById('terminal').addEventListener('click', () => {
 // Initial welcome message
 addOutput('Type a command or click on the quick actions to get started.', 'info');
 addOutput('For example, try: scan --help', 'info');
+
+// --- Pre-scan modal handling ---
+function showPreScanModal(data) {
+    const modal = document.getElementById('preScanModal');
+    const msgEl = document.getElementById('preScanMsg');
+    const targetEl = document.getElementById('preScanTarget');
+    const ipEl = document.getElementById('preScanIP');
+    const detailsEl = document.getElementById('preScanDetails');
+
+    // Populate fields
+    msgEl.textContent = data.message || `Target ${data.target} resolved to ${data.ip} but did not respond on common web ports.`;
+    targetEl.textContent = data.target || '-';
+    ipEl.textContent = data.ip || '-';
+    detailsEl.textContent = `The backend performed a quick probe and did not see a response on common web ports (80/443). Only proceed if you have authorization to scan this host.`;
+
+    // Show modal
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+
+    // Wire buttons (one-time attach guard)
+    const proceedBtn = document.getElementById('preScanProceed');
+    const cancelBtn = document.getElementById('preScanCancel');
+
+    // Remove previous listeners by cloning
+    const newProceed = proceedBtn.cloneNode(true);
+    proceedBtn.parentNode.replaceChild(newProceed, proceedBtn);
+    const newCancel = cancelBtn.cloneNode(true);
+    cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
+
+    newProceed.addEventListener('click', () => {
+        // Send original command with force:true
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ command: data.original_command, force: true }));
+            addOutput(`User confirmed forced scan for ${data.target}`, 'warning');
+        } else {
+            addOutput('Unable to send force command — WebSocket disconnected', 'error');
+        }
+        hidePreScanModal();
+    });
+
+    newCancel.addEventListener('click', () => {
+        addOutput(`Scan aborted by user for ${data.target}`, 'info');
+        hidePreScanModal();
+    });
+
+    // Close modal on overlay click (optional)
+    modal.addEventListener('click', (ev) => {
+        if (ev.target === modal) hidePreScanModal();
+    }, { once: true });
+}
+
+function hidePreScanModal() {
+    const modal = document.getElementById('preScanModal');
+    modal.classList.remove('flex');
+    modal.classList.add('hidden');
+}

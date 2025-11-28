@@ -89,6 +89,31 @@
 
     <script src="/static/js/app.js"></script>
     <script src="/static/js/port-scan.js"></script>
+    <!-- Pre-scan confirmation modal (hidden by default) -->
+    <div id="preScanModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black bg-opacity-50">
+        <div class="bg-gray-800 rounded-lg w-11/12 md:w-2/3 lg:w-1/2 p-6 border border-gray-700">
+            <h2 class="text-xl font-semibold text-yellow-300 mb-2">Pre-scan confirmation</h2>
+            <p id="preScanMsg" class="text-gray-300 text-sm mb-4">Target resolved but did not respond on common web ports. Confirm to force scan.</p>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <p class="text-xs text-gray-400">Target</p>
+                    <p id="preScanTarget" class="font-mono text-white break-all">-</p>
+                </div>
+                <div>
+                    <p class="text-xs text-gray-400">Resolved IP</p>
+                    <p id="preScanIP" class="font-mono text-white">-</p>
+                </div>
+            </div>
+
+            <div class="text-sm text-gray-400 mb-4" id="preScanDetails">The backend did not detect a response on common web ports (80/443). For safety, scans of third-party hosts should be performed only if you have permission.</div>
+
+            <div class="flex justify-end space-x-3">
+                <button id="preScanCancel" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-sm rounded">Cancel</button>
+                <button id="preScanProceed" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-sm rounded font-semibold">Force scan</button>
+            </div>
+        </div>
+    </div>
     <script>
             // The web UI uses live scan output from the backend. Example/demo data
             // has been removed to avoid accidental confusion or showing a non-existent
