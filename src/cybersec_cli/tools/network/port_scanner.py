@@ -116,6 +116,25 @@ class PortScanner:
             service_detection: Whether to perform service detection
             banner_grabbing: Whether to grab banners from open ports
         """
+        self.logger = logger or setup_logger(__name__)
+        
+        # Validate target is not empty or placeholder
+        if not target or not target.strip():
+            raise ValueError("Target hostname or IP address cannot be empty.")
+        
+        # Reject common placeholder/example domains to prevent accidents
+        placeholder_domains = [
+            'example.com', 'example.org', 'example.net',
+            'test.com', 'localhost', 'placeholder.local',
+            'demo.com', 'sample.com', 'ggits.org'
+        ]
+        target_lower = target.lower().strip()
+        if target_lower in placeholder_domains:
+            raise ValueError(
+                f"Target '{target}' is a placeholder/example domain. "
+                f"Please specify a real hostname or IP address to scan."
+            )
+        
         self.target = target
         self.scan_type = scan_type
         self.timeout = timeout
@@ -127,21 +146,29 @@ class PortScanner:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self.rate_limit = rate_limit
         self.last_request_time = 0
-        self.logger = logger or setup_logger(__name__)
+        
+        # Log scanning parameters for debugging
+        self.logger.info(f"Initializing port scanner for target: {target}")
+        self.logger.debug(f"Ports to scan: {len(self.ports)} ports (range: {min(self.ports)}-{max(self.ports)})")
         
         # Resolve hostname to IP if needed
         try:
             self.ip = str(ipaddress.ip_address(target))
             self.hostname = target
+            self.logger.info(f"Target is valid IP address: {self.ip}")
         except ValueError:
             # It's a hostname, resolve it
             try:
                 self.ip = socket.gethostbyname(target)
                 self.hostname = target
-                self.logger.debug(f"Resolved {target} to {self.ip}")
+                self.logger.info(f"Resolved hostname '{target}' to IP {self.ip}")
             except socket.gaierror as e:
-                self.logger.error(f"Could not resolve hostname: {target}")
-                raise ValueError(f"Could not resolve hostname: {target}") from e
+                error_msg = (
+                    f"Could not resolve hostname '{target}'. "
+                    f"Please verify the hostname is correct and reachable."
+                )
+                self.logger.error(error_msg)
+                raise ValueError(error_msg) from e
     
     def _parse_ports(self, ports: Union[List[int], str, int]) -> Set[int]:
         """Parse ports from various input formats."""
@@ -280,6 +307,16 @@ class PortScanner:
         Returns:
             List of PortResult objects with scan results
         """
+        # Log scan initiation with detailed info
+        self.logger.info(f"Starting port scan on {self.target} ({self.ip})")
+        self.logger.info(f"Scan type: {self.scan_type.value}")
+        self.logger.info(f"Ports to scan: {len(self.ports)} total")
+        if len(self.ports) <= 20:
+            self.logger.debug(f"Port list: {sorted(self.ports)}")
+        else:
+            port_list = sorted(self.ports)
+            self.logger.debug(f"Port range: {port_list[0]}-{port_list[-1]} (showing first 5: {port_list[:5]}...)")
+        
         tasks = []
         results = []
         
@@ -301,7 +338,7 @@ class PortScanner:
                 console=Console()
             ) as progress:
                 task = progress.add_task(
-                    f"[cyan]Scanning {len(tasks)} ports...",
+                    f"[cyan]Scanning {len(tasks)} ports on {self.target}...",
                     total=len(tasks)
                 )
                 
@@ -315,6 +352,17 @@ class PortScanner:
         
         # Sort results by port number
         self.results = sorted(results, key=lambda x: x.port)
+        
+        # Log completion statistics
+        open_count = len([r for r in self.results if r.state == PortState.OPEN])
+        closed_count = len([r for r in self.results if r.state == PortState.CLOSED])
+        filtered_count = len([r for r in self.results if r.state == PortState.FILTERED])
+        
+        self.logger.info(f"Scan completed: {open_count} open, {closed_count} closed, {filtered_count} filtered")
+        if open_count > 0:
+            open_ports_list = sorted([r.port for r in self.results if r.state == PortState.OPEN])
+            self.logger.info(f"Open ports found: {open_ports_list}")
+        
         return self.results
     
     def get_open_ports(self) -> List[PortResult]:

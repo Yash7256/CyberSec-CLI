@@ -90,94 +90,12 @@
     <script src="/static/js/app.js"></script>
     <script src="/static/js/port-scan.js"></script>
     <script>
-        // Example of how to use the port scan renderer
-        document.addEventListener('DOMContentLoaded', function() {
-            // This is just an example - in a real app, you would get this data from your backend
-            const portScanData = {
-                target: "ggits.org (162.251.80.12)",
-                scanType: "TCP Connect",
-                portsScanned: 21,
-                closedPorts: 10,
-                openPorts: [
-                    {
-                        port: 21,
-                        service: "FTP",
-                        version: "Pure-FTPd",
-                        risk: "HIGH",
-                        banner: "220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------\n220-You are user number 1 of 150 allowed.",
-                        vulnerabilities: [
-                            "CVE-2020-15778 - Command injection vulnerability",
-                            "CVE-2019-18277 - Buffer overflow in pure-ftpd"
-                        ],
-                        recommendations: [
-                            "Use SFTP or FTPS instead of plain FTP",
-                            "Enable TLS encryption",
-                            "Use strong authentication",
-                            "Implement IP restrictions",
-                            "Enable logging and monitoring"
-                        ]
-                    },
-                    {
-                        port: 22,
-                        service: "SSH",
-                        version: "OpenSSH 7.4",
-                        risk: "MEDIUM",
-                        banner: "SSH-2.0-OpenSSH_7.4",
-                        vulnerabilities: [
-                            "CVE-2023-48795 - Protocol downgrade attack (Terrapin)",
-                            "CVE-2023-38408 - Remote code execution in ssh-agent"
-                        ],
-                        recommendations: [
-                            "Update OpenSSH to the latest version",
-                            "Disable deprecated key exchange algorithms",
-                            "Use key-based authentication",
-                            "Disable root login"
-                        ]
-                    },
-                    {
-                        port: 80,
-                        service: "HTTP",
-                        version: "Apache",
-                        risk: "MEDIUM",
-                        banner: "HTTP/1.1 302 Found\nServer: Apache/2.4.6 (CentOS) OpenSSL/1.0.2k-fips PHP/5.4.16",
-                        vulnerabilities: [
-                            "CVE-2023-25690 - HTTP Request Smuggling",
-                            "CVE-2023-27522 - Apache HTTP Server mod_proxy_ajp request smuggling"
-                        ],
-                        recommendations: [
-                            "Update Apache to the latest version",
-                            "Enable HTTPS with strong ciphers",
-                            "Implement security headers (CSP, X-Content-Type, etc.)",
-                            "Disable directory listing",
-                            "Remove server version information"
-                        ]
-                    },
-                    {
-                        port: 3306,
-                        service: "MySQL",
-                        version: "5.7.23",
-                        risk: "HIGH",
-                        banner: "5.7.23-23",
-                        vulnerabilities: [
-                            "CVE-2023-21912 - MySQL Server vulnerability",
-                            "CVE-2022-21549 - MySQL Server vulnerability"
-                        ],
-                        recommendations: [
-                            "Do not expose MySQL to the internet",
-                            "Update to the latest MySQL version",
-                            "Use strong passwords and authentication",
-                            "Enable TLS encryption",
-                            "Restrict database user privileges"
-                        ]
-                    }
-                ]
-            };
-
-            // Example of rendering the port scan results
-            // In a real app, you would call this when receiving scan results
-            // const scanResults = renderPortScanResults(portScanData);
-            // document.getElementById('output').appendChild(scanResults);
-        });
+            // The web UI uses live scan output from the backend. Example/demo data
+            // has been removed to avoid accidental confusion or showing a non-existent
+            // target. Real results will appear here when a scan is run from the UI.
+            document.addEventListener('DOMContentLoaded', function() {
+                // No demo scan data is injected by default.
+            });
     </script>
 </body>
 </html>

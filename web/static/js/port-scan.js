@@ -242,31 +242,9 @@ function getRiskBadgeClass(risk) {
     return '!bg-gray-500 !text-white';
 }
 
-// Example usage with your data
-const exampleData = {
-    target: "ggits.org (162.251.80.12)",
-    scanType: "TCP Connect",
-    portsScanned: 21,
-    closedPorts: 10,
-    openPorts: [
-        {
-            port: 21,
-            service: "FTP",
-            version: "Pure-FTPd",
-            risk: "HIGH",
-            banner: "220---------- Welcome to Pure-FTPd [privsep] [TLS] ----------\n220-You are user number 1 of 150 allowed.",
-            vulnerabilities: [
-                "CVE-2020-15778",
-                "CVE-2019-18277"
-            ],
-            recommendations: [
-                "Use SFTP or FTPS instead of plain FTP",
-                "Enable TLS encryption",
-                "Use strong authentication",
-                "Implement IP restrictions",
-                "Enable logging and monitoring"
-            ]
-        },
-        // Add more ports as needed
-    ]
-};
+// Example usage removed
+// NOTE: Demo/example data (previously containing ggits.org and 21 ports) was
+// intentionally removed to avoid showing or implying scans of third-party
+// websites. The renderer expects real scan data from the backend WebSocket
+// or API and will render results dynamically when actual scan output is
+// received.
