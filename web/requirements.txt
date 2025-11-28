@@ -6,3 +6,4 @@ python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-dotenv==1.0.0
 fastapi-cors==0.0.6
+dnspython==2.4.2

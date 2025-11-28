@@ -12,6 +12,9 @@ import sqlite3
 from typing import Dict, List, Optional
 import subprocess
 from datetime import datetime
+import re
+import dns.resolver
+from urllib.parse import urlparse
 from cybersec_cli.utils.logger import log_forced_scan
 
 # Optional Redis-backed rate limiting (if aioredis is available and REDIS_URL set)
@@ -426,8 +429,54 @@ async def websocket_endpoint(websocket: WebSocket):
             if not command:
                 continue
 
-            # Intercept 'scan' commands to perform a quick reachability check
+                        # Intercept 'scan' commands to perform validation
             parts = command.strip().split()
+            
+            # Skip validation for non-scan commands
+            if not parts or parts[0].lower() != 'scan':
+                continue
+                
+            if len(parts) < 2:
+                await websocket.send_text(json.dumps({
+                    'type': 'error',
+                    'message': 'Please specify a target to scan. Example: scan example.com'
+                }))
+                continue
+                
+            target = parts[1]
+            
+            # Basic domain format validation
+            def is_valid_domain(domain):
+                try:
+                    # Check if it's a valid domain format
+                    if not re.match(
+                        r'^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,}$', 
+                        domain
+                    ):
+                        return False
+                    
+                    # Try to resolve the domain
+                    try:
+                        # Try both A and AAAA records
+                        dns.resolver.resolve(domain, 'A')
+                        return True
+                    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
+                        try:
+                            dns.resolver.resolve(domain, 'AAAA')
+                            return True
+                        except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.resolver.NoNameservers):
+                            return False
+                except Exception:
+                    return False
+            
+            # Validate the target
+            if not is_valid_domain(target):
+                await websocket.send_text(json.dumps({
+                    'type': 'error',
+                    'message': f'Invalid or non-existent domain: {target}. Please check the domain and try again.'
+                }))
+                continue
+                
             # denylist/allowlist check
             try:
                 repo_reports = os.path.join(os.path.dirname(BASE_DIR), 'reports')
