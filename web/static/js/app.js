@@ -124,6 +124,22 @@ function connectWebSocket() {
 
                 // Handle pre-scan warnings (target resolved but not reachable on common ports)
                 if (parsedMessage && parsedMessage.type === 'pre_scan_warning') {
+                    // If user has already consented for this session, auto-send the force with consent
+                    try {
+                        const consent = sessionStorage.getItem('preScanConsent');
+                        if (consent === 'true') {
+                            if (socket && socket.readyState === WebSocket.OPEN) {
+                                socket.send(JSON.stringify({ command: parsedMessage.original_command, force: true, consent: true }));
+                                addOutput(`Auto-sent forced scan for ${parsedMessage.target} (consent remembered)`, 'warning');
+                            } else {
+                                addOutput('Unable to auto-send force command — WebSocket disconnected', 'error');
+                            }
+                            return;
+                        }
+                    } catch (e) {
+                        // sessionStorage may be unavailable in some contexts; fall back to modal
+                    }
+
                     // Show a richer modal confirmation rather than a plain confirm()
                     showPreScanModal(parsedMessage);
                     return;
@@ -462,10 +478,19 @@ function showPreScanModal(data) {
     cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
 
     newProceed.addEventListener('click', () => {
-        // Send original command with force:true
+        // If the user checked 'Don't ask again', persist consent for this session
+        const dontAsk = document.getElementById('preScanDontAsk');
+        const consentFlag = !!(dontAsk && dontAsk.checked);
+        try {
+            if (consentFlag) sessionStorage.setItem('preScanConsent', 'true');
+        } catch (e) {}
+
+        // Send original command with force:true and include consent flag when set
         if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ command: data.original_command, force: true }));
-            addOutput(`User confirmed forced scan for ${data.target}`, 'warning');
+            const payload = { command: data.original_command, force: true };
+            if (consentFlag) payload.consent = true;
+            socket.send(JSON.stringify(payload));
+            addOutput(`User confirmed forced scan for ${data.target}` + (consentFlag ? ' (consent saved for session)' : ''), 'warning');
         } else {
             addOutput('Unable to send force command — WebSocket disconnected', 'error');
         }

@@ -111,6 +111,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 parts = command.strip().split()
             except Exception:
                 parts = []
+            # If this is a forced scan request coming from the client, write an audit entry
+            try:
+                consent_flag = payload.get('consent', False)
+            except Exception:
+                consent_flag = False
             if force and len(parts) >= 2 and parts[0].lower() == 'scan':
                 target = parts[1]
                 resolved_ip = None
@@ -136,11 +141,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     "resolved_ip": resolved_ip,
                     "original_command": command,
                     "client_host": client_host,
+                    "consent": bool(consent_flag),
                     "note": "forced_via_websocket"
                 }
                 try:
                     log_forced_scan(audit_entry)
-                    logger.info(f"Logged forced scan audit entry for {target} from {client_host}")
+                    logger.info(f"Logged forced scan audit entry for {target} from {client_host} (consent={consent_flag})")
                 except Exception as e:
                     logger.error(f"Failed to write forced scan audit entry: {e}")
 

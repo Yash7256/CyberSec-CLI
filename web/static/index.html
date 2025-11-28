@@ -109,6 +109,10 @@
             <div class="text-sm text-gray-400 mb-4" id="preScanDetails">The backend did not detect a response on common web ports (80/443). For safety, scans of third-party hosts should be performed only if you have permission.</div>
 
             <div class="flex justify-end space-x-3">
+                <div class="flex items-center mr-auto">
+                    <input id="preScanDontAsk" type="checkbox" class="mr-2" />
+                    <label for="preScanDontAsk" class="text-sm text-gray-300">Don't ask again this session</label>
+                </div>
                 <button id="preScanCancel" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-sm rounded">Cancel</button>
                 <button id="preScanProceed" class="px-4 py-2 bg-yellow-500 hover:bg-yellow-400 text-sm rounded font-semibold">Force scan</button>
             </div>
