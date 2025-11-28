@@ -77,8 +77,9 @@ def log_forced_scan(entry: dict, reports_dir: Optional[Path] = None) -> None:
     """
     try:
         if reports_dir is None:
-            # Default to a 'reports' directory at repository root (two levels up from this file)
-            reports_dir = Path(__file__).resolve().parents[2] / 'reports'
+            # Default to a 'reports' directory at repository root (three levels up from this file)
+            # (src/cybersec_cli/utils/logger.py -> repo root)
+            reports_dir = Path(__file__).resolve().parents[3] / 'reports'
         reports_dir.mkdir(parents=True, exist_ok=True)
         out_file = reports_dir / 'forced_scans.jsonl'
         with out_file.open('a', encoding='utf-8') as f:

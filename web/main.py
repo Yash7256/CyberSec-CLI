@@ -17,19 +17,148 @@ from cybersec_cli.utils.logger import log_forced_scan
 # Optional Redis-backed rate limiting (if aioredis is available and REDIS_URL set)
 REDIS_URL = os.getenv('REDIS_URL')
 _redis = None
-try:
-    if REDIS_URL:
-        import asyncio as _asyncio
-        import aioredis
-        _redis = aioredis.from_url(REDIS_URL)
-        logger.info('Redis configured for rate limiting')
-except Exception:
-    _redis = None
-    logger.debug('Redis not available or REDIS_URL not set; falling back to in-memory rate limiting')
+
+
+async def _redis_check_and_increment_rate(client: str) -> bool:
+    """Increment per-minute rate counter in Redis and return True if under limit.
+
+    If Redis is not configured, return False so callers will fallback to in-memory logic.
+    """
+    if _redis is None:
+        logger.debug('Redis not configured; skipping redis rate check')
+        return False
+    try:
+        key = f"rate:{client}"
+        cnt = await _redis.incr(key)
+        if cnt == 1:
+            await _redis.expire(key, 60)
+        if cnt > WS_RATE_LIMIT:
+            # decrement back and deny
+            await _redis.decr(key)
+            return False
+        return True
+    except Exception:
+        logger.debug('Redis rate check failed; falling back to in-memory')
+        return False
+
+
+async def _redis_increment_active(client: str) -> bool:
+    """Increment active scans counter in Redis and return True if under concurrency limit.
+
+    If Redis is not configured, return False so callers will fallback to in-memory logic.
+    """
+    if _redis is None:
+        logger.debug('Redis not configured; skipping redis active increment')
+        return False
+    try:
+        key = f"active:{client}"
+        cnt = await _redis.incr(key)
+        if cnt == 1:
+            # Set a generous expiry in case of unexpected crashes (e.g., 10 minutes)
+            await _redis.expire(key, 600)
+        if cnt > WS_CONCURRENT_LIMIT:
+            await _redis.decr(key)
+            return False
+        return True
+    except Exception:
+        logger.debug('Redis active increment failed; falling back to in-memory')
+        return False
+
+
+async def _redis_decrement_active(client: str):
+    if _redis is None:
+        logger.debug('Redis not configured; skipping redis active decrement')
+        return
+    try:
+        key = f"active:{client}"
+        await _redis.decr(key)
+    except Exception:
+        logger.debug('Redis active decrement failed')
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+async def init_redis():
+    """Initialize aioredis client if REDIS_URL is set. Safe to call multiple times.
+
+    This function will set the module-level `_redis` variable when aioredis is available.
+    """
+    global _redis
+    if not REDIS_URL:
+        logger.debug('REDIS_URL not set; skipping redis initialization')
+        return
+    if _redis is not None:
+        # already initialized
+        return
+    try:
+        import aioredis
+        _redis = aioredis.from_url(REDIS_URL)
+        logger.info('Redis configured for rate limiting')
+    except Exception as e:
+        _redis = None
+        logger.debug(f'Redis not available or failed to initialize: {e}; falling back to in-memory rate limiting')
+
+
+async def _check_and_record_rate_limit(client_host: str) -> bool:
+    """Check rate limit for client using Redis (if available) or in-memory fallback.
+
+    Returns True if allowed (and increments counter), False if rate limit exceeded.
+    """
+    # Try Redis first
+    if _redis is not None:
+        allowed = await _redis_check_and_increment_rate(client_host)
+        if allowed:
+            return True
+        # Redis said no
+        return False
+
+    # Fallback to in-memory rate limiting
+    now = int(asyncio.get_event_loop().time())
+    rc = _rate_counters.get(client_host)
+    if rc is None or now >= rc.get('reset_at', 0):
+        # Reset window
+        _rate_counters[client_host] = {'count': 0, 'reset_at': now + 60}
+        rc = _rate_counters[client_host]
+    if rc['count'] >= WS_RATE_LIMIT:
+        return False
+    # Increment and allow
+    rc['count'] += 1
+    return True
+
+
+async def _record_scan_start(client_host: str) -> bool:
+    """Record the start of a scan (increment concurrency counter).
+
+    Try Redis first; fallback to in-memory. Returns True if allowed.
+    """
+    # Try Redis first
+    if _redis is not None:
+        allowed = await _redis_increment_active(client_host)
+        if allowed:
+            return True
+        # Redis said no
+        return False
+
+    # Fallback to in-memory concurrency limiting
+    if _active_scans.get(client_host, 0) >= WS_CONCURRENT_LIMIT:
+        return False
+    _active_scans[client_host] = _active_scans.get(client_host, 0) + 1
+    return True
+
+
+async def _record_scan_end(client_host: str):
+    """Record the end of a scan (decrement concurrency counter).
+
+    Try Redis first; fallback to in-memory.
+    """
+    # Try Redis first
+    if _redis is not None:
+        await _redis_decrement_active(client_host)
+    else:
+        # Fallback to in-memory
+        _active_scans[client_host] = max(0, _active_scans.get(client_host, 1) - 1)
 
 # Base directory for the web app
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -123,6 +252,12 @@ def get_scan_output(scan_id: int) -> Optional[str]:
 init_db()
 
 app = FastAPI(title="CyberSec-CLI Web")
+
+
+# Initialize optional services on startup (e.g. Redis)
+@app.on_event("startup")
+async def _on_startup():
+    await init_redis()
 
 # CORS middleware
 app.add_middleware(
@@ -343,22 +478,19 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception:
                 client_host = 'unknown'
 
-            # Simple rate limiting: per-minute counter
+            # Rate limiting and concurrency checks (Redis + fallback)
             if len(parts) >= 2 and parts[0].lower() == 'scan':
-                now = int(asyncio.get_event_loop().time())
-                rc = _rate_counters.get(client_host)
-                if rc is None or now >= rc.get('reset_at', 0):
-                    # reset window
-                    _rate_counters[client_host] = {'count': 0, 'reset_at': now + 60}
-                    rc = _rate_counters[client_host]
-                if rc['count'] >= WS_RATE_LIMIT:
+                # Check rate limit (try Redis, fallback to in-memory)
+                rate_ok = await _check_and_record_rate_limit(client_host)
+                if not rate_ok:
                     await websocket.send_text(json.dumps({
                         'type': 'rate_limit',
                         'message': f'Rate limit exceeded ({WS_RATE_LIMIT} scans per minute). Please wait.'
                     }))
                     continue
-                # check concurrent
-                if _active_scans.get(client_host, 0) >= WS_CONCURRENT_LIMIT:
+                # Check concurrency limit (try Redis, fallback to in-memory)
+                conc_ok = await _record_scan_start(client_host)
+                if not conc_ok:
                     await websocket.send_text(json.dumps({
                         'type': 'rate_limit',
                         'message': f'Too many concurrent scans ({WS_CONCURRENT_LIMIT}) for your connection. Try again later.'
@@ -404,13 +536,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     }))
                     # Don't run the scan yet – wait for client confirmation
                     continue
-
-            # If we reach here and this is a scan that will be executed, increment rate counters
-            if len(parts) >= 2 and parts[0].lower() == 'scan':
-                # increment counters
-                _rate_counters.setdefault(client_host, {'count': 0, 'reset_at': int(asyncio.get_event_loop().time()) + 60})
-                _rate_counters[client_host]['count'] += 1
-                _active_scans[client_host] = _active_scans.get(client_host, 0) + 1
 
             # Execute the command and stream output
             # Execute the command and stream output. Use try/finally to ensure counters decremented.
@@ -512,7 +637,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # finally decrement active scan counter for the client
             try:
                 if len(parts) >= 2 and parts[0].lower() == 'scan':
-                    _active_scans[client_host] = max(0, _active_scans.get(client_host, 1) - 1)
+                    await _record_scan_end(client_host)
             except Exception:
                 pass
             
