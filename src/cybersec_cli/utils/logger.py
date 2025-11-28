@@ -3,6 +3,7 @@ Logging configuration for the Cybersec CLI.
 """
 import logging
 import sys
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -64,3 +65,24 @@ def get_logger(name: str) -> logging.Logger:
         Configured logger instance
     """
     return logging.getLogger(name)
+
+
+def log_forced_scan(entry: dict, reports_dir: Optional[Path] = None) -> None:
+    """
+    Append a forced-scan audit entry as JSONL to reports/forced_scans.jsonl.
+
+    Args:
+        entry: Dictionary containing audit fields (timestamp, target, ip, command, client)
+        reports_dir: Optional directory path to write reports into. If None, uses project 'reports' directory.
+    """
+    try:
+        if reports_dir is None:
+            # Default to a 'reports' directory at repository root (two levels up from this file)
+            reports_dir = Path(__file__).resolve().parents[2] / 'reports'
+        reports_dir.mkdir(parents=True, exist_ok=True)
+        out_file = reports_dir / 'forced_scans.jsonl'
+        with out_file.open('a', encoding='utf-8') as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        # Best-effort: don't raise from the logger to avoid breaking flow
+        logging.getLogger(__name__).exception('Failed to write forced scan audit entry')

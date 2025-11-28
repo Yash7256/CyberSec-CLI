@@ -11,6 +11,7 @@ import logging
 from typing import Dict, List, Optional
 import subprocess
 from datetime import datetime
+from cybersec_cli.utils.logger import log_forced_scan
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -71,6 +72,29 @@ async def read_root():
 async def get_status():
     return {"status": "CyberSec-CLI API is running"}
 
+
+@app.get('/api/audit/forced_scans')
+async def get_forced_scans():
+    """Return the forced scan audit log as JSON list (read from reports/forced_scans.jsonl)."""
+    reports_file = os.path.join(os.path.dirname(BASE_DIR), 'reports', 'forced_scans.jsonl')
+    if not os.path.exists(reports_file):
+        return []
+    entries = []
+    try:
+        with open(reports_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entries.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.error(f"Error reading audit file: {e}")
+        return []
+    return entries
+
 # WebSocket endpoint for command execution
 @app.websocket("/ws/command")
 async def websocket_endpoint(websocket: WebSocket):
@@ -81,6 +105,44 @@ async def websocket_endpoint(websocket: WebSocket):
             payload = json.loads(data)
             command = payload.get("command", "")
             force = payload.get("force", False)
+
+            # If this is a forced scan request coming from the client, write an audit entry
+            try:
+                parts = command.strip().split()
+            except Exception:
+                parts = []
+            if force and len(parts) >= 2 and parts[0].lower() == 'scan':
+                target = parts[1]
+                resolved_ip = None
+                try:
+                    resolved_ip = socket.gethostbyname(target)
+                except Exception:
+                    resolved_ip = None
+
+                # Try to get client host (WebSocket.client may be a tuple)
+                client_host = None
+                try:
+                    client = websocket.client
+                    if isinstance(client, tuple) and len(client) >= 1:
+                        client_host = client[0]
+                    elif hasattr(client, 'host'):
+                        client_host = client.host
+                except Exception:
+                    client_host = None
+
+                audit_entry = {
+                    "timestamp": datetime.utcnow().isoformat() + 'Z',
+                    "target": target,
+                    "resolved_ip": resolved_ip,
+                    "original_command": command,
+                    "client_host": client_host,
+                    "note": "forced_via_websocket"
+                }
+                try:
+                    log_forced_scan(audit_entry)
+                    logger.info(f"Logged forced scan audit entry for {target} from {client_host}")
+                except Exception as e:
+                    logger.error(f"Failed to write forced scan audit entry: {e}")
 
             if not command:
                 continue
