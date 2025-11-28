@@ -79,6 +79,16 @@ console = Console()
     is_flag=True,
     help="Disable banner grabbing"
 )
+@click.option(
+    "--require-reachable/--no-require-reachable",
+    default=False,
+    help="Require quick reachability (probe common web ports) before scanning"
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Force the scan even if reachability checks would block it"
+)
 def scan_command(
     target: str,
     ports: Optional[str],
@@ -88,6 +98,8 @@ def scan_command(
     no_service_detection: bool,
     rate_limit: int,
     no_banner: bool,
+    require_reachable: bool,
+    force: bool,
     output: Optional[str],
     format: str,
     verbose: bool,
@@ -112,6 +124,9 @@ def scan_command(
     """
     try:
         # Create scanner instance
+        # If user passed --force, do not enforce reachability even if requested
+        effective_require = require_reachable and not force
+
         scanner = PortScanner(
             target=target,
             ports=ports,
@@ -119,7 +134,8 @@ def scan_command(
             timeout=timeout,
             max_concurrent=concurrent,
             service_detection=not no_service_detection,
-            banner_grabbing=not no_banner
+            banner_grabbing=not no_banner,
+            require_reachable=effective_require
         )
         
         # Show progress

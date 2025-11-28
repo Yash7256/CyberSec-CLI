@@ -441,7 +441,9 @@ async def scan_ports(
     max_concurrent: int = 100,
     service_detection: bool = True,
     banner_grabbing: bool = True,
-    output_format: str = "table"
+    output_format: str = "table",
+    require_reachable: bool = False,
+    force: bool = False
 ) -> str:
     """Scan ports on a target and return results in the specified format.
     
@@ -459,6 +461,7 @@ async def scan_ports(
         Formatted scan results
     """
     try:
+        effective_require = require_reachable and not force
         scanner = PortScanner(
             target=target,
             ports=ports,
@@ -466,7 +469,8 @@ async def scan_ports(
             timeout=timeout,
             max_concurrent=max_concurrent,
             service_detection=service_detection,
-            banner_grabbing=banner_grabbing
+            banner_grabbing=banner_grabbing,
+            require_reachable=effective_require
         )
         
         await scanner.scan()

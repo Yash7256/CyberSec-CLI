@@ -12,7 +12,7 @@ from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortR
 from cybersec_cli.analysis.port_analyzer import analyze_scan_results
 from cybersec_cli.ui.scan_output import create_scan_output
 
-async def handle_scan(target: str, ports: Optional[List[int]] = None) -> Panel:
+async def handle_scan(target: str, ports: Optional[List[int]] = None, require_reachable: bool = False, force: bool = False) -> Panel:
     """
     Handle the scan command execution
     
@@ -25,6 +25,7 @@ async def handle_scan(target: str, ports: Optional[List[int]] = None) -> Panel:
     """
     try:
         # Initialize scanner
+        effective_require = require_reachable and not force
         scanner = PortScanner(
             target=target,
             ports=ports,
@@ -32,7 +33,8 @@ async def handle_scan(target: str, ports: Optional[List[int]] = None) -> Panel:
             timeout=2.0,
             max_concurrent=100,
             service_detection=True,
-            banner_grabbing=True
+            banner_grabbing=True,
+            require_reachable=effective_require
         )
         
         # Run the scan

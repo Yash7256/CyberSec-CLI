@@ -260,6 +260,17 @@ class CyberSecCLI:
             
         target = parts[0]
         ports = None  # Default to common ports
+
+        # Support simple flags in interactive scan: --require-reachable and --force
+        require_reachable = False
+        force = False
+        if '--require-reachable' in parts:
+            require_reachable = True
+            # remove flag so port parsing below is not confused
+            parts = [p for p in parts if p != '--require-reachable']
+        if '--force' in parts:
+            force = True
+            parts = [p for p in parts if p != '--force']
         
         # Simple argument parsing (can be enhanced with argparse/click later)
         if '-p' in parts:
@@ -288,6 +299,7 @@ class CyberSecCLI:
         
         try:
             # Initialize and run the scanner
+            effective_require = require_reachable and not force
             scanner = PortScanner(
                 target=target,
                 ports=ports,
@@ -295,7 +307,8 @@ class CyberSecCLI:
                 timeout=2.0,
                 max_concurrent=100,
                 service_detection=True,
-                banner_grabbing=True
+                banner_grabbing=True,
+                require_reachable=effective_require
             )
             
             # Run the scan with timing
