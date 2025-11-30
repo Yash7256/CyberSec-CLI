@@ -87,10 +87,15 @@ console = Console()
 @click.option(
     "--force",
     is_flag=True,
-    help="Force the scan even if reachability checks would block it"
+    help="Force the scan even if the target is a placeholder domain or other validations would block it"
+)
+@click.option(
+    "--test",
+    is_flag=True,
+    help="Run a test scan against a safe, controlled target (scanme.nmap.org)"
 )
 def scan_command(
-    target: str,
+    target: Optional[str],
     ports: Optional[str],
     scan_type: str,
     timeout: float,
@@ -98,6 +103,7 @@ def scan_command(
     no_service_detection: bool,
     rate_limit: int,
     no_banner: bool,
+    test: bool,
     require_reachable: bool,
     force: bool,
     output: Optional[str],
@@ -122,26 +128,40 @@ def scan_command(
     # Scan a range of ports and save to file
     cybersec scan example.com -p 1-1024 --output scan_results.json
     """
-    try:
-        # Create scanner instance
-        # If user passed --force, do not enforce reachability even if requested
-        effective_require = require_reachable and not force
+    # Create scanner instance
+    # If user passed --force, do not enforce reachability even if requested
+    effective_require = require_reachable
+    
+    if test:
+        if target and target != 'scanme.nmap.org':
+            click.echo("Note: --test flag overrides the provided target with scanme.nmap.org")
+        target = 'scanme.nmap.org'
+        click.echo(f"Running test scan against {target} (safe for testing)")
+    elif not target:
+        raise click.UsageError("No target specified. Use --help for usage information.")
 
+    try:
+        # Initialize the port scanner
         scanner = PortScanner(
             target=target,
             ports=ports,
-            scan_type=ScanType(scan_type),
+            scan_type=ScanType(scan_type.lower()),
             timeout=timeout,
             max_concurrent=concurrent,
             service_detection=not no_service_detection,
             banner_grabbing=not no_banner,
+            rate_limit=rate_limit,
             require_reachable=effective_require
         )
         
-        # Show progress
+        # Set force_scan attribute if --force is used
+        if force:
+            scanner.force_scan = True
+            
+        # Create progress bar
         with Progress(
             TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=None),
+            BarColumn(),
             "[progress.percentage]{task.percentage:>3.0f}%",
             TimeRemainingColumn(),
             console=console

@@ -123,17 +123,37 @@ class PortScanner:
         if not target or not target.strip():
             raise ValueError("Target hostname or IP address cannot be empty.")
         
-        # Reject common placeholder/example domains to prevent accidents
-        placeholder_domains = [
-            'example.com', 'example.org', 'example.net',
-            'test.com', 'localhost', 'placeholder.local',
-            'demo.com', 'sample.com', 'ggits.org'
-        ]
+        # Only block well-known example/reserved domains
+        reserved_domains = {
+            'example.com': 'Reserved example domain (IANA)',
+            'example.org': 'Reserved example domain (IANA)',
+            'example.net': 'Reserved example domain (IANA)',
+            'example.edu': 'Reserved example domain (IANA)',
+            'test': 'Reserved TLD for documentation',
+            'localhost': 'Localhost (use 127.0.0.1 for local scanning)',
+            'local': 'Reserved for mDNS/local network',
+            'invalid': 'Reserved TLD for invalid domains',
+            'example': 'Example domain component'
+        }
+        
         target_lower = target.lower().strip()
-        if target_lower in placeholder_domains:
+        
+        # Extract domain parts for more specific validation
+        domain_parts = target_lower.split('.')
+        
+        # Check if it's a reserved domain or TLD
+        is_reserved = (
+            target_lower in reserved_domains or  # Full domain match
+            (len(domain_parts) > 1 and domain_parts[-1] in reserved_domains) or  # TLD match
+            any(part in reserved_domains for part in domain_parts)  # Any part match
+        )
+        
+        if is_reserved and not getattr(self, 'force_scan', False):
+            reason = reserved_domains.get(target_lower, 'reserved domain')
             raise ValueError(
-                f"Target '{target}' is a placeholder/example domain. "
-                f"Please specify a real hostname or IP address to scan."
+                f"Target '{target}' appears to be a {reason}.\n"
+                "If this is a real target, use --force to scan it anyway.\n"
+                "For safe testing, use --test to scan a controlled test target."
             )
         
         self.target = target
