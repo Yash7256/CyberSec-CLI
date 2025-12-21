@@ -17,6 +17,24 @@ import dns.resolver
 from urllib.parse import urlparse
 from cybersec_cli.utils.logger import log_forced_scan
 
+# Add imports for streaming support
+from fastapi.responses import StreamingResponse
+# Fix the import path for core.port_priority
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+try:
+    from core.port_priority import get_scan_order
+    HAS_PRIORITY_MODULE = True
+except ImportError:
+    HAS_PRIORITY_MODULE = False
+    def get_scan_order(ports):
+        # Fallback implementation if core module not available
+        return [ports, [], [], []]
+
+import asyncio
+import json
+
 # Optional Redis-backed rate limiting (if aioredis is available and REDIS_URL set)
 REDIS_URL = os.getenv('REDIS_URL')
 _redis = None
@@ -351,6 +369,71 @@ async def api_get_scan(scan_id: int):
     if out is None:
         raise HTTPException(status_code=404, detail='Scan not found')
     return { 'id': scan_id, 'output': out }
+
+@app.get('/api/stream/scan/{target}')
+async def stream_scan_results(target: str, ports: str = "1-1000"):
+    """
+    Stream port scan results using Server-Sent Events (SSE).
+    Scans ports on the target and streams results as they become available.
+    """
+    async def event_generator():
+        try:
+            # Parse ports
+            port_list = []
+            if '-' in ports:
+                start, end = map(int, ports.split('-'))
+                port_list = list(range(start, end + 1))
+            elif ',' in ports:
+                port_list = [int(p) for p in ports.split(',')]
+            else:
+                port_list = [int(ports)]
+            
+            # Group ports by priority
+            priority_groups = get_scan_order(port_list)
+            priority_names = ["critical", "high", "medium", "low"]
+            
+            # Send initial event
+            yield f"data: {json.dumps({'type': 'info', 'message': f'Starting scan on {target} with {len(port_list)} ports'})}\n\n"
+            
+            # Import scanner
+            from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortState
+            
+            # Scan each priority group
+            for i, group in enumerate(priority_groups):
+                if not group:
+                    continue
+                
+                # Send group start event
+                yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group)})}\n\n"
+                
+                # Create scanner for this group
+                scanner = PortScanner(
+                    target=target,
+                    ports=group,
+                    scan_type=ScanType.TCP_CONNECT,
+                    timeout=1.0,
+                    max_concurrent=50
+                )
+                
+                # Scan ports in this group
+                results = await scanner.scan()
+                
+                # Send results for this group
+                for result in results:
+                    if result.state == PortState.OPEN:
+                        yield f"data: {json.dumps({'type': 'open_port', 'port': result.port, 'service': result.service or 'unknown'})}\n\n"
+                
+                # Send group completion event
+                open_count = len([r for r in results if r.state == PortState.OPEN])
+                yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': open_count})}\n\n"
+            
+            # Send scan completion event
+            yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed'})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # WebSocket endpoint for command execution
 @app.websocket("/ws/command")

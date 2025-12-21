@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 # Base paths
 BASE_DIR = Path(__file__).parent
 REPORTS_DIR = Path(BASE_DIR).parent / 'reports'
-CVE_CACHE_FILE = REPORTS_DIR / 'cve_cache.json'
+# Move CVE cache to a more secure location not directly accessible via web
+CVE_CACHE_FILE = Path(BASE_DIR).parent / '.secrets' / 'cve_cache.json'
 
 # Simple in-memory CVE cache (loaded at startup)
 _cve_cache: Dict[str, List[Dict]] = {}
@@ -21,7 +22,8 @@ _cve_cache: Dict[str, List[Dict]] = {}
 def init_cve_cache():
     """Initialize the CVE cache from file."""
     global _cve_cache
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Create the secure directory for CVE cache
+    CVE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
     
     if CVE_CACHE_FILE.exists():
         try:
@@ -39,6 +41,8 @@ def init_cve_cache():
 def save_cve_cache():
     """Save the CVE cache to file."""
     try:
+        # Ensure the directory exists
+        CVE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(CVE_CACHE_FILE, 'w') as f:
             json.dump(_cve_cache, f, indent=2)
         logger.debug(f'Saved CVE cache with {len(_cve_cache)} service entries')

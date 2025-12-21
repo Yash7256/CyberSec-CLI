@@ -61,17 +61,17 @@ class CommandParser:
         
         # Password security
         "check_password": [
-            r"(?:check|analyze|test|is)\s+(?:password\s+)?(?:'|")(?P<password>.+?)(?:'|")(?:\s+secure)?",
-            r"how\s+strong\s+is\s+(?:password\s+)?(?:'|")(?P<password>.+?)(?:'|")"
+            r"(?:check|analyze|test|is)\s+(?:password\s+)?(?:'|\")(?P<password>.+?)(?:'|\")(?:\s+secure)?",
+            r"how\s+strong\s+is\s+(?:password\s+)?(?:'|\")(?P<password>.+?)(?:'|\")"
         ],
         
         # Hash operations
         "hash_identify": [
-            r"(?:identify|what is|detect|analyze)\s+(?:hash\s+)?(?:'|")(?P<hash>[a-fA-F0-9]+)(?:'|")",
-            r"(?:what('s| is) the )?(?:hash\s+)?(?:type|algorithm)\s+of\s+(?:'|")(?P<hash>[a-fA-F0-9]+)(?:'|")"
+            r"(?:identify|what is|detect|analyze)\s+(?:hash\s+)?(?:'|\")(?P<hash>[a-fA-F0-9]+)(?:'|\")",
+            r"(?:what('s| is) the )?(?:hash\s+)?(?:type|algorithm)\s+of\s+(?:'|\")(?P<hash>[a-fA-F0-9]+)(?:'|\")"
         ],
         "hash_generate": [
-            r"(?:generate|create|make)\s+(?P<algorithm>\w+)\s+hash(?:\s+for|\s+of)?\s*(?:'|")(?P<text>.+?)(?:'|")",
+            r"(?:generate|create|make)\s+(?P<algorithm>\w+)\s+hash(?:\s+for|\s+of)?\s*(?:'|\")(?P<text>.+?)(?:'|\")",
             r"hash\s+(?P<text>.+?)\s+with\s+(?P<algorithm>\w+)"
         ],
         
@@ -155,10 +155,20 @@ class CommandParser:
                                 for part in value.split(','):
                                     part = part.strip()
                                     if '-' in part:
-                                        start, end = map(int, part.split('-'))
-                                        ports.extend(range(start, end + 1))
+                                        try:
+                                            start, end = map(int, part.split('-'))
+                                            if start <= end and start > 0 and end <= 65535:
+                                                ports.extend(range(start, end + 1))
+                                            else:
+                                                logger.warning(f"Invalid port range: {part}")
+                                        except ValueError:
+                                            logger.warning(f"Invalid port range format: {part}")
                                     elif part.isdigit():
-                                        ports.append(int(part))
+                                        port_num = int(part)
+                                        if 0 < port_num <= 65535:
+                                            ports.append(port_num)
+                                        else:
+                                            logger.warning(f"Invalid port number: {port_num}")
                                 value = ports
                             cleaned_params[key] = value
                     

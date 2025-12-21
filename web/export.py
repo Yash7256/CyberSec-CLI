@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 # Base paths
 BASE_DIR = Path(__file__).parent
-REPORTS_DIR = Path(BASE_DIR).parent / 'reports'
+# Use a secure location for reports not directly accessible via web
+REPORTS_DIR = Path(BASE_DIR).parent / '.secrets' / 'reports'
 
 
 def export_scan_json(target: str, scan_output: str, enrichment: Optional[Dict] = None) -> str:

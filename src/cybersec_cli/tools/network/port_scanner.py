@@ -32,6 +32,16 @@ from cybersec_cli.utils.logger import setup_logger
 from cybersec_cli.utils.logger import get_logger
 from cybersec_cli.config import settings
 
+# Add import for our new priority module
+try:
+    from core.port_priority import get_scan_order
+    HAS_PRIORITY_MODULE = True
+except ImportError:
+    HAS_PRIORITY_MODULE = False
+    def get_scan_order(ports):
+        # Fallback implementation if core module not available
+        return [ports, [], [], []]
+
 logger = get_logger(__name__)
 
 class PortState(Enum):
@@ -114,6 +124,7 @@ class PortScanner:
             scan_type: Type of scan to perform
             timeout: Connection timeout in seconds
             max_concurrent: Maximum number of concurrent connections
+            rate_limit: Maximum requests per second (0 for no limit)
             service_detection: Whether to perform service detection
             banner_grabbing: Whether to grab banners from open ports
         """
@@ -168,6 +179,12 @@ class PortScanner:
         self.rate_limit = rate_limit
         self.last_request_time = 0
         self.require_reachable = require_reachable
+        
+        # Improved rate limiting with token bucket algorithm
+        self.rate_limit_tokens = rate_limit
+        self.rate_limit_max_tokens = rate_limit
+        self.rate_limit_refill_interval = 1.0  # Refill every second
+        self.rate_limit_last_refill = time.time()
         
         # Log scanning parameters for debugging
         self.logger.info(f"Initializing port scanner for target: {target}")
@@ -224,16 +241,35 @@ class PortScanner:
             raise ValueError("Invalid ports format. Expected int, str, or list of ints.")
     
     async def _rate_limit(self):
-        """Enforce rate limiting if enabled."""
-        if self.rate_limit > 0:
-            now = time.time()
-            time_since_last = now - self.last_request_time
-            min_interval = 1.0 / self.rate_limit
+        """Enforce rate limiting using token bucket algorithm."""
+        if self.rate_limit <= 0:
+            return
             
-            if time_since_last < min_interval:
-                await asyncio.sleep(min_interval - time_since_last)
-            
-            self.last_request_time = time.time()
+        # Refill tokens based on time passed
+        now = time.time()
+        time_passed = now - self.rate_limit_last_refill
+        tokens_to_add = int(time_passed * self.rate_limit_max_tokens)
+        
+        if tokens_to_add > 0:
+            self.rate_limit_tokens = min(
+                self.rate_limit_max_tokens,
+                self.rate_limit_tokens + tokens_to_add
+            )
+            self.rate_limit_last_refill = now
+        
+        # If we have tokens, consume one
+        if self.rate_limit_tokens > 0:
+            self.rate_limit_tokens -= 1
+        else:
+            # No tokens available, wait for next refill
+            time_to_wait = self.rate_limit_refill_interval - (now - self.rate_limit_last_refill)
+            if time_to_wait > 0:
+                await asyncio.sleep(time_to_wait)
+                self.rate_limit_tokens = min(
+                    self.rate_limit_max_tokens - 1,
+                    int(self.rate_limit_refill_interval * self.rate_limit_max_tokens) - 1
+                )
+                self.rate_limit_last_refill = time.time()
     
     async def _check_port(self, port: int) -> PortResult:
         """Check a single port asynchronously."""
@@ -246,30 +282,237 @@ class PortScanner:
                 
                 self.logger.debug(f"Scanning port {port}")
                 
-                # Try to connect to the port
-                reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(self.ip, port),
-                    timeout=self.timeout
-                )
-                writer.close()
-                await writer.wait_closed()
-                result = PortResult(port=port, state=PortState.OPEN)
-                
-                # Get service info if enabled
-                if self.service_detection:
-                    result.service = self.COMMON_SERVICES.get(port)
-                
-                # Try to grab banner if enabled
-                if self.banner_grabbing and self._is_banner_port(port):
-                    await self._grab_banner(port, result)
-                
-                return result
-                
+                # Handle different scan types
+                if self.scan_type == ScanType.UDP:
+                    return await self._check_udp_port(port)
+                elif self.scan_type == ScanType.TCP_SYN:
+                    return await self._check_tcp_syn_port(port)
+                elif self.scan_type == ScanType.FIN:
+                    return await self._check_fin_port(port)
+                elif self.scan_type == ScanType.NULL:
+                    return await self._check_null_port(port)
+                elif self.scan_type == ScanType.XMAS:
+                    return await self._check_xmas_port(port)
+                else:  # Default to TCP connect scan
+                    # Try to connect to the port
+                    reader, writer = await asyncio.wait_for(
+                        asyncio.open_connection(self.ip, port),
+                        timeout=self.timeout
+                    )
+                    writer.close()
+                    await writer.wait_closed()
+                    result = PortResult(port=port, state=PortState.OPEN)
+                    
+                    # Get service info if enabled
+                    if self.service_detection:
+                        result.service = self.COMMON_SERVICES.get(port)
+                    
+                    # Try to grab banner if enabled
+                    if self.banner_grabbing and self._is_banner_port(port):
+                        await self._grab_banner(port, result)
+                    
+                    return result
+                    
         except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
             # Port is closed or filtered
             return PortResult(port=port, state=PortState.CLOSED)
         except Exception as e:
             self.logger.error(f"Error scanning port {port}: {e}")
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason=str(e)
+            )
+    
+    async def _check_udp_port(self, port: int) -> PortResult:
+        """Check a UDP port asynchronously."""
+        try:
+            # Create UDP socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(self.timeout)
+            
+            # Send a simple UDP packet (empty payload)
+            sock.sendto(b"", (self.ip, port))
+            
+            # Try to receive response
+            try:
+                data, addr = sock.recvfrom(1024)
+                # If we receive data, port is open
+                sock.close()
+                result = PortResult(port=port, state=PortState.OPEN, protocol="udp")
+                
+                # Try to identify service from response
+                if self.service_detection:
+                    result.service = self._identify_udp_service(port, data)
+                
+                # Try to grab banner if enabled
+                if self.banner_grabbing and data:
+                    result.banner = data.decode('utf-8', errors='ignore').strip()
+                
+                return result
+            except socket.timeout:
+                # No response - port could be open or filtered
+                sock.close()
+                return PortResult(port=port, state=PortState.OPEN_FILTERED, protocol="udp")
+                
+        except Exception as e:
+            # Handle specific ICMP errors that indicate port is closed
+            # This is platform-dependent and may not work on all systems
+            error_str = str(e).lower()
+            if "network is unreachable" in error_str or "permission denied" in error_str:
+                return PortResult(port=port, state=PortState.CLOSED, protocol="udp")
+            else:
+                # Other errors likely mean filtered
+                return PortResult(port=port, state=PortState.FILTERED, protocol="udp")
+    
+    async def _check_tcp_syn_port(self, port: int) -> PortResult:
+        """Perform a TCP SYN scan (requires root privileges on Unix systems)."""
+        try:
+            # Import scapy here to avoid dependency issues if not needed
+            from scapy.all import IP, TCP, sr1
+            
+            # Create SYN packet
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="S")
+            
+            # Send packet and wait for response
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                # No response - either filtered or host is down
+                return PortResult(port=port, state=PortState.FILTERED)
+            elif response.haslayer(TCP):
+                if response.getlayer(TCP).flags == 0x12:  # SYN-ACK
+                    # Port is open - send RST to close connection
+                    rst_packet = IP(dst=self.ip) / TCP(dport=port, flags="R")
+                    sr1(rst_packet, timeout=0.1, verbose=0)
+                    return PortResult(port=port, state=PortState.OPEN)
+                elif response.getlayer(TCP).flags == 0x14:  # RST-ACK
+                    # Port is closed
+                    return PortResult(port=port, state=PortState.CLOSED)
+            
+            # Unexpected response
+            return PortResult(port=port, state=PortState.FILTERED)
+            
+        except PermissionError:
+            # Scapy requires root privileges for sending raw packets
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason="TCP SYN scan requires root privileges"
+            )
+        except Exception as e:
+            self.logger.error(f"Error during TCP SYN scan on port {port}: {e}")
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason=str(e)
+            )
+    
+    async def _check_fin_port(self, port: int) -> PortResult:
+        """Perform a FIN scan (stealth scan technique)."""
+        try:
+            # Import scapy here to avoid dependency issues if not needed
+            from scapy.all import IP, TCP, sr1
+            
+            # Create FIN packet
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="F")
+            
+            # Send packet and wait for response
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                # No response - port is open or filtered
+                return PortResult(port=port, state=PortState.OPEN_FILTERED)
+            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:  # RST
+                # Port is closed
+                return PortResult(port=port, state=PortState.CLOSED)
+            
+            # Any other response means port is filtered
+            return PortResult(port=port, state=PortState.FILTERED)
+            
+        except PermissionError:
+            # Scapy requires root privileges for sending raw packets
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason="FIN scan requires root privileges"
+            )
+        except Exception as e:
+            self.logger.error(f"Error during FIN scan on port {port}: {e}")
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason=str(e)
+            )
+    
+    async def _check_null_port(self, port: int) -> PortResult:
+        """Perform a NULL scan (no flags set)."""
+        try:
+            # Import scapy here to avoid dependency issues if not needed
+            from scapy.all import IP, TCP, sr1
+            
+            # Create NULL packet (no flags)
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="")
+            
+            # Send packet and wait for response
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                # No response - port is open or filtered
+                return PortResult(port=port, state=PortState.OPEN_FILTERED)
+            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:  # RST
+                # Port is closed
+                return PortResult(port=port, state=PortState.CLOSED)
+            
+            # Any other response means port is filtered
+            return PortResult(port=port, state=PortState.FILTERED)
+            
+        except PermissionError:
+            # Scapy requires root privileges for sending raw packets
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason="NULL scan requires root privileges"
+            )
+        except Exception as e:
+            self.logger.error(f"Error during NULL scan on port {port}: {e}")
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason=str(e)
+            )
+    
+    async def _check_xmas_port(self, port: int) -> PortResult:
+        """Perform an XMAS scan (FIN, PSH, URG flags set)."""
+        try:
+            # Import scapy here to avoid dependency issues if not needed
+            from scapy.all import IP, TCP, sr1
+            
+            # Create XMAS packet (FIN, PSH, URG flags)
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="FPU")
+            
+            # Send packet and wait for response
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                # No response - port is open or filtered
+                return PortResult(port=port, state=PortState.OPEN_FILTERED)
+            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:  # RST
+                # Port is closed
+                return PortResult(port=port, state=PortState.CLOSED)
+            
+            # Any other response means port is filtered
+            return PortResult(port=port, state=PortState.FILTERED)
+            
+        except PermissionError:
+            # Scapy requires root privileges for sending raw packets
+            return PortResult(
+                port=port, 
+                state=PortState.CLOSED,
+                reason="XMAS scan requires root privileges"
+            )
+        except Exception as e:
+            self.logger.error(f"Error during XMAS scan on port {port}: {e}")
             return PortResult(
                 port=port, 
                 state=PortState.CLOSED,
@@ -282,6 +525,50 @@ class PortScanner:
             21, 22, 23, 25, 80, 110, 143, 443, 465, 587, 993, 995, 1723, 3306, 
             3389, 5432, 5900, 8080, 8443, 27017, 27018, 27019
         ]
+    
+    def _identify_udp_service(self, port: int, data: bytes) -> Optional[str]:
+        """Attempt to identify UDP service based on response data."""
+        # Common UDP services
+        udp_services = {
+            53: "dns",
+            67: "dhcp",
+            68: "dhcp",
+            69: "tftp",
+            123: "ntp",
+            137: "netbios-ns",
+            138: "netbios-dgm",
+            161: "snmp",
+            162: "snmptrap",
+            500: "ike",
+            514: "syslog",
+            520: "rip",
+            1900: "ssdp",
+            5353: "mdns"
+        }
+        
+        # Try to identify service based on port first
+        if port in udp_services:
+            return udp_services[port]
+        
+        # Try to identify based on response content
+        try:
+            response_str = data.decode('utf-8', errors='ignore').lower()
+            
+            # DNS response typically contains domain-like strings
+            if "domain" in response_str or ".com" in response_str or ".org" in response_str:
+                return "dns"
+            
+            # NTP responses have specific binary patterns
+            if port == 123 and len(data) >= 48:
+                # NTP packets have specific format
+                leap_version_mode = data[0]
+                if leap_version_mode & 0x07 in [1, 2, 3, 4]:  # Valid modes
+                    return "ntp"
+                    
+        except Exception:
+            pass
+            
+        return "unknown"
     
     async def _grab_banner(self, port: int, result: PortResult) -> None:
         """Grab banner from the specified port."""
@@ -351,10 +638,13 @@ class PortScanner:
         self.logger.debug(f"Quick reachability: no response on ports {check_ports} for {self.ip}")
         return False
     
-    async def scan(self) -> List[PortResult]:
+    async def scan(self, streaming: bool = False) -> List[PortResult]:
         """
         Perform the port scan.
         
+        Args:
+            streaming: If True, yields results after each priority tier
+            
         Returns:
             List of PortResult objects with scan results
         """
@@ -368,6 +658,11 @@ class PortScanner:
             port_list = sorted(self.ports)
             self.logger.debug(f"Port range: {port_list[0]}-{port_list[-1]} (showing first 5: {port_list[:5]}...)")
         
+        # If streaming is enabled and we have the priority module, use priority-based scanning
+        if streaming and HAS_PRIORITY_MODULE:
+            return await self._scan_with_priority_streaming()
+        
+        # Otherwise, use the original scanning approach
         tasks = []
         results = []
         
@@ -405,6 +700,82 @@ class PortScanner:
         self.results = sorted(results, key=lambda x: x.port)
         
         # Log completion statistics
+        open_count = len([r for r in self.results if r.state == PortState.OPEN])
+        closed_count = len([r for r in self.results if r.state == PortState.CLOSED])
+        filtered_count = len([r for r in self.results if r.state == PortState.FILTERED])
+        
+        self.logger.info(f"Scan completed: {open_count} open, {closed_count} closed, {filtered_count} filtered")
+        if open_count > 0:
+            open_ports_list = sorted([r.port for r in self.results if r.state == PortState.OPEN])
+            self.logger.info(f"Open ports found: {open_ports_list}")
+        
+        return self.results
+
+    async def _scan_with_priority_streaming(self) -> List[PortResult]:
+        """
+        Perform priority-based scanning with streaming results.
+        
+        Returns:
+            List of PortResult objects with scan results
+        """
+        # Group ports by priority
+        priority_groups = get_scan_order(list(self.ports))
+        priority_names = ["critical", "high", "medium", "low"]
+        
+        all_results = []
+        
+        # Scan each priority group separately
+        for i, group in enumerate(priority_groups):
+            if not group:
+                continue
+                
+            self.logger.info(f"Scanning {len(group)} {priority_names[i]} priority ports...")
+            
+            tasks = []
+            group_results = []
+            
+            # Create tasks for each port in this group
+            for port in group:
+                task = asyncio.create_task(self._check_port(port))
+                task.add_done_callback(
+                    lambda t, p=port: group_results.append(t.result())
+                )
+                tasks.append(task)
+            
+            # Show progress for this group
+            with Progress(
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=None),
+                "[progress.percentage]{task.percentage:>3.0f}%",
+                TimeRemainingColumn(),
+                console=Console()
+            ) as progress:
+                task = progress.add_task(
+                    f"[cyan]Scanning {len(tasks)} {priority_names[i]} priority ports...",
+                    total=len(tasks)
+                )
+                
+                # Wait for all tasks in this group to complete
+                for t in asyncio.as_completed(tasks):
+                    await t
+                    progress.update(task, advance=1)
+            
+            # Sort group results by port number and add to all results
+            group_results.sort(key=lambda x: x.port)
+            all_results.extend(group_results)
+            
+            # Log completion of this group
+            open_count = len([r for r in group_results if r.state == PortState.OPEN])
+            self.logger.info(f"Completed scanning {priority_names[i]} priority ports: {open_count} open")
+            
+            # Yield results after each priority tier (for future streaming implementation)
+            # In a real streaming scenario, we would send these results to the client here
+        
+        # Sort all results by port number
+        all_results.sort(key=lambda x: x.port)
+        self.results = all_results
+        
+        # Log final completion statistics
         open_count = len([r for r in self.results if r.state == PortState.OPEN])
         closed_count = len([r for r in self.results if r.state == PortState.CLOSED])
         filtered_count = len([r for r in self.results if r.state == PortState.FILTERED])

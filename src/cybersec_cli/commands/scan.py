@@ -60,6 +60,11 @@ console = Console()
     help="Output format"
 )
 @click.option(
+    "--streaming",
+    is_flag=True,
+    help="Enable streaming scan results by priority (for web interface)"
+)
+@click.option(
     "--output", "-o",
     type=click.Path(dir_okay=False, writable=True),
     help="Save results to file"
@@ -109,7 +114,8 @@ def scan_command(
     output: Optional[str],
     format: str,
     verbose: bool,
-    log: Optional[str]
+    log: Optional[str],
+    streaming: bool
 ) -> None:
     """
     Scan ports on a target host.
@@ -180,13 +186,13 @@ def scan_command(
                     progress.update(task, advance=1)
                     return result
                 
-                # Create tasks for each port
-                tasks = [check_port(port) for port in scanner.ports]
-                
-                # Run tasks and collect results
-                for future in asyncio.as_completed(tasks):
-                    result = await future
-                    results.append(result)
+                # If streaming is enabled, use the streaming scan method
+                if streaming:
+                    results = await scanner.scan(streaming=True)
+                else:
+                    # Original scanning approach
+                    tasks = [check_port(port) for port in scanner.ports]
+                    results = await asyncio.gather(*tasks)
                 
                 return results
             
@@ -234,7 +240,10 @@ def scan_command(
         
         # Show summary
         open_ports = len([r for r in scanner.results if r.state.name == "OPEN"])
+        filtered_ports = len([r for r in scanner.results if r.state.name == "OPEN_FILTERED" or r.state.name == "FILTERED"])
         console.print(f"\n[bold]Scan complete:[/bold] {open_ports} open ports found")
+        if filtered_ports > 0 and scan_type.lower() == "udp":
+            console.print(f"[bold]Note:[/bold] {filtered_ports} ports showed filtered responses (common with UDP scanning)")
         
     except Exception as e:
         import sys

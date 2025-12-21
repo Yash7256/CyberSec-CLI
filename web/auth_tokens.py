@@ -14,12 +14,14 @@ logger = logging.getLogger(__name__)
 # Base paths
 BASE_DIR = Path(__file__).parent
 REPORTS_DIR = Path(BASE_DIR).parent / 'reports'
-TOKENS_DB = REPORTS_DIR / 'tokens.db'
+# Move tokens database to a more secure location not directly accessible via web
+TOKENS_DB = Path(BASE_DIR).parent / '.secrets' / 'tokens.db'
 
 
 def init_tokens_db():
     """Initialize the tokens database."""
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+    # Create the secure directory for tokens database
+    TOKENS_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(TOKENS_DB)
     c = conn.cursor()
     c.execute('''
@@ -47,25 +49,55 @@ def create_token(name: Optional[str] = None, expires_in_days: int = 30) -> Optio
     Returns:
         The generated token, or None if creation failed
     """
-    try:
-        token = secrets.token_urlsafe(32)
-        now = datetime.utcnow().isoformat() + 'Z'
-        expires_at = (datetime.utcnow() + timedelta(days=expires_in_days)).isoformat() + 'Z'
-        
-        conn = sqlite3.connect(TOKENS_DB)
-        c = conn.cursor()
-        c.execute('''
-        INSERT INTO auth_tokens (token, name, created_at, expires_at)
-        VALUES (?, ?, ?, ?)
-        ''', (token, name or f'Token-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}', now, expires_at))
-        conn.commit()
-        conn.close()
-        
-        logger.info(f'Created new auth token: {name}')
-        return token
-    except Exception as e:
-        logger.exception(f'Failed to create token: {e}')
-        return None
+    max_attempts = 5  # Maximum number of attempts to generate a unique token
+    
+    for attempt in range(max_attempts):
+        try:
+            token = secrets.token_urlsafe(32)
+            now = datetime.utcnow().isoformat() + 'Z'
+            expires_at = (datetime.utcnow() + timedelta(days=expires_in_days)).isoformat() + 'Z'
+            
+            conn = sqlite3.connect(TOKENS_DB)
+            c = conn.cursor()
+            
+            # Check if token already exists (unlikely but possible)
+            c.execute('SELECT COUNT(*) FROM auth_tokens WHERE token = ?', (token,))
+            count = c.fetchone()[0]
+            
+            if count > 0:
+                # Token collision, try again (if we have attempts left)
+                if attempt < max_attempts - 1:
+                    conn.close()
+                    continue
+                else:
+                    # Too many collisions, give up
+                    conn.close()
+                    logger.warning(f"Too many token collisions after {max_attempts} attempts")
+                    return None
+            
+            # Insert the new token
+            c.execute('''
+            INSERT INTO auth_tokens (token, name, created_at, expires_at)
+            VALUES (?, ?, ?, ?)
+            ''', (token, name or f'Token-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}', now, expires_at))
+            conn.commit()
+            conn.close()
+            
+            logger.info(f'Created new auth token: {name}')
+            return token
+        except sqlite3.IntegrityError as e:
+            # This could happen if there's a race condition or duplicate token
+            logger.warning(f'Token creation attempt {attempt + 1} failed due to integrity error: {e}')
+            if attempt < max_attempts - 1:
+                continue
+            else:
+                logger.exception(f'Failed to create token after {max_attempts} attempts: {e}')
+                return None
+        except Exception as e:
+            logger.exception(f'Failed to create token: {e}')
+            return None
+    
+    return None
 
 
 def validate_token(token: str) -> bool:

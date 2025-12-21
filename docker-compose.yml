@@ -9,7 +9,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-your_api_key_here}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       CYBERSEC_THEME: ${CYBERSEC_THEME:-matrix}
       UI_SHOW_BANNER: ${UI_SHOW_BANNER:-true}
       UI_COLOR_OUTPUT: ${UI_COLOR_OUTPUT:-true}
@@ -23,9 +23,7 @@ services:
       SECURITY_LOG_ALL_COMMANDS: ${SECURITY_LOG_ALL_COMMANDS:-true}
       SECURITY_ENCRYPT_STORED_DATA: ${SECURITY_ENCRYPT_STORED_DATA:-true}
     volumes:
-      - ./reports:/app/reports
       - ./logs:/app/logs
-      - ./src:/app/src
     restart: unless-stopped
     networks:
       - cybersec-network
@@ -38,8 +36,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      - NET_RAW
-      - NET_ADMIN
+      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
 
@@ -67,8 +64,6 @@ services:
       start_period: 40s
 
 volumes:
-  reports:
-    driver: local
   logs:
     driver: local
 
