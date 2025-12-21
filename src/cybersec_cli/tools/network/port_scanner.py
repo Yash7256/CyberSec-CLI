@@ -32,6 +32,23 @@ from cybersec_cli.utils.logger import setup_logger
 from cybersec_cli.utils.logger import get_logger
 from cybersec_cli.config import settings
 
+# Import adaptive configuration
+try:
+    from core.adaptive_config import AdaptiveScanConfig
+    HAS_ADAPTIVE_CONFIG = True
+except ImportError:
+    HAS_ADAPTIVE_CONFIG = False
+    # Fallback implementation if core module not available
+    class AdaptiveScanConfig:
+        def __init__(self, *args, **kwargs):
+            pass
+        def adjust_parameters(self):
+            pass
+        def record_attempt(self, success: bool):
+            pass
+        def reset_stats(self):
+            pass
+
 # Add import for our new priority module
 try:
     from core.port_priority import get_scan_order
@@ -114,6 +131,7 @@ class PortScanner:
                  service_detection: bool = True,
                  banner_grabbing: bool = True,
                  require_reachable: bool = False,
+                 adaptive_scanning: Optional[bool] = None,
                  logger=None):
         """
         Initialize the port scanner.
@@ -127,6 +145,7 @@ class PortScanner:
             rate_limit: Maximum requests per second (0 for no limit)
             service_detection: Whether to perform service detection
             banner_grabbing: Whether to grab banners from open ports
+            adaptive_scanning: Whether to enable adaptive concurrency control (None to use config setting)
         """
         self.logger = logger or setup_logger(__name__)
         
@@ -179,6 +198,11 @@ class PortScanner:
         self.rate_limit = rate_limit
         self.last_request_time = 0
         self.require_reachable = require_reachable
+        
+        # Adaptive scanning configuration
+        self.adaptive_scanning = adaptive_scanning if adaptive_scanning is not None else settings.scanning.adaptive_scanning
+        self.adaptive_config = AdaptiveScanConfig(concurrency=max_concurrent, timeout=timeout) if HAS_ADAPTIVE_CONFIG else None
+        self.attempts_since_last_adjustment = 0
         
         # Improved rate limiting with token bucket algorithm
         self.rate_limit_tokens = rate_limit
@@ -274,6 +298,7 @@ class PortScanner:
     async def _check_port(self, port: int) -> PortResult:
         """Check a single port asynchronously."""
         result = PortResult(port=port, state=PortState.CLOSED)
+        success = False
         
         try:
             async with self._semaphore:
@@ -284,15 +309,20 @@ class PortScanner:
                 
                 # Handle different scan types
                 if self.scan_type == ScanType.UDP:
-                    return await self._check_udp_port(port)
+                    result = await self._check_udp_port(port)
+                    success = result.state in [PortState.OPEN, PortState.OPEN_FILTERED]
                 elif self.scan_type == ScanType.TCP_SYN:
-                    return await self._check_tcp_syn_port(port)
+                    result = await self._check_tcp_syn_port(port)
+                    success = result.state == PortState.OPEN
                 elif self.scan_type == ScanType.FIN:
-                    return await self._check_fin_port(port)
+                    result = await self._check_fin_port(port)
+                    success = result.state in [PortState.OPEN, PortState.OPEN_FILTERED]
                 elif self.scan_type == ScanType.NULL:
-                    return await self._check_null_port(port)
+                    result = await self._check_null_port(port)
+                    success = result.state in [PortState.OPEN, PortState.OPEN_FILTERED]
                 elif self.scan_type == ScanType.XMAS:
-                    return await self._check_xmas_port(port)
+                    result = await self._check_xmas_port(port)
+                    success = result.state in [PortState.OPEN, PortState.OPEN_FILTERED]
                 else:  # Default to TCP connect scan
                     # Try to connect to the port
                     reader, writer = await asyncio.wait_for(
@@ -302,6 +332,7 @@ class PortScanner:
                     writer.close()
                     await writer.wait_closed()
                     result = PortResult(port=port, state=PortState.OPEN)
+                    success = True
                     
                     # Get service info if enabled
                     if self.service_detection:
@@ -310,14 +341,83 @@ class PortScanner:
                     # Try to grab banner if enabled
                     if self.banner_grabbing and self._is_banner_port(port):
                         await self._grab_banner(port, result)
+                
+                # Record attempt for adaptive scanning
+                if self.adaptive_scanning and self.adaptive_config:
+                    self.adaptive_config.record_attempt(success)
+                    self.attempts_since_last_adjustment += 1
                     
-                    return result
-                    
+                    # Adjust parameters after every 50 port attempts
+                    if self.attempts_since_last_adjustment >= 50:
+                        old_concurrency = self.adaptive_config.concurrency
+                        old_timeout = self.adaptive_config.timeout
+                        
+                        self.adaptive_config.adjust_parameters()
+                        
+                        # Apply new concurrency/timeout values
+                        if old_concurrency != self.adaptive_config.concurrency:
+                            self.max_concurrent = self.adaptive_config.concurrency
+                            # Create new semaphore with updated concurrency
+                            self._semaphore = asyncio.Semaphore(self.adaptive_config.concurrency)
+                        
+                        if old_timeout != self.adaptive_config.timeout:
+                            self.timeout = self.adaptive_config.timeout
+                        
+                        self.attempts_since_last_adjustment = 0
+                
+                return result
+                
         except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
             # Port is closed or filtered
+            # Record failed attempt for adaptive scanning
+            if self.adaptive_scanning and self.adaptive_config:
+                self.adaptive_config.record_attempt(False)
+                self.attempts_since_last_adjustment += 1
+                
+                # Adjust parameters after every 50 port attempts
+                if self.attempts_since_last_adjustment >= 50:
+                    old_concurrency = self.adaptive_config.concurrency
+                    old_timeout = self.adaptive_config.timeout
+                    
+                    self.adaptive_config.adjust_parameters()
+                    
+                    # Apply new concurrency/timeout values
+                    if old_concurrency != self.adaptive_config.concurrency:
+                        self.max_concurrent = self.adaptive_config.concurrency
+                        # Create new semaphore with updated concurrency
+                        self._semaphore = asyncio.Semaphore(self.adaptive_config.concurrency)
+                    
+                    if old_timeout != self.adaptive_config.timeout:
+                        self.timeout = self.adaptive_config.timeout
+                    
+                    self.attempts_since_last_adjustment = 0
+            
             return PortResult(port=port, state=PortState.CLOSED)
         except Exception as e:
             self.logger.error(f"Error scanning port {port}: {e}")
+            # Record failed attempt for adaptive scanning
+            if self.adaptive_scanning and self.adaptive_config:
+                self.adaptive_config.record_attempt(False)
+                self.attempts_since_last_adjustment += 1
+                
+                # Adjust parameters after every 50 port attempts
+                if self.attempts_since_last_adjustment >= 50:
+                    old_concurrency = self.adaptive_config.concurrency
+                    old_timeout = self.adaptive_config.timeout
+                    
+                    self.adaptive_config.adjust_parameters()
+                    
+                    # Apply new concurrency/timeout values
+                    if old_concurrency != self.adaptive_config.concurrency:
+                        self.max_concurrent = self.adaptive_config.concurrency
+                        # Create new semaphore with updated concurrency
+                        self._semaphore = asyncio.Semaphore(self.adaptive_config.concurrency)
+                    
+                    if old_timeout != self.adaptive_config.timeout:
+                        self.timeout = self.adaptive_config.timeout
+                    
+                    self.attempts_since_last_adjustment = 0
+            
             return PortResult(
                 port=port, 
                 state=PortState.CLOSED,

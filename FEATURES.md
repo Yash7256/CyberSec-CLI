@@ -41,6 +41,7 @@ cybersec-cli/
 - [x] Environment variable support
 - [x] Configuration file support (YAML)
 - [x] Basic error handling
+- [x] Adaptive concurrency control
 
 ### 🔄 In Progress
 - [ ] Advanced scanning capabilities
@@ -66,6 +67,7 @@ cybersec-cli/
 - [x] Environment variable loading
 - [x] Logging system
 - [x] Basic error handling
+- [x] Adaptive concurrency control
 
 ### 🔄 In Progress
 - [ ] Unit tests
@@ -120,7 +122,7 @@ cybersec-cli/
 - [ ] Database models and operations
 
 ### Phase 2: Essential Tools (Week 3-4)
-- [ ] Port scanner
+- [x] Port scanner with adaptive concurrency control
 - [ ] SSL checker
 - [ ] Password analyzer
 - [ ] Hash tools

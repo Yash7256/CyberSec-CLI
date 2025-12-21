@@ -28,6 +28,7 @@ class ScanningConfig(BaseModel):
     default_timeout: int = 2
     max_threads: int = 50
     rate_limit: int = 10  # requests per second
+    adaptive_scanning: bool = True  # Enable adaptive concurrency control
     
     class Config:
         env_prefix = "SCAN_"

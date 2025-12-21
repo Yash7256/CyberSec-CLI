@@ -99,6 +99,11 @@ console = Console()
     is_flag=True,
     help="Run a test scan against a safe, controlled target (scanme.nmap.org)"
 )
+@click.option(
+    "--adaptive/--no-adaptive",
+    default=None,
+    help="Enable/disable adaptive concurrency control (default: enabled from config)"
+)
 def scan_command(
     target: Optional[str],
     ports: Optional[str],
@@ -111,6 +116,7 @@ def scan_command(
     test: bool,
     require_reachable: bool,
     force: bool,
+    adaptive: Optional[bool],
     output: Optional[str],
     format: str,
     verbose: bool,
@@ -157,7 +163,8 @@ def scan_command(
             service_detection=not no_service_detection,
             banner_grabbing=not no_banner,
             rate_limit=rate_limit,
-            require_reachable=effective_require
+            require_reachable=effective_require,
+            adaptive_scanning=adaptive
         )
         
         # Set force_scan attribute if --force is used
