@@ -17,6 +17,7 @@ Cybersec CLI is a powerful command-line interface that combines AI assistance wi
 - **Beautiful Terminal UI**: Rich text formatting, progress bars, and interactive prompts
 - **Extensible Architecture**: Easy to add new tools and commands
 - **Themes**: Multiple color schemes to match your style
+- **Redis Integration**: Caching and job queuing with automatic fallback to in-memory storage
 
 ## 🚀 Quick Start
 
@@ -73,6 +74,10 @@ Configuration is stored in `~/.cybersec/config.yaml`. The application will creat
 
 - `OPENAI_API_KEY`: Your OpenAI API key (required for AI features)
 - `CYBERSEC_THEME`: Default theme (matrix, cyberpunk, minimal)
+- `REDIS_URL`: Redis connection URL (default: redis://localhost:6379)
+- `REDIS_PASSWORD`: Redis password (optional)
+- `REDIS_DB`: Redis database number (default: 0)
+- `ENABLE_REDIS`: Enable/disable Redis (default: true)
 
 ## 🧰 Available Commands
 

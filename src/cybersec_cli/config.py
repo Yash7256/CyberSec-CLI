@@ -56,6 +56,17 @@ class SecurityConfig(BaseModel):
         env_prefix = "SECURITY_"
         extra = "ignore"
 
+class RedisConfig(BaseModel):
+    """Redis-related configuration."""
+    url: str = "redis://localhost:6379"
+    password: Optional[str] = None
+    db: int = 0
+    enabled: bool = True
+    
+    class Config:
+        env_prefix = "REDIS_"
+        extra = "ignore"
+
 class OutputConfig(BaseModel):
     """Output-related configuration."""
     default_format: str = "table"  # table, json, csv, markdown
@@ -73,6 +84,7 @@ class Config(BaseModel):
     ui: UIConfig = Field(default_factory=UIConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
+    redis: RedisConfig = Field(default_factory=RedisConfig)
     
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'Config':

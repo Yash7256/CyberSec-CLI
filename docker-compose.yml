@@ -1,6 +1,23 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: cybersec-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    networks:
+      - cybersec-network
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    command: redis-server --appendonly yes
+
   cybersec-web:
     build:
       context: .
@@ -22,11 +39,15 @@ services:
       SECURITY_REQUIRE_CONFIRMATION: ${SECURITY_REQUIRE_CONFIRMATION:-true}
       SECURITY_LOG_ALL_COMMANDS: ${SECURITY_LOG_ALL_COMMANDS:-true}
       SECURITY_ENCRYPT_STORED_DATA: ${SECURITY_ENCRYPT_STORED_DATA:-true}
+      REDIS_URL: redis://redis:6379
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
     networks:
       - cybersec-network
+    depends_on:
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
       interval: 30s
@@ -65,6 +86,8 @@ services:
 
 volumes:
   logs:
+    driver: local
+  redis-data:
     driver: local
 
 networks:

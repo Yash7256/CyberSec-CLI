@@ -112,6 +112,17 @@
     color: #718096; /* gray-500 */
 }
 
+/* Highlight effect for critical ports */
+.highlight {
+    animation: highlight-pulse 2s ease-in-out;
+}
+
+@keyframes highlight-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .port-detail-grid {

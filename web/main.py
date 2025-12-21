@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 # Fix the import path for core.port_priority
 import sys
 import os
+import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 try:
     from core.port_priority import get_scan_order
@@ -31,6 +32,14 @@ except ImportError:
     def get_scan_order(ports):
         # Fallback implementation if core module not available
         return [ports, [], [], []]
+
+# Import Redis client
+try:
+    from core.redis_client import redis_client
+    HAS_REDIS = True
+except ImportError:
+    HAS_REDIS = False
+    redis_client = None
 
 import asyncio
 import json
@@ -334,6 +343,33 @@ async def read_root():
 async def get_status():
     return {"status": "CyberSec-CLI API is running"}
 
+@app.get("/health/redis")
+async def redis_health_check():
+    """Health check endpoint for Redis connectivity and latency."""
+    if not HAS_REDIS or redis_client is None:
+        return {
+            "status": "disabled",
+            "message": "Redis is not available or not configured"
+        }
+    
+    try:
+        start_time = time.time()
+        # Test Redis connectivity
+        redis_client.redis_client.ping()
+        latency = (time.time() - start_time) * 1000  # Convert to milliseconds
+        
+        return {
+            "status": "healthy",
+            "latency_ms": round(latency, 2),
+            "message": "Redis connection is healthy"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "message": "Redis connection failed"
+        }
+
 
 @app.get('/api/audit/forced_scans')
 async def get_forced_scans():
@@ -371,7 +407,7 @@ async def api_get_scan(scan_id: int):
     return { 'id': scan_id, 'output': out }
 
 @app.get('/api/stream/scan/{target}')
-async def stream_scan_results(target: str, ports: str = "1-1000"):
+async def stream_scan_results(target: str, ports: str = "1-1000", enhanced_service_detection: bool = True):
     """
     Stream port scan results using Server-Sent Events (SSE).
     Scans ports on the target and streams results as they become available.
@@ -392,8 +428,12 @@ async def stream_scan_results(target: str, ports: str = "1-1000"):
             priority_groups = get_scan_order(port_list)
             priority_names = ["critical", "high", "medium", "low"]
             
+            # Calculate total ports for progress tracking
+            total_ports = sum(len(group) for group in priority_groups)
+            scanned_ports = 0
+            
             # Send initial event
-            yield f"data: {json.dumps({'type': 'info', 'message': f'Starting scan on {target} with {len(port_list)} ports'})}\n\n"
+            yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'message': f'Starting scan on {target} with {total_ports} ports'})}\n\n"
             
             # Import scanner
             from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortState
@@ -406,32 +446,152 @@ async def stream_scan_results(target: str, ports: str = "1-1000"):
                 # Send group start event
                 yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group)})}\n\n"
                 
-                # Create scanner for this group
+                # Create scanner for this group with enhanced service detection
                 scanner = PortScanner(
                     target=target,
                     ports=group,
                     scan_type=ScanType.TCP_CONNECT,
                     timeout=1.0,
-                    max_concurrent=50
+                    max_concurrent=50,
+                    enhanced_service_detection=enhanced_service_detection
                 )
                 
                 # Scan ports in this group
                 results = await scanner.scan()
                 
+                # Update scanned ports count
+                scanned_ports += len(group)
+                progress_percentage = round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0
+                
                 # Send results for this group
+                open_ports = []
                 for result in results:
                     if result.state == PortState.OPEN:
-                        yield f"data: {json.dumps({'type': 'open_port', 'port': result.port, 'service': result.service or 'unknown'})}\n\n"
+                        port_info = {
+                            'port': result.port,
+                            'service': result.service or 'unknown',
+                            'version': result.version or 'unknown',
+                            'banner': result.banner or '',
+                            'confidence': result.confidence,
+                            'protocol': result.protocol
+                        }
+                        open_ports.append(port_info)
+                        yield f"data: {json.dumps({'type': 'open_port', 'port': port_info, 'progress': progress_percentage})}\n\n"
                 
-                # Send group completion event
-                open_count = len([r for r in results if r.state == PortState.OPEN])
-                yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': open_count})}\n\n"
+                # Send group completion event with progress
+                yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': len(open_ports), 'progress': progress_percentage})}\n\n"
             
             # Send scan completion event
-            yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed'})}\n\n"
+            yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed', 'progress': 100})}\n\n"
             
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.get('/api/scan/stream')
+async def stream_scan_results_new(target: str, ports: str = "1-1000", enhanced_service_detection: bool = True):
+    """
+    Stream port scan results using Server-Sent Events (SSE) after each priority tier completes.
+    """
+    async def event_generator():
+        try:
+            # Parse ports
+            port_list = []
+            if '-' in ports:
+                start, end = map(int, ports.split('-'))
+                port_list = list(range(start, end + 1))
+            elif ',' in ports:
+                port_list = [int(p) for p in ports.split(',')]
+            else:
+                port_list = [int(ports)]
+            
+            # Group ports by priority
+            priority_groups = get_scan_order(port_list)
+            priority_names = ["critical", "high", "medium", "low"]
+            
+            # Calculate total ports for progress tracking
+            total_ports = sum(len(group) for group in priority_groups)
+            scanned_ports = 0
+            
+            # Send initial event
+            yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'progress': 0})}\n\n"
+            
+            # Import scanner and analyzer
+            from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortState
+            from cybersec_cli.utils.formatters import get_vulnerability_info
+            
+            # Track critical ports separately
+            critical_ports_found = []
+            
+            # Scan each priority group
+            for i, group in enumerate(priority_groups):
+                if not group:
+                    continue
+                
+                # Send group start event
+                yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group), 'progress': round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0})}\n\n"
+                
+                # Create scanner for this group with enhanced service detection
+                scanner = PortScanner(
+                    target=target,
+                    ports=group,
+                    scan_type=ScanType.TCP_CONNECT,
+                    timeout=1.0,
+                    max_concurrent=50,
+                    enhanced_service_detection=enhanced_service_detection
+                )
+                
+                # Scan ports in this group
+                results = await scanner.scan()
+                
+                # Update scanned ports count
+                scanned_ports += len(group)
+                progress_percentage = round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0
+                
+                # Collect open ports for this group with security findings
+                open_ports = []
+                for result in results:
+                    if result.state == PortState.OPEN:
+                        # Get vulnerability information for this port
+                        vuln_info = get_vulnerability_info(result.port, result.service)
+                        
+                        port_info = {
+                            'port': result.port,
+                            'service': result.service or 'unknown',
+                            'version': result.version or 'unknown',
+                            'banner': result.banner or '',
+                            'confidence': result.confidence,
+                            'protocol': result.protocol,
+                            'risk': vuln_info['severity'].name,
+                            'cvss_score': vuln_info.get('cvss_score', 0.0),
+                            'vulnerabilities': vuln_info.get('cves', []),
+                            'recommendations': vuln_info.get('recommendation', '').split('\n') if vuln_info.get('recommendation') else [],
+                            'exposure': vuln_info.get('exposure', 'Unknown'),
+                            'default_creds': vuln_info.get('default_creds', 'Check documentation')
+                        }
+                        open_ports.append(port_info)
+                        
+                        # Track critical ports
+                        if priority_names[i] == "critical":
+                            critical_ports_found.append(port_info)
+                
+                # Send results after each priority tier completes
+                if open_ports:
+                    yield f"data: {json.dumps({'type': 'tier_results', 'priority': priority_names[i], 'open_ports': open_ports, 'progress': progress_percentage})}\n\n"
+                
+                # Send group completion event
+                yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': len(open_ports), 'progress': progress_percentage})}\n\n"
+            
+            # Send critical ports summary first
+            if critical_ports_found:
+                yield f"data: {json.dumps({'type': 'critical_ports', 'ports': critical_ports_found, 'progress': 100})}\n\n"
+            
+            # Send scan completion event
+            yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed', 'progress': 100})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

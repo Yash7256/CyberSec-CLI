@@ -101,22 +101,4 @@ button:hover {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-/* Status indicators */
-.status-connected {
-    color: #68d391;
-}
 
-.status-disconnected {
-    color: #fc8181;
-}
-
-.status-connecting {
-    color: #f6e05e;
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% { opacity: 1; }
-    50% { opacity: 0.5; }
-    100% { opacity: 1; }
-}
