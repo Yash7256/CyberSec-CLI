@@ -104,6 +104,11 @@ console = Console()
     default=None,
     help="Enable/disable adaptive concurrency control (default: enabled from config)"
 )
+@click.option(
+    "--enhanced-service-detection/--no-enhanced-service-detection",
+    default=None,
+    help="Enable/disable enhanced service detection (default: enabled from config)"
+)
 def scan_command(
     target: Optional[str],
     ports: Optional[str],
@@ -117,6 +122,7 @@ def scan_command(
     require_reachable: bool,
     force: bool,
     adaptive: Optional[bool],
+    enhanced_service_detection: Optional[bool],
     output: Optional[str],
     format: str,
     verbose: bool,
@@ -164,7 +170,8 @@ def scan_command(
             banner_grabbing=not no_banner,
             rate_limit=rate_limit,
             require_reachable=effective_require,
-            adaptive_scanning=adaptive
+            adaptive_scanning=adaptive,
+            enhanced_service_detection=enhanced_service_detection
         )
         
         # Set force_scan attribute if --force is used

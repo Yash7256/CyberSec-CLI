@@ -49,6 +49,18 @@ except ImportError:
         def reset_stats(self):
             pass
 
+# Import service probes
+try:
+    from core.service_probes import identify_service_async, get_ssl_info
+    HAS_SERVICE_PROBES = True
+except ImportError:
+    HAS_SERVICE_PROBES = False
+    # Fallback implementation if core module not available
+    async def identify_service_async(*args, **kwargs):
+        return {"service": None, "version": None, "banner": None, "confidence": 0.0}
+    def get_ssl_info(*args, **kwargs):
+        return None
+
 # Add import for our new priority module
 try:
     from core.port_priority import get_scan_order
@@ -81,6 +93,7 @@ class PortResult:
     protocol: str = "tcp"
     reason: Optional[str] = None
     ttl: Optional[float] = None
+    confidence: float = 0.0  # Confidence level for service detection (0.0-1.0)
 
     def to_dict(self) -> Dict:
         """Convert the result to a dictionary."""
@@ -89,9 +102,11 @@ class PortResult:
             "state": self.state.value,
             "service": self.service,
             "banner": self.banner,
+            "version": self.version,
             "protocol": self.protocol,
             "reason": self.reason,
-            "ttl": self.ttl
+            "ttl": self.ttl,
+            "confidence": self.confidence
         }
 
 class ScanType(Enum):
@@ -132,6 +147,7 @@ class PortScanner:
                  banner_grabbing: bool = True,
                  require_reachable: bool = False,
                  adaptive_scanning: Optional[bool] = None,
+                 enhanced_service_detection: Optional[bool] = None,
                  logger=None):
         """
         Initialize the port scanner.
@@ -146,6 +162,7 @@ class PortScanner:
             service_detection: Whether to perform service detection
             banner_grabbing: Whether to grab banners from open ports
             adaptive_scanning: Whether to enable adaptive concurrency control (None to use config setting)
+            enhanced_service_detection: Whether to enable enhanced service detection (None to use config setting)
         """
         self.logger = logger or setup_logger(__name__)
         
@@ -203,6 +220,9 @@ class PortScanner:
         self.adaptive_scanning = adaptive_scanning if adaptive_scanning is not None else settings.scanning.adaptive_scanning
         self.adaptive_config = AdaptiveScanConfig(concurrency=max_concurrent, timeout=timeout) if HAS_ADAPTIVE_CONFIG else None
         self.attempts_since_last_adjustment = 0
+        
+        # Enhanced service detection configuration
+        self.enhanced_service_detection = enhanced_service_detection if enhanced_service_detection is not None else settings.scanning.enhanced_service_detection
         
         # Improved rate limiting with token bucket algorithm
         self.rate_limit_tokens = rate_limit
@@ -336,11 +356,19 @@ class PortScanner:
                     
                     # Get service info if enabled
                     if self.service_detection:
-                        result.service = self.COMMON_SERVICES.get(port)
-                    
-                    # Try to grab banner if enabled
-                    if self.banner_grabbing and self._is_banner_port(port):
-                        await self._grab_banner(port, result)
+                        if self.enhanced_service_detection and HAS_SERVICE_PROBES:
+                            # Use enhanced service detection
+                            service_info = await identify_service_async(self.ip, port, self.timeout)
+                            result.service = service_info["service"] or self.COMMON_SERVICES.get(port)
+                            result.version = service_info["version"]
+                            result.banner = service_info["banner"]
+                            result.confidence = service_info["confidence"]
+                        else:
+                            # Use traditional service detection
+                            result.service = self.COMMON_SERVICES.get(port)
+                            # Try to grab banner if enabled
+                            if self.banner_grabbing and self._is_banner_port(port):
+                                await self._grab_banner(port, result)
                 
                 # Record attempt for adaptive scanning
                 if self.adaptive_scanning and self.adaptive_config:
@@ -443,11 +471,19 @@ class PortScanner:
                 
                 # Try to identify service from response
                 if self.service_detection:
-                    result.service = self._identify_udp_service(port, data)
-                
-                # Try to grab banner if enabled
-                if self.banner_grabbing and data:
-                    result.banner = data.decode('utf-8', errors='ignore').strip()
+                    if self.enhanced_service_detection and HAS_SERVICE_PROBES:
+                        # Use enhanced service detection
+                        service_info = await identify_service_async(self.ip, port, self.timeout)
+                        result.service = service_info["service"] or self._identify_udp_service(port, data)
+                        result.version = service_info["version"]
+                        result.banner = service_info["banner"] or data.decode('utf-8', errors='ignore').strip()
+                        result.confidence = service_info["confidence"]
+                    else:
+                        # Use traditional UDP service detection
+                        result.service = self._identify_udp_service(port, data)
+                        # Try to grab banner if enabled
+                        if self.banner_grabbing and data:
+                            result.banner = data.decode('utf-8', errors='ignore').strip()
                 
                 return result
             except socket.timeout:

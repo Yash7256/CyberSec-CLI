@@ -29,6 +29,7 @@ class ScanningConfig(BaseModel):
     max_threads: int = 50
     rate_limit: int = 10  # requests per second
     adaptive_scanning: bool = True  # Enable adaptive concurrency control
+    enhanced_service_detection: bool = True  # Enable enhanced service detection
     
     class Config:
         env_prefix = "SCAN_"

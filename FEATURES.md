@@ -42,6 +42,7 @@ cybersec-cli/
 - [x] Configuration file support (YAML)
 - [x] Basic error handling
 - [x] Adaptive concurrency control
+- [x] Enhanced service detection
 
 ### 🔄 In Progress
 - [ ] Advanced scanning capabilities
@@ -68,6 +69,7 @@ cybersec-cli/
 - [x] Logging system
 - [x] Basic error handling
 - [x] Adaptive concurrency control
+- [x] Enhanced service detection
 
 ### 🔄 In Progress
 - [ ] Unit tests

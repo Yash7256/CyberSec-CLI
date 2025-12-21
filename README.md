@@ -13,6 +13,7 @@ Cybersec CLI is a powerful command-line interface that combines AI assistance wi
 - **Interactive AI Assistant**: Natural language processing for security-related queries
 - **Comprehensive Toolset**: Network scanning, vulnerability assessment, and more
 - **Adaptive Concurrency Control**: Automatically adjusts scanning speed based on network performance
+- **Enhanced Service Detection**: Accurately identifies services using active probing
 - **Beautiful Terminal UI**: Rich text formatting, progress bars, and interactive prompts
 - **Extensible Architecture**: Easy to add new tools and commands
 - **Themes**: Multiple color schemes to match your style
