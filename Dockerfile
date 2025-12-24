@@ -28,25 +28,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy requirements
-COPY requirements.txt ./
-
-# Check if web requirements exist and install accordingly
-COPY web/requirements.txt ./web_requirements.txt
-RUN if [ -f web_requirements.txt ]; then \
-    cat requirements.txt web_requirements.txt | sort -u > combined_requirements.txt; \
-    else \
-    cp requirements.txt combined_requirements.txt; \
-    fi && \
-    pip install --upgrade pip setuptools wheel && \
-    pip install -r combined_requirements.txt
-
-# Copy application code
+# Copy application code first to make web/ available
 COPY src/ src/
 COPY web/ web/
 COPY core/ core/
 COPY setup.py .
 COPY README.md .
+
+# Copy requirements
+COPY requirements.txt ./
+
+# Combine requirements and install (check if web requirements exist)
+RUN if [ -f web/requirements.txt ]; then \
+    cat requirements.txt web/requirements.txt | sort -u > combined_requirements.txt; \
+    else \
+    cp requirements.txt combined_requirements.txt; \
+    fi && \
+    pip install --upgrade pip setuptools wheel && \
+    pip install -r combined_requirements.txt
 
 # Install the package in editable mode
 RUN pip install -e .
