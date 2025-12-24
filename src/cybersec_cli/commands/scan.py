@@ -4,19 +4,15 @@ Handles port scanning operations.
 """
 
 import asyncio
-import json
-from pathlib import Path
-from typing import Optional, List, Union, Dict, Any
+from typing import Optional
 
 import click
 from rich.console import Console
-from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 
-from cybersec_cli.tools.network import PortScanner, ScanType, PortResult, PortState
+from cybersec_cli.tools.network import PortScanner, ScanType
 from cybersec_cli.utils.formatters import (
     format_scan_results,
-    format_scan_results_table,
-    format_scan_results_list,
 )
 
 console = Console()
@@ -211,7 +207,6 @@ def scan_command(
             # If saving to file, convert to markdown for better readability
             if output:
                 from rich.console import Console as RichConsole
-                from rich.terminal_theme import MONOKAI
 
                 # Create a console that writes to a file
                 with open(output, "w") as f:

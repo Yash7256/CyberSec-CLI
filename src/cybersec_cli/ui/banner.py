@@ -2,10 +2,10 @@
 Banner and ASCII art for the Cybersec CLI.
 """
 
+from rich.box import ROUNDED
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.box import ROUNDED
 
 
 def get_banner_content():
@@ -13,8 +13,8 @@ def get_banner_content():
     banner = """
      ██████╗██╗   ██╗██████╗ ██████╗ ███████╗███████╗ ██████╗
     ██╔════╝╚██╗ ██╔╝██╔══██╗██╔══██╗██╔════╝██╔════╝██╔════╝
-    ██║      ╚████╔╝ ██████╔╝██████╔╝███████╗█████╗  ██║           
-    ██║       ╚██╔╝  ██╔══██╗██╔══██╗╚════██║██╔══╝  ██║            
+    ██║      ╚████╔╝ ██████╔╝██████╔╝███████╗█████╗  ██║
+    ██║       ╚██╔╝  ██╔══██╗██╔══██╗╚════██║██╔══╝  ██║
     ╚██████╗   ██║   ██████╔╝██║  ██║███████║███████╗╚██████╗
      ╚═════╝   ╚═╝   ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝ ╚═════╝
     """

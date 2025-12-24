@@ -1,6 +1,7 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-import time
-from unittest.mock import AsyncMock, MagicMock, patch
+
 from core.rate_limiter import SmartRateLimiter
 
 

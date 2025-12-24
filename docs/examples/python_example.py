@@ -2,11 +2,10 @@
 Python example for CyberSec-CLI API
 """
 
-import requests
 import json
 import time
-import asyncio
-import aiohttp
+
+import requests
 
 # Configuration
 BASE_URL = "https://your-domain.com/api"

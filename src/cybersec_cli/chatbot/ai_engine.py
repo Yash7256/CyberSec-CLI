@@ -4,10 +4,9 @@ Handles communication with AI models and response generation.
 OpenAI API is OPTIONAL - fallback to rule-based analysis if API key not provided.
 """
 
-from typing import Dict, List, Optional, AsyncGenerator
 import json
 import logging
-from pathlib import Path
+from typing import AsyncGenerator, Dict, List, Optional
 
 try:
     import aiohttp
@@ -452,4 +451,3 @@ class AIEngine:
         """Parse natural language into command intent."""
         # This will be implemented to extract commands and parameters
         # from natural language input
-        pass

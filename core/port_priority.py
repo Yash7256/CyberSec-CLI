@@ -3,10 +3,7 @@ Port priority implementation for CyberSec CLI.
 """
 
 import logging
-from typing import List, Tuple
-import json
-import os
-from pathlib import Path
+from typing import List
 
 # Import structured logging
 try:
@@ -43,7 +40,7 @@ def get_scan_order(port_range: List[int]) -> List[List[int]]:
         ordered as [critical, high, medium, low]
     """
     # Convert to set for faster lookups
-    port_set = set(port_range)
+    set(port_range)
 
     # Initialize result lists for each priority tier
     critical_ports = []

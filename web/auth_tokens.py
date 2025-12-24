@@ -3,12 +3,12 @@
 Provides endpoints to create, revoke, and list authentication tokens.
 """
 
-import sqlite3
-import secrets
 import logging
+import secrets
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 

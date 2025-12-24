@@ -1,5 +1,7 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from cybersec_cli.tools.network.port_scanner import PortScanner, PortState
 
 
@@ -10,7 +12,6 @@ class TestPortPrioritization:
         """Test that critical ports are prioritized correctly."""
         # Since PortScanner doesn't have a direct prioritize_ports method,
         # we'll test the priority-based scanning logic indirectly
-        ports = [22, 443, 80, 3389, 8080, 9000]
 
         # Check that the scanner can handle these ports
         assert len(mock_scanner.ports) >= 0  # Scanner accepts the ports
@@ -50,7 +51,7 @@ class TestAdaptiveConcurrency:
             adaptive_scanning=True,
         )
 
-        initial_concurrency = scanner.max_concurrent
+        scanner.max_concurrent
 
         # Simulate good network conditions by calling adaptive config methods
         if scanner.adaptive_config:
@@ -58,7 +59,7 @@ class TestAdaptiveConcurrency:
             for _ in range(10):
                 scanner.adaptive_config.record_attempt(success=True)
 
-            old_concurrency = scanner.adaptive_config.concurrency
+            scanner.adaptive_config.concurrency
             scanner.adaptive_config.adjust_parameters()
 
             # Concurrency might increase
@@ -80,7 +81,7 @@ class TestAdaptiveConcurrency:
             for _ in range(10):
                 scanner.adaptive_config.record_attempt(success=False)
 
-            old_concurrency = scanner.adaptive_config.concurrency
+            scanner.adaptive_config.concurrency
             scanner.adaptive_config.adjust_parameters()
 
             # Concurrency might decrease

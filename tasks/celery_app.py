@@ -3,6 +3,7 @@ Celery application configuration for CyberSec-CLI.
 """
 
 import os
+
 from celery import Celery
 
 # Create Celery app instance

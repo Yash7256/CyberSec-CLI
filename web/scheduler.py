@@ -3,14 +3,13 @@
 Stores scheduled scans in SQLite and provides endpoints to create/list/delete/run them.
 """
 
-import sqlite3
-import json
-import logging
 import asyncio
+import logging
+import sqlite3
 import subprocess
 from datetime import datetime
-from typing import List, Dict, Optional
 from pathlib import Path
+from typing import Dict, List, Optional
 
 try:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler

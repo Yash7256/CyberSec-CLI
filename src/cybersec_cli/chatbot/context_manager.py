@@ -3,21 +3,18 @@ Context Manager for the Cybersec CLI.
 Manages session state, tool execution, and context preservation.
 """
 
-import asyncio
 import json
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Callable, Awaitable
-from datetime import datetime
-from dataclasses import dataclass, field
 import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from .conversation import Conversation, Message
-from .ai_engine import AIEngine, AIResponse
-from ..config import settings
 from ..utils.logger import setup_logger
+from .ai_engine import AIEngine
+from .conversation import Conversation
 
 logger = setup_logger(__name__)
 
@@ -218,7 +215,7 @@ class ContextManager:
 
     async def process_message(self, message: str, session_id: str) -> str:
         """Process a user message and return a response."""
-        session = await self.create_session(session_id)
+        await self.create_session(session_id)
         conversation = await self.get_conversation(session_id)
 
         if not conversation:

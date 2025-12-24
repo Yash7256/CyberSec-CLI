@@ -6,11 +6,9 @@ import time
 from typing import List, Optional
 
 from rich.panel import Panel
-from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortResult
 from cybersec_cli.analysis.port_analyzer import analyze_scan_results
+from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
 from cybersec_cli.ui.scan_output import create_scan_output
 
 
@@ -47,7 +45,7 @@ async def handle_scan(
         # Run the scan
         start_time = time.time()
         results = await scanner.scan()
-        scan_duration = time.time() - start_time
+        time.time() - start_time
 
         if not results:
             return Panel("[yellow]No open ports found or scan was interrupted.[/]")

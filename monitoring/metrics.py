@@ -2,16 +2,15 @@
 Prometheus metrics for CyberSec CLI
 """
 
+import time
+
 from prometheus_client import (
-    Counter,
-    Histogram,
-    Gauge,
     CollectorRegistry,
+    Counter,
+    Gauge,
+    Histogram,
     generate_latest,
 )
-import time
-from typing import Optional, Dict, Any
-
 
 # Counter metrics
 SCANS_TOTAL = Counter(

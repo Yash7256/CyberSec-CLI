@@ -1,8 +1,9 @@
-import pytest
 import json
-import gzip
-from unittest.mock import Mock, patch
 from datetime import datetime
+from unittest.mock import patch
+
+import pytest
+
 from core.scan_cache import ScanCache
 
 
@@ -221,7 +222,8 @@ class TestCacheInvalidate:
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
             result = await cache.invalidate_cache(cache_key)
 
-            # The Redis delete method returns number of deleted keys, so if it's > 0, invalidate should return True
+            # The Redis delete method returns number of deleted keys, so if it's > 0,
+            # invalidate should return True
             mock_redis_client.delete.assert_called_once_with(cache_key)
             assert (
                 result is True

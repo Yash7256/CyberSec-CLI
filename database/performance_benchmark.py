@@ -3,15 +3,15 @@
 Performance benchmark comparing SQLite and PostgreSQL for CyberSec-CLI.
 """
 
-import os
-import sys
-import time
 import asyncio
-import sqlite3
-import tempfile
 import json
-from typing import List, Dict, Any
+import os
+import sqlite3
+import sys
+import tempfile
+import time
 from datetime import datetime
+from typing import Any, Dict, List
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

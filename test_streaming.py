@@ -3,9 +3,9 @@
 Test script to verify the streaming interface is working correctly.
 """
 
-import requests
 import json
-import time
+
+import requests
 
 
 def test_streaming_endpoint():

@@ -1,11 +1,8 @@
-import time
-import asyncio
-from typing import List, Dict, Optional
-from redis import Redis
-from datetime import datetime, timedelta
 import logging
+import time
+from typing import Dict, List
 
-from src.cybersec_cli.utils.exceptions import RateLimitError
+from redis import Redis
 
 # Import structured logging
 try:

@@ -2,15 +2,13 @@
 Redis client for CyberSec CLI.
 """
 
-import redis
 import logging
-import json
-from typing import Optional, Any
 import os
-from urllib.parse import urlparse
 from functools import wraps
-import sys
-from typing import Dict
+from typing import Any, Dict, Optional
+from urllib.parse import urlparse
+
+import redis
 
 # Try to import redis, but don't fail if it's not available
 try:

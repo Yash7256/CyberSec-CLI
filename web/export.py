@@ -3,27 +3,24 @@
 Provides functions to generate and serve reports in different formats.
 """
 
-import json
 import csv
+import json
 import logging
-from io import StringIO, BytesIO
 from datetime import datetime
+from io import BytesIO, StringIO
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Dict, Optional
 
 try:
-    from reportlab.lib.pagesizes import letter, A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.platypus import (
-        SimpleDocTemplate,
         Paragraph,
+        SimpleDocTemplate,
         Spacer,
-        PageBreak,
-        Table,
-        TableStyle,
     )
-    from reportlab.lib import colors
 
     HAS_REPORTLAB = True
 except ImportError:

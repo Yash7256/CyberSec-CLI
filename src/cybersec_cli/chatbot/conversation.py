@@ -3,11 +3,11 @@ Conversation management for the Cybersec CLI chatbot.
 Handles conversation history and context management.
 """
 
-from typing import List, Dict, Optional, Deque
-from collections import deque
 import json
-from pathlib import Path
+from collections import deque
 from datetime import datetime
+from pathlib import Path
+from typing import Deque, Dict, List
 
 from pydantic import BaseModel, Field
 

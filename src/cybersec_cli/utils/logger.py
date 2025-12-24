@@ -2,9 +2,9 @@
 Logging configuration for the Cybersec CLI.
 """
 
+import json
 import logging
 import sys
-import json
 from pathlib import Path
 from typing import Optional
 

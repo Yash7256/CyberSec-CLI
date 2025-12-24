@@ -4,38 +4,26 @@ Supports various scanning techniques and service detection.
 """
 
 import asyncio
-import socket
 import ipaddress
-from datetime import datetime as dt
-import time
-import random
-from typing import List, Dict, Tuple, Optional, Union, Set, Any
-from dataclasses import dataclass, asdict
-from enum import Enum
 import json
-import csv
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+import socket
+import time
+from dataclasses import dataclass
+from datetime import datetime as dt
+from enum import Enum
+from typing import Dict, List, Optional, Set, Union
 
-import aiohttp
-import aiohttp
+from rich.console import Console
 from rich.progress import (
-    Progress,
     BarColumn,
+    Progress,
     TextColumn,
     TimeRemainingColumn,
-    SpinnerColumn,
-    TimeElapsedColumn,
 )
 from rich.table import Table
-from rich.console import Console
-from rich.panel import Panel
-from rich.syntax import Syntax
 
-from cybersec_cli.utils.logger import setup_logger
-
-from cybersec_cli.utils.logger import get_logger
 from cybersec_cli.config import settings
+from cybersec_cli.utils.logger import get_logger, setup_logger
 
 # Import adaptive configuration
 try:
@@ -62,7 +50,7 @@ except ImportError:
 
 # Import service probes
 try:
-    from core.service_probes import identify_service_async, get_ssl_info
+    from core.service_probes import get_ssl_info, identify_service_async
 
     HAS_SERVICE_PROBES = True
 except ImportError:

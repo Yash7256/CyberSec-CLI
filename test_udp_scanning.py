@@ -4,13 +4,13 @@ Test script for UDP scanning functionality in CyberSec-CLI
 """
 
 import asyncio
-import sys
 import os
+import sys
+
+from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
 
 # Add the src directory to the path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
-
-from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
 
 
 async def test_udp_scanning():

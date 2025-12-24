@@ -3,6 +3,7 @@
 Simple test CLI to verify basic input/output functionality.
 """
 import asyncio
+
 from prompt_toolkit import PromptSession
 from rich.console import Console
 from rich.panel import Panel

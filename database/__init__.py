@@ -3,10 +3,10 @@ Database abstraction layer for CyberSec-CLI.
 This module provides a unified interface for both SQLite and PostgreSQL databases.
 """
 
-import os
 import logging
-from typing import List, Dict, Any, Optional
+import os
 from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 # Try to import PostgreSQL client
 try:
@@ -89,7 +89,7 @@ class DatabaseInterface:
             return await postgres_client.create_scan(target, user_id, config)
         else:
             # Fallback to SQLite implementation
-            from web.main import save_scan_result
+            pass
 
             # For compatibility, we'll create a dummy scan record
             # In a real implementation, this would be properly integrated

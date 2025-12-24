@@ -2,23 +2,24 @@
 Celery tasks for network scanning operations.
 """
 
-import os
-import sys
 import json
 import logging
-from typing import Dict, Any, Optional
-from celery import Celery, Task
-from celery.exceptions import Retry
+import os
+import sys
+from typing import Any, Dict, Optional
+
+from celery import Task
+
+from tasks.celery_app import celery_app
 
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 # Import the Celery app
-from tasks.celery_app import celery_app
 
 # Import structured logging
 try:
-    from core.logging_config import setup_logging, get_logger
+    from core.logging_config import get_logger, setup_logging
     from src.cybersec_cli.config import settings
 
     setup_logging(
@@ -30,9 +31,9 @@ except ImportError:
 
 # Import scanning utilities
 try:
-    from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortState
-    from cybersec_cli.utils.formatters import get_vulnerability_info
     from core.port_priority import get_scan_order
+    from cybersec_cli.tools.network.port_scanner import PortScanner, PortState, ScanType
+    from cybersec_cli.utils.formatters import get_vulnerability_info
 
     HAS_SCAN_MODULES = True
 except ImportError as e:
@@ -74,8 +75,13 @@ try:
 except ImportError:
     HAS_METRICS = False
     metrics_collector = None
-    start_timer = lambda: 0
-    stop_timer = lambda x: 0
+
+    def start_timer():
+        return 0
+
+    def stop_timer(x):
+        return 0
+
 
 logger = get_logger("celery") if HAS_STRUCTURED_LOGGING else logging.getLogger(__name__)
 

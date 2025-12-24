@@ -3,7 +3,7 @@ Theme management for the Cybersec CLI.
 """
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from rich.theme import Theme
 
@@ -103,7 +103,7 @@ def save_theme_preference(theme_name: str, config_path: Optional[Path] = None) -
         with open(config_path, "w") as f:
             f.write(f"[ui]\ntheme = {theme_name}\n")
         return True
-    except Exception as e:
+    except Exception:
         return False
 
 

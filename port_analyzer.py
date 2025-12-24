@@ -2,7 +2,8 @@
 Analyzes port scan results to identify potential security issues.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
 from cybersec_cli.tools.network.port_scanner import PortResult
 
 

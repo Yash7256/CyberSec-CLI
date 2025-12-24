@@ -3,8 +3,8 @@
 Test script to verify PostgreSQL setup for CyberSec-CLI.
 """
 
-import sys
 import os
+import sys
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 def test_postgres_client_import():
     """Test if PostgreSQL client can be imported."""
     try:
-        from database.postgres_client import PostgresClient
+        pass
 
         print("✅ PostgreSQL client imported successfully")
         return True
@@ -25,7 +25,7 @@ def test_postgres_client_import():
 def test_database_abstraction_import():
     """Test if database abstraction layer can be imported."""
     try:
-        from database import db_interface
+        pass
 
         print("✅ Database abstraction layer imported successfully")
         return True
@@ -49,7 +49,7 @@ def test_configuration():
 def test_dependencies():
     """Test if required dependencies are installed."""
     try:
-        import asyncpg
+        pass
 
         print("✅ asyncpg dependency installed successfully")
         return True

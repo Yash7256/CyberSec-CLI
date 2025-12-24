@@ -3,9 +3,9 @@
 Example script demonstrating how to use the PostgreSQL database for CyberSec-CLI.
 """
 
-import sys
-import os
 import asyncio
+import os
+import sys
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

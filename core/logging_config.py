@@ -1,15 +1,15 @@
 """Structured logging configuration for CyberSec CLI"""
 
-import logging
-import json
-import sys
-from datetime import datetime
-from pathlib import Path
-import uuid
-from logging.handlers import RotatingFileHandler
 import gzip
+import json
+import logging
 import os
-from typing import Dict, Any, Optional
+import sys
+import uuid
+from datetime import datetime
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import Optional
 
 # Global request ID context
 _local = __import__("threading").local()

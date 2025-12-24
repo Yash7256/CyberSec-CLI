@@ -3,14 +3,14 @@
 Migration script to migrate data from SQLite to PostgreSQL.
 """
 
-import os
-import sys
-import sqlite3
+import argparse
 import asyncio
 import json
-import argparse
-from typing import List, Dict, Any
+import os
+import sqlite3
+import sys
 from datetime import datetime
+from typing import Any, Dict, List
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

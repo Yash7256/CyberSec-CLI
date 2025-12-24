@@ -1,11 +1,11 @@
 """Utility for parsing and querying JSON logs"""
 
+import gzip
 import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Generator
-import gzip
+from typing import Any, Dict, Generator, List, Optional
 
 
 class LogParser:

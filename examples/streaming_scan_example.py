@@ -2,7 +2,6 @@
 Example script demonstrating how to use the SSE streaming scan endpoint.
 """
 
-import requests
 import json
 import time
 
@@ -45,7 +44,7 @@ const eventSource = new EventSource('http://localhost:8000/api/stream/scan/examp
 eventSource.onmessage = function(event) {
     const data = JSON.parse(event.data);
     console.log('Received:', data);
-    
+
     // Handle different event types
     switch(data.type) {
         case 'info':

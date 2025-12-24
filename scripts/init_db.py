@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Initialize database schema"""
 import asyncio
-import asyncpg
-from pathlib import Path
 import os
+from pathlib import Path
+
+import asyncpg
 
 
 async def init_database():

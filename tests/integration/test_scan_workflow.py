@@ -1,9 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, patch
-from cybersec_cli.tools.network.port_scanner import PortScanner
-from core.scan_cache import ScanCache
-from core.rate_limiter import SmartRateLimiter
-from core.validators import validate_target, validate_port_range
+
+import pytest
+
+from core.validators import validate_port_range, validate_target
 
 
 class TestEndToEndScanWorkflow:
@@ -42,8 +41,6 @@ class TestEndToEndScanWorkflow:
     @pytest.mark.asyncio
     async def test_scan_workflow_with_cache_hit(self, mock_scanner):
         """Test scan workflow when result is already cached."""
-        target = "scanme.nmap.org"
-        ports = [22, 80]
 
         # Setup cache to return a result
         cached_result = {"cached": True, "data": "mock_cache_data"}
@@ -56,8 +53,6 @@ class TestEndToEndScanWorkflow:
     @pytest.mark.asyncio
     async def test_scan_workflow_rate_limited(self, mock_scanner):
         """Test scan workflow when rate limited."""
-        target = "scanme.nmap.org"
-        ports = [22, 80]
 
         # Verify that rate limiting components are accessible
         # In a real test, we'd check the actual rate limiting logic
@@ -75,7 +70,6 @@ class TestCachingIntegration:
     async def test_cache_store_and_retrieve_integration(self, mock_cache):
         """Test that scan results are properly stored and retrieved from cache."""
         target = "example.com"
-        ports = [80]
         mock_result = {"host": target, "ports": [{"port": 80, "state": "open"}]}
 
         # The cache methods should be accessible

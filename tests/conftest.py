@@ -1,9 +1,12 @@
-import pytest
-import asyncio
-import sys
 import os
-from unittest.mock import AsyncMock, MagicMock, patch
-from redis import asyncio as aioredis
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from core.scan_cache import ScanCache
+from cybersec_cli.config import RateLimitConfig, ScanningConfig
+from cybersec_cli.tools.network.port_scanner import PortScanner
 
 # Add the src directory to the Python path to make cybersec_cli importable
 # This ensures that the package can be imported when not installed in editable mode
@@ -13,12 +16,6 @@ sys.path.insert(0, src_path)
 
 # Also add the project root to the Python path to allow importing from core directory
 sys.path.insert(0, project_root)
-
-from cybersec_cli.config import Config, ScanningConfig, RateLimitConfig
-from core.scan_cache import ScanCache
-from core.rate_limiter import SmartRateLimiter
-from core.validators import validate_target, validate_port_range
-from cybersec_cli.tools.network.port_scanner import PortScanner
 
 
 @pytest.fixture
@@ -60,7 +57,6 @@ def mock_config():
 @pytest.fixture
 def mock_scan_result():
     """Mock scan result data."""
-    from cybersec_cli.tools.network.port_scanner import PortResult, PortState
 
     return {
         "host": "127.0.0.1",

@@ -3,7 +3,8 @@ Unit tests for the port priority module.
 """
 
 import unittest
-from core.port_priority import get_scan_order, get_priority_for_port, PRIORITY_PORTS
+
+from core.port_priority import PRIORITY_PORTS, get_priority_for_port, get_scan_order
 
 
 class TestPortPriority(unittest.TestCase):

@@ -3,14 +3,13 @@ Intelligent caching system for CyberSec-CLI scans.
 This module provides caching functionality to avoid redundant scans of the same targets.
 """
 
+import gzip
+import hashlib
+import ipaddress
 import json
 import logging
-from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
-import hashlib
-import asyncio
-import ipaddress
-import gzip
+from typing import Any, Dict, List, Optional, Union
 
 # Import structured logging
 try:

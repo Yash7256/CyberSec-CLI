@@ -2,25 +2,22 @@
 Test cases for the enhanced service detection probes.
 """
 
-import unittest
-from unittest.mock import patch, MagicMock
-import sys
 import os
-
-# Add the project root to the path so we can import the modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+import sys
+import unittest
+from unittest.mock import MagicMock, patch
 
 from core.service_probes import (
     SERVICE_PROBES,
-    send_probe,
-    send_async_probe,
-    identify_service,
-    identify_service_async,
     _analyze_response,
     _extract_version,
     _get_service_by_port,
-    get_ssl_info,
+    identify_service,
+    send_probe,
 )
+
+# Add the project root to the path so we can import the modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 class TestServiceProbes(unittest.TestCase):
@@ -125,7 +122,7 @@ class TestServiceProbes(unittest.TestCase):
         """Test HTTP version extraction."""
         # Test with Server header
         http_response = b"HTTP/1.1 200 OK\r\nServer: Apache/2.4.41 (Ubuntu)\r\n\r\n"
-        version = _extract_version("http", http_response)
+        _extract_version("http", http_response)
         # Note: Current implementation doesn't extract HTTP versions, so this might be None
 
     def test_extract_version_ssh(self):

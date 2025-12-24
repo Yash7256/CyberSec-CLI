@@ -1,13 +1,12 @@
 """API authentication system for CyberSec CLI."""
 
-import secrets
 import hashlib
-import time
-from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
-import os
 import logging
+import os
+import secrets
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, Optional
 
 # Import Redis client for storing API keys
 try:
@@ -93,7 +92,6 @@ class APIKeyAuth:
             # In a real implementation, you'd want to use a database
             logger.warning("Redis not available, using in-memory storage for API keys")
             # For demo purposes only
-            pass
 
         return api_key
 
@@ -280,10 +278,11 @@ def validate_key_scopes(api_key: str, required_scopes: list) -> bool:
 
 # For database-backed implementation (using SQLAlchemy)
 try:
-    from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean
+    from datetime import datetime
+
+    from sqlalchemy import Boolean, Column, DateTime, String, Text, create_engine
     from sqlalchemy.ext.declarative import declarative_base
     from sqlalchemy.orm import sessionmaker
-    from datetime import datetime
 
     Base = declarative_base()
 

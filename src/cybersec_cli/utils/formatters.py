@@ -1,19 +1,16 @@
 """Output formatters for Cybersec CLI."""
 
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
 
-from rich.table import Table, Column
 from rich import box
-from rich.console import Console, Group
+from rich.console import Group
 from rich.panel import Panel
+from rich.table import Table
 from rich.text import Text
-from rich.syntax import Syntax
-from rich.columns import Columns
 
-from cybersec_cli.tools.network import PortResult, PortScanner, PortState, ScanType
-from cybersec_cli.config import settings
+from cybersec_cli.tools.network import PortResult, PortScanner, PortState
 
 
 class Severity(Enum):

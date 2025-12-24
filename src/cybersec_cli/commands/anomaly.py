@@ -3,38 +3,31 @@ Anomaly Detection Command for Cybersec CLI.
 """
 
 import asyncio
-import click
-import logging
-import time
 import json
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Set, Tuple
-import random
+import logging
 import signal
-import sys
+import time
+from datetime import datetime, timedelta
+from typing import List, Set
 
+import click
 from rich.console import Console
-from rich.table import Table, Column
-from rich.progress import (
-    Progress,
-    BarColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    SpinnerColumn,
-)
-from rich.panel import Panel
-from rich.live import Live
 from rich.layout import Layout
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TimeRemainingColumn,
+)
+from rich.table import Table
 from rich.text import Text
 
 from cybersec_cli.analysis.anomaly_detector import (
-    NetworkAnomalyDetector,
-    LogAnomalyDetector,
     Anomaly,
     AnomalyType,
-    Protocol,
+    LogAnomalyDetector,
+    NetworkAnomalyDetector,
 )
 
 console = Console()

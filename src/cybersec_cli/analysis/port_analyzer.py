@@ -2,9 +2,9 @@
 Port analysis module for cybersecurity scanning results.
 """
 
-from datetime import datetime
-from typing import List, Dict, Any
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Dict, List
 
 
 @dataclass

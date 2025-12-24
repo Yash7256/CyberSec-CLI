@@ -1,11 +1,11 @@
 """Input validation and sanitization utilities for CyberSec CLI."""
 
-import re
 import ipaddress
-import socket
-from typing import List, Optional, Union
-import os
 import logging
+import os
+import re
+import socket
+from typing import List
 
 logger = logging.getLogger(__name__)
 

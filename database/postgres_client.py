@@ -3,14 +3,14 @@ PostgreSQL client for CyberSec-CLI.
 This module provides an async PostgreSQL client with connection pooling.
 """
 
-import os
-import logging
-import asyncio
-import asyncpg
-from typing import List, Dict, Any, Optional
-from datetime import datetime
 import json
+import logging
+import os
 import uuid
+from datetime import datetime
+from typing import Any, Dict, List, Optional
+
+import asyncpg
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +123,8 @@ class PostgresClient:
                 if completed_at:
                     await conn.execute(
                         """
-                        UPDATE scans 
-                        SET status = $1, completed_at = $2 
+                        UPDATE scans
+                        SET status = $1, completed_at = $2
                         WHERE id = $3
                         """,
                         status,
@@ -134,8 +134,8 @@ class PostgresClient:
                 else:
                     await conn.execute(
                         """
-                        UPDATE scans 
-                        SET status = $1 
+                        UPDATE scans
+                        SET status = $1
                         WHERE id = $2
                         """,
                         status,
@@ -180,7 +180,7 @@ class PostgresClient:
             async with self.pool.acquire() as conn:
                 await conn.executemany(
                     """
-                    INSERT INTO scan_results 
+                    INSERT INTO scan_results
                     (id, scan_id, port, state, service, version, banner, risk_level, metadata)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                     """,
@@ -208,7 +208,7 @@ class PostgresClient:
                 row = await conn.fetchrow(
                     """
                     SELECT id, target, status, user_id, created_at, completed_at, config
-                    FROM scans 
+                    FROM scans
                     WHERE id = $1
                     """,
                     scan_id,
@@ -256,7 +256,7 @@ class PostgresClient:
                 rows = await conn.fetch(
                     """
                     SELECT id, target, status, user_id, created_at, completed_at
-                    FROM scans 
+                    FROM scans
                     WHERE user_id = $1
                     ORDER BY created_at DESC
                     LIMIT $2 OFFSET $3
@@ -305,7 +305,7 @@ class PostgresClient:
                 rows = await conn.fetch(
                     """
                     SELECT id, port, state, service, version, banner, risk_level, metadata
-                    FROM scan_results 
+                    FROM scan_results
                     WHERE scan_id = $1
                     ORDER BY port
                     """,
@@ -348,7 +348,7 @@ class PostgresClient:
             async with self.pool.acquire() as conn:
                 result = await conn.execute(
                     """
-                    DELETE FROM scans 
+                    DELETE FROM scans
                     WHERE id = $1
                     """,
                     scan_id,

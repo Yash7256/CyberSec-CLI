@@ -3,9 +3,10 @@
 Example script demonstrating how to use the Celery task queue for scanning.
 """
 
-import sys
 import os
+import sys
 import time
+
 import requests
 
 # Add the project root to the path

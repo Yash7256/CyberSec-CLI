@@ -5,14 +5,14 @@ including AI integration, conversation management, and command parsing.
 """
 
 from .ai_engine import AIEngine, AIResponse
-from .conversation import Conversation, Message
-from .command_parser import CommandParser, Command
+from .command_parser import Command, CommandParser
 from .context_manager import (
     ContextManager,
     SessionState,
     ToolResult,
     get_context_manager,
 )
+from .conversation import Conversation, Message
 
 # Create a default context manager instance
 context_manager = get_context_manager()

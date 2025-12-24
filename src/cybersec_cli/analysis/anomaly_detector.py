@@ -3,21 +3,20 @@ Anomaly Detection Module for CyberSec CLI.
 Implements various anomaly detection techniques for security monitoring.
 """
 
-import numpy as np
-from typing import List, Dict, Any, Optional, Union, Tuple
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum, auto
 import logging
-import psutil
-import time
-import socket
-from collections import defaultdict, deque
-from sklearn.ensemble import IsolationForest
-import joblib
-import json
 import os
+import time
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
 from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+import joblib
+import numpy as np
+import psutil
+from sklearn.ensemble import IsolationForest
 
 # Constants
 MODEL_SAVE_PATH = Path.home() / ".cybersec" / "models"
@@ -235,12 +234,6 @@ class AnomalyDetector:
                 logger.error(f"ML detection error: {e}")
 
         return anomalies
-
-
-import psutil
-from dataclasses import dataclass
-from typing import Dict, List, Optional
-import time
 
 
 @dataclass
@@ -515,7 +508,7 @@ class NetworkAnomalyDetector(AnomalyDetector):
     def _detect_connection_anomalies(self) -> List[Anomaly]:
         """Detect anomalies in connection patterns with advanced analysis."""
         anomalies = []
-        current_time = time.time()
+        time.time()
 
         # Group connections by remote address and local port
         connections_by_host = defaultdict(

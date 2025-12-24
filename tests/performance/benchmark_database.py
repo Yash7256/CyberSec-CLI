@@ -4,24 +4,17 @@ Tests query performance and write throughput for different database backends.
 """
 
 import asyncio
-import time
+import os
 import random
-import string
+import time
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
-import sqlite3
-import asyncpg
-import aiomysql
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+from typing import Dict
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
+import matplotlib.pyplot as plt
+from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-import os
-
 
 Base = declarative_base()
 
@@ -459,7 +452,7 @@ def main():
     from sqlalchemy import func  # Import here to avoid issues
 
     benchmark = DatabaseBenchmark()
-    results = benchmark.run_all_benchmarks()
+    benchmark.run_all_benchmarks()
 
     # Generate report
     report = benchmark.generate_report()

@@ -4,19 +4,18 @@ Tests various scenarios to measure performance metrics.
 """
 
 import asyncio
+import os
 import time
 import tracemalloc
-import psutil
-import os
 from datetime import datetime
-from typing import Dict, List, Tuple
-import matplotlib.pyplot as plt
-import numpy as np
+from typing import Dict
 
-from cybersec_cli.tools.network.port_scanner import PortScanner
-from core.scan_cache import ScanCache
-from core.rate_limiter import SmartRateLimiter
+import matplotlib.pyplot as plt
+import psutil
+
 from core.adaptive_scanner import AdaptiveScanConfig
+from core.scan_cache import ScanCache
+from cybersec_cli.tools.network.port_scanner import PortScanner
 
 
 class ScannerBenchmark:
@@ -51,7 +50,7 @@ class ScannerBenchmark:
             timeout=0.5,
             max_concurrent=10,
         )
-        results = await scanner.scan()
+        await scanner.scan()
 
         end_time = time.time()
         scan_duration = end_time - start_time
@@ -89,7 +88,7 @@ class ScannerBenchmark:
             timeout=0.5,
             max_concurrent=10,
         )
-        results = await scanner.scan()
+        await scanner.scan()
 
         end_time = time.time()
         scan_duration = end_time - start_time
@@ -175,14 +174,14 @@ class ScannerBenchmark:
         # Measure cache hit performance
         start_time = time.time()
         for _ in range(100):
-            result = await self.cache.check_cache(cache_key)
+            await self.cache.check_cache(cache_key)
         cache_hit_duration = time.time() - start_time
 
         # Measure cache miss performance
         miss_cache_key = self.cache.get_cache_key("127.0.0.2", list(range(1, 101)))
         start_time = time.time()
         for _ in range(100):
-            result = await self.cache.check_cache(miss_cache_key)
+            await self.cache.check_cache(miss_cache_key)
         cache_miss_duration = time.time() - start_time
 
         current_memory = self.measure_memory_usage()
@@ -233,7 +232,7 @@ class ScannerBenchmark:
             timeout=0.5,
             max_concurrent=20,
         )
-        results = await scanner.scan()
+        await scanner.scan()
         scan_duration = time.time() - start_time
 
         tracking_thread.join()  # Wait for tracking to finish
@@ -393,7 +392,7 @@ class ScannerBenchmark:
 async def main():
     """Run the benchmark suite."""
     benchmark = ScannerBenchmark()
-    results = await benchmark.run_all_benchmarks()
+    await benchmark.run_all_benchmarks()
 
     # Generate report
     report = benchmark.generate_report()

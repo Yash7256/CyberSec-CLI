@@ -3,9 +3,9 @@
 Test script to verify scan caching functionality for CyberSec-CLI.
 """
 
-import sys
-import os
 import asyncio
+import os
+import sys
 import time
 
 # Add the project root to the path

@@ -1,12 +1,12 @@
 """Module for handling scan output formatting"""
 
 from datetime import datetime as dt
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 from rich.layout import Layout
 from rich.panel import Panel
-from rich.text import Text
 from rich.table import Table
+from rich.text import Text
 
 
 def format_summary_panel(target: str, findings: List[Dict[str, Any]]) -> Panel:

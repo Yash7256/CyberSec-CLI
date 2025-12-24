@@ -5,14 +5,14 @@ Redis Usage Example
 This script demonstrates how to use the Redis client in the CyberSec-CLI application.
 """
 
-import sys
 import os
+import sys
 import time
+
+from core.redis_client import redis_client
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from core.redis_client import redis_client
 
 
 def main():

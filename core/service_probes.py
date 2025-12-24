@@ -5,11 +5,10 @@ This module implements active probing for common services to improve service det
 """
 
 import asyncio
+import logging
 import socket
 import ssl
-import struct
-from typing import Dict, Optional, Tuple, Any
-import logging
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 

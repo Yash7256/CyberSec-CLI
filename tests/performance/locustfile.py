@@ -3,10 +3,9 @@ Load testing configuration for CyberSec-CLI API using Locust.
 Tests API endpoints under various load conditions.
 """
 
-from locust import HttpUser, TaskSet, task, between, constant_pacing
-import json
 import random
-import string
+
+from locust import HttpUser, TaskSet, between, constant_pacing, task
 
 
 class ScanTasks(TaskSet):
@@ -148,12 +147,10 @@ class CyberSecUser(HttpUser):
     def on_start(self):
         """Actions to perform when a user starts."""
         # This could include authentication if needed
-        pass
 
     def on_stop(self):
         """Actions to perform when a user stops."""
         # Cleanup actions if needed
-        pass
 
 
 # Advanced scenario: Heavy concurrent load

@@ -1,10 +1,9 @@
-import pytest
 from core.validators import (
-    validate_target,
-    validate_port_range,
-    sanitize_input,
     is_safe_path,
+    sanitize_input,
     validate_file_path,
+    validate_port_range,
+    validate_target,
     validate_url,
 )
 
@@ -236,8 +235,8 @@ class TestPathSafety:
 
     def test_safe_paths(self):
         """Test validation of safe paths."""
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as temp_dir:
             safe_paths = [
@@ -258,8 +257,8 @@ class TestPathSafety:
 
     def test_unsafe_paths(self):
         """Test validation of unsafe paths."""
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as temp_dir:
             unsafe_paths = [

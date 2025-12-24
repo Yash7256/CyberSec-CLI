@@ -3,10 +3,10 @@ Command parser for the Cybersec CLI.
 Handles natural language processing and command extraction.
 """
 
-import re
-from typing import Dict, List, Optional, Tuple, Union
-from dataclasses import dataclass
 import logging
+import re
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 

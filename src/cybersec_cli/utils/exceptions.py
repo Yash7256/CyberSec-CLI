@@ -12,19 +12,13 @@ class RateLimitError(Exception):
 class ScanError(Exception):
     """Exception raised for scan-related errors"""
 
-    pass
-
 
 class ValidationError(Exception):
     """Exception raised for validation errors"""
 
-    pass
-
 
 class ConfigurationError(Exception):
     """Exception raised for configuration errors"""
-
-    pass
 
 
 class ScanTimeoutError(ScanError):

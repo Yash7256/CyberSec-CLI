@@ -2,9 +2,9 @@
 Tests for the Redis client implementation.
 """
 
-import unittest
-import sys
 import os
+import sys
+import unittest
 
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -111,7 +111,6 @@ class TestRedisClient(unittest.TestCase):
         """Test in-memory fallback when Redis is disabled."""
         # This test would require mocking Redis failure,
         # which is complex. We'll rely on manual testing for this scenario.
-        pass
 
 
 if __name__ == "__main__":

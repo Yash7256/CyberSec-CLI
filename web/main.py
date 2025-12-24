@@ -1,40 +1,41 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse, Response
-import os
-from pathlib import Path
-import socket
 import asyncio
 import json
 import logging
-import sqlite3
-from typing import Dict, List, Optional
-import subprocess
-from datetime import datetime
+import os
 import re
-import dns.resolver
-from urllib.parse import urlparse
-from sqlalchemy.sql import text
-from cybersec_cli.utils.logger import log_forced_scan
-
-# Add imports for streaming support
-from fastapi.responses import StreamingResponse
+import signal
+import socket
+import sqlite3
+import subprocess
 
 # Fix the import path for core.port_priority
 import sys
-import os
 import time
+import uuid
+from datetime import datetime
+from typing import Dict, List, Optional
+
+import dns.resolver
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+
+# Add imports for streaming support
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.sql import text
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+from cybersec_cli.utils.logger import log_forced_scan
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 # Import structured logging
 try:
     from core.logging_config import (
-        setup_logging,
         get_logger,
-        set_request_id,
-        log_audit_event,
+        setup_logging,
     )
     from src.cybersec_cli.config import settings
 
@@ -86,9 +87,6 @@ except ImportError:
         # Fallback implementation if core module not available
         return [ports, [], [], []]
 
-
-import asyncio
-import json
 
 # Optional Redis-backed rate limiting (if aioredis is available and REDIS_URL set)
 REDIS_URL = os.getenv("REDIS_URL")
@@ -408,7 +406,6 @@ async def wait_for_active_scans():
     """Wait for active scans to complete before shutdown"""
     # In a real implementation, this would check for active scans
     # For now, just return immediately
-    pass
 
 
 @app.on_event("shutdown")
@@ -443,8 +440,6 @@ app.add_middleware(
 )
 
 # Security headers middleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -518,12 +513,6 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
 app.add_middleware(APIKeyAuthMiddleware)
 
 # Import for request ID tracking
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
-import uuid
-import signal
-import asyncio
 
 # Global shutdown event
 shutdown_event = asyncio.Event()
@@ -572,7 +561,6 @@ async def global_exception_handler(request: Request, exc: Exception):
     from core.logging_config import get_logger
 
     logger = get_logger("api")
-    from src.cybersec_cli.utils.exceptions import ServiceUnavailableError, DatabaseError
 
     # Log the exception with full context
     logger.error(
@@ -810,6 +798,7 @@ async def postgres_health():
     """Health check endpoint for PostgreSQL connectivity."""
     try:
         import os
+
         from sqlalchemy import create_engine
         from sqlalchemy.pool import QueuePool
 
@@ -828,7 +817,7 @@ async def postgres_health():
 
         # Test database connection
         with engine.connect() as conn:
-            result = conn.execute(text("SELECT 1"))
+            conn.execute(text("SELECT 1"))
 
         return {"status": "healthy", "message": "PostgreSQL connection is healthy"}
     except Exception as e:
@@ -1010,8 +999,8 @@ async def stream_scan_results(
             # Import scanner
             from cybersec_cli.tools.network.port_scanner import (
                 PortScanner,
-                ScanType,
                 PortState,
+                ScanType,
             )
 
             # Scan each priority group
@@ -1130,8 +1119,8 @@ async def stream_scan_results_new(
             # Import scanner and analyzer
             from cybersec_cli.tools.network.port_scanner import (
                 PortScanner,
-                ScanType,
                 PortState,
+                ScanType,
             )
             from cybersec_cli.utils.formatters import get_vulnerability_info
 
@@ -1230,8 +1219,9 @@ except ImportError:
     logger.warning("Celery not available, async scan endpoints will not work")
 
 if CELERY_AVAILABLE:
+    from typing import Any, Dict, Optional
+
     from pydantic import BaseModel
-    from typing import Optional, Dict, Any
 
     class ScanRequest(BaseModel):
         """
@@ -1290,10 +1280,9 @@ if CELERY_AVAILABLE:
             Dictionary with task_id for tracking the scan progress
         """
         import uuid
-        from fastapi import Request
 
         # Get client IP for rate limiting
-        client_ip = request.client.host
+        request.client.host
 
         # Record scan start metrics
         if HAS_METRICS and metrics_collector:
@@ -1841,7 +1830,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     stderr=subprocess.PIPE,
                     cwd=os.getcwd(),
                 )
-            except Exception as e:
+            except Exception:
                 # Decrement concurrency if we failed to start
                 try:
                     if len(parts) >= 2 and parts[0].lower() == "scan":

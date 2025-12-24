@@ -4,10 +4,11 @@ Configuration management for Cybersec CLI.
 
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
 import yaml
-from pydantic import BaseModel, Field, validator
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -193,7 +194,7 @@ class Config(BaseModel):
             with open(path, "w") as f:
                 yaml.safe_dump(self.dict(), f, default_flow_style=False)
             return True
-        except Exception as e:
+        except Exception:
             return False
 
     @classmethod
@@ -209,7 +210,7 @@ class Config(BaseModel):
             with open(path, "r") as f:
                 config_dict = yaml.safe_load(f) or {}
             return cls.from_dict(config_dict)
-        except Exception as e:
+        except Exception:
             return cls()
 
     @classmethod

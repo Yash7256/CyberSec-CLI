@@ -2,7 +2,7 @@
 """Simple CLI with basic formatting."""
 import shlex
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List
 
 
 @dataclass

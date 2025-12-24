@@ -3,27 +3,22 @@
 Cybersec CLI - Main entry point for the cybersecurity assistant.
 """
 import asyncio
+import logging
 import shlex
 import sys
-import click
-import json
-import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional, Tuple
 from pathlib import Path
 
+import click
 from rich.console import Console
-from rich.panel import Panel
 from rich.logging import RichHandler
-from rich.theme import Theme
-from rich.layout import Layout
-from rich.live import Live
-from rich.text import Text
+from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
-from cybersec_cli.ui.themes import load_theme
-from cybersec_cli.ui.banner import show_banner, get_banner_content
 from cybersec_cli.config import settings
+from cybersec_cli.ui.banner import get_banner_content
+from cybersec_cli.ui.themes import load_theme
 from cybersec_cli.utils.logger import setup_logger
 
 # Set up logging
@@ -104,8 +99,8 @@ class CyberSecCLI:
     async def interactive_loop(self):
         """Main interactive loop for the CLI."""
         from prompt_toolkit import PromptSession
-        from prompt_toolkit.history import FileHistory
         from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+        from prompt_toolkit.history import FileHistory
         from rich.live import Live
 
         # Initialize the Live display
@@ -254,12 +249,12 @@ class CyberSecCLI:
         # note: top-level imports include `from datetime import datetime`
         # avoid re-importing `datetime` module here which would shadow
         # the `datetime` class and break calls like `datetime.now()`.
+        from rich.layout import Layout
         from rich.panel import Panel
         from rich.text import Text
-        from rich.layout import Layout
+
         from cybersec_cli.analysis.port_analyzer import analyze_scan_results
         from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
-        from rich.progress import Progress, SpinnerColumn, TextColumn
 
         # Parse arguments
         parts = args.split()
@@ -339,7 +334,7 @@ class CyberSecCLI:
 
             start_time = time.time()
             results = await scanner.scan()
-            scan_duration = time.time() - start_time
+            time.time() - start_time
 
             # Process and display results
             if not results:
@@ -357,7 +352,6 @@ class CyberSecCLI:
             findings = analyze_scan_results(open_ports)
 
             # Import the scan output formatter
-            from cybersec_cli.ui.scan_output import create_scan_output
 
             output_layout = Layout()
 
@@ -584,7 +578,6 @@ class CyberSecCLI:
     def show_help(self):
         """Display help information."""
         from rich.panel import Panel
-        from rich.text import Text
 
         help_text = """[bold cyan]Cybersec CLI - Help[/bold cyan]
 
@@ -598,16 +591,16 @@ class CyberSecCLI:
 [bold]Scan Examples:[/bold]
   [dim]# Basic scan[/dim]
   scan example.com
-  
+
   [dim]# Scan specific ports[/dim]
   scan example.com -p 80,443,8080
-  
+
   [dim]# Scan a port range[/dim]
   scan 192.168.1.1 -p 1-1024
-  
+
   [dim]# Save results to a file[/dim]
   scan example.com -o results.txt
-  
+
   [dim]# Show scan help[/dim]
   scan --help
 

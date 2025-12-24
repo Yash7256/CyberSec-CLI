@@ -1,4 +1,3 @@
-import asyncio
 import pytest
 
 import web.main as main
