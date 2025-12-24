@@ -4,10 +4,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.scan_cache import ScanCache
-from cybersec_cli.config import RateLimitConfig, ScanningConfig
-from cybersec_cli.tools.network.port_scanner import PortScanner
-
 # Add the src directory to the Python path to make cybersec_cli importable
 # This ensures that the package can be imported when not installed in editable mode
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -16,6 +12,11 @@ sys.path.insert(0, src_path)
 
 # Also add the project root to the Python path to allow importing from core directory
 sys.path.insert(0, project_root)
+
+# Now import modules after adding paths to sys.path
+from core.scan_cache import ScanCache
+from cybersec_cli.config import RateLimitConfig, ScanningConfig
+from cybersec_cli.tools.network.port_scanner import PortScanner
 
 
 @pytest.fixture
