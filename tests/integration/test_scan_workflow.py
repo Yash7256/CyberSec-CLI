@@ -15,9 +15,8 @@ class TestEndToEndScanWorkflow:
         ports = [22, 80, 443]
 
         # Mock the scanning process
-        from cybersec_cli.tools.network.port_scanner import PortResult, PortState
 
-# mock_scan_result is not used in this test
+        # mock_scan_result is not used in this test
 
         # For this test, we'll just verify that the workflow components are properly connected
         # Since actual scanning requires network access, we'll test the structure
@@ -66,7 +65,7 @@ class TestCachingIntegration:
     async def test_cache_store_and_retrieve_integration(self, mock_cache):
         """Test that scan results are properly stored and retrieved from cache."""
         target = "example.com"  # noqa: F841
-# mock_result is not used in this test
+        # mock_result is not used in this test
 
         # The cache methods should be accessible
         assert hasattr(mock_cache, "get_cache_key")

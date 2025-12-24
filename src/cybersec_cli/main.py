@@ -437,7 +437,6 @@ class CyberSecCLI:
 
             # --- Findings and Recommendations Panels ---
             finding_panels = []
-# actions_panel is not used in the current implementation
 
             # --- Technical Findings Panels ---
             severity_order = {"High": 1, "Medium": 2, "Low": 3, "Info": 4}
