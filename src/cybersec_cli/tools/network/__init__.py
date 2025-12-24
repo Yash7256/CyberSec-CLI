@@ -3,9 +3,9 @@
 from .port_scanner import PortScanner, PortState, PortResult, ScanType, scan_ports
 
 __all__ = [
-    'PortScanner',
-    'PortState',
-    'PortResult',
-    'ScanType',
-    'scan_ports',
+    "PortScanner",
+    "PortState",
+    "PortResult",
+    "ScanType",
+    "scan_ports",
 ]

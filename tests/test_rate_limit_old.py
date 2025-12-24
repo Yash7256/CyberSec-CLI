@@ -10,12 +10,12 @@ async def test_redis_helpers_fallback_when_none():
     orig = main._redis
     main._redis = None
     try:
-        ok = await main._redis_check_and_increment_rate('test-client')
+        ok = await main._redis_check_and_increment_rate("test-client")
         assert ok is False
-        ok2 = await main._redis_increment_active('test-client')
+        ok2 = await main._redis_increment_active("test-client")
         assert ok2 is False
         # should not raise
-        await main._redis_decrement_active('test-client')
+        await main._redis_decrement_active("test-client")
     finally:
         main._redis = orig
 
@@ -49,23 +49,23 @@ async def test_redis_helpers_with_dummy():
     try:
         # Rate: WS_RATE_LIMIT default is small (5) in module; allow up to that
         for i in range(1, main.WS_RATE_LIMIT + 1):
-            ok = await main._redis_check_and_increment_rate('c1')
+            ok = await main._redis_check_and_increment_rate("c1")
             assert ok is True
         # next should fail
-        ok = await main._redis_check_and_increment_rate('c1')
+        ok = await main._redis_check_and_increment_rate("c1")
         assert ok is False
 
         # Active concurrency: allow upto WS_CONCURRENT_LIMIT
         for i in range(1, main.WS_CONCURRENT_LIMIT + 1):
-            ok = await main._redis_increment_active('c2')
+            ok = await main._redis_increment_active("c2")
             assert ok is True
-        ok = await main._redis_increment_active('c2')
+        ok = await main._redis_increment_active("c2")
         assert ok is False
 
         # decrement should not raise and should reduce counter
-        await main._redis_decrement_active('c2')
+        await main._redis_decrement_active("c2")
         # now we can increment again (one slot freed)
-        ok = await main._redis_increment_active('c2')
+        ok = await main._redis_increment_active("c2")
         assert ok is True
     finally:
         main._redis = orig
@@ -81,10 +81,10 @@ async def test_check_and_record_rate_limit_in_memory():
     try:
         # First few should pass
         for i in range(main.WS_RATE_LIMIT):
-            ok = await main._check_and_record_rate_limit('test-client')
+            ok = await main._check_and_record_rate_limit("test-client")
             assert ok is True
         # Next should fail (rate limit exceeded)
-        ok = await main._check_and_record_rate_limit('test-client')
+        ok = await main._check_and_record_rate_limit("test-client")
         assert ok is False
     finally:
         main._redis = orig_redis
@@ -101,15 +101,15 @@ async def test_record_scan_start_end_in_memory():
     try:
         # First few should pass
         for i in range(main.WS_CONCURRENT_LIMIT):
-            ok = await main._record_scan_start('test-client-2')
+            ok = await main._record_scan_start("test-client-2")
             assert ok is True
         # Next should fail
-        ok = await main._record_scan_start('test-client-2')
+        ok = await main._record_scan_start("test-client-2")
         assert ok is False
         # Decrement one
-        await main._record_scan_end('test-client-2')
+        await main._record_scan_end("test-client-2")
         # now we can start again
-        ok = await main._record_scan_start('test-client-2')
+        ok = await main._record_scan_start("test-client-2")
         assert ok is True
     finally:
         main._redis = orig_redis

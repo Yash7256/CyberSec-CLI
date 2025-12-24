@@ -13,101 +13,88 @@ from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeRemainingColumn
 
 from cybersec_cli.tools.network import PortScanner, ScanType, PortResult, PortState
-from cybersec_cli.utils.formatters import format_scan_results, format_scan_results_table, format_scan_results_list
+from cybersec_cli.utils.formatters import (
+    format_scan_results,
+    format_scan_results_table,
+    format_scan_results_list,
+)
 
 console = Console()
+
 
 @click.command("scan")
 @click.argument("target")
 @click.option(
-    "-p", "--ports",
-    help="Ports to scan (e.g., 80,443,8080 or 1-1024)",
-    default=None
+    "-p", "--ports", help="Ports to scan (e.g., 80,443,8080 or 1-1024)", default=None
 )
 @click.option(
     "--scan-type",
     type=click.Choice([t.value for t in ScanType], case_sensitive=False),
     default=ScanType.TCP_CONNECT.value,
-    help="Type of scan to perform"
+    help="Type of scan to perform",
 )
 @click.option(
-    "--timeout",
-    type=float,
-    default=1.0,
-    help="Connection timeout in seconds"
+    "--timeout", type=float, default=1.0, help="Connection timeout in seconds"
 )
 @click.option(
     "--concurrent",
     type=int,
     default=100,
-    help="Maximum number of concurrent connections (same as --threads)"
+    help="Maximum number of concurrent connections (same as --threads)",
 )
-@click.option(
-    "--no-service-detection",
-    is_flag=True,
-    help="Disable service detection"
-)
+@click.option("--no-service-detection", is_flag=True, help="Disable service detection")
 @click.option(
     "--rate-limit",
     type=int,
     default=0,
-    help="Maximum requests per second (0 for no limit)"
+    help="Maximum requests per second (0 for no limit)",
 )
 @click.option(
     "--format",
     type=click.Choice(["table", "json", "csv", "list"], case_sensitive=False),
     default="table",
-    help="Output format"
+    help="Output format",
 )
 @click.option(
     "--streaming",
     is_flag=True,
-    help="Enable streaming scan results by priority (for web interface)"
+    help="Enable streaming scan results by priority (for web interface)",
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Path(dir_okay=False, writable=True),
-    help="Save results to file"
+    help="Save results to file",
 )
+@click.option("--verbose", "-v", is_flag=True, help="Show verbose output")
 @click.option(
-    "--verbose", "-v",
-    is_flag=True,
-    help="Show verbose output"
+    "--log", type=click.Path(dir_okay=False, writable=True), help="Save log to file"
 )
-@click.option(
-    "--log",
-    type=click.Path(dir_okay=False, writable=True),
-    help="Save log to file"
-)
-@click.option(
-    "--no-banner",
-    is_flag=True,
-    help="Disable banner grabbing"
-)
+@click.option("--no-banner", is_flag=True, help="Disable banner grabbing")
 @click.option(
     "--require-reachable/--no-require-reachable",
     default=False,
-    help="Require quick reachability (probe common web ports) before scanning"
+    help="Require quick reachability (probe common web ports) before scanning",
 )
 @click.option(
     "--force",
     is_flag=True,
-    help="Force the scan even if the target is a placeholder domain or other validations would block it"
+    help="Force the scan even if the target is a placeholder domain or other validations would block it",
 )
 @click.option(
     "--test",
     is_flag=True,
-    help="Run a test scan against a safe, controlled target (scanme.nmap.org)"
+    help="Run a test scan against a safe, controlled target (scanme.nmap.org)",
 )
 @click.option(
     "--adaptive/--no-adaptive",
     default=None,
-    help="Enable/disable adaptive concurrency control (default: enabled from config)"
+    help="Enable/disable adaptive concurrency control (default: enabled from config)",
 )
 @click.option(
     "--enhanced-service-detection/--no-enhanced-service-detection",
     default=None,
-    help="Enable/disable enhanced service detection (default: enabled from config)"
+    help="Enable/disable enhanced service detection (default: enabled from config)",
 )
 def scan_command(
     target: Optional[str],
@@ -127,21 +114,21 @@ def scan_command(
     format: str,
     verbose: bool,
     log: Optional[str],
-    streaming: bool
+    streaming: bool,
 ) -> None:
     """
     Scan ports on a target host.
-    
+
     Examples:
-    
+
     \b
     # Scan common ports on example.com
     cybersec scan example.com
-    
+
     \b
     # Scan specific ports with service detection
     cybersec scan 192.168.1.1 -p 80,443,8080
-    
+
     \b
     # Scan a range of ports and save to file
     cybersec scan example.com -p 1-1024 --output scan_results.json
@@ -149,11 +136,13 @@ def scan_command(
     # Create scanner instance
     # If user passed --force, do not enforce reachability even if requested
     effective_require = require_reachable
-    
+
     if test:
-        if target and target != 'scanme.nmap.org':
-            click.echo("Note: --test flag overrides the provided target with scanme.nmap.org")
-        target = 'scanme.nmap.org'
+        if target and target != "scanme.nmap.org":
+            click.echo(
+                "Note: --test flag overrides the provided target with scanme.nmap.org"
+            )
+        target = "scanme.nmap.org"
         click.echo(f"Running test scan against {target} (safe for testing)")
     elif not target:
         raise click.UsageError("No target specified. Use --help for usage information.")
@@ -171,35 +160,35 @@ def scan_command(
             rate_limit=rate_limit,
             require_reachable=effective_require,
             adaptive_scanning=adaptive,
-            enhanced_service_detection=enhanced_service_detection
+            enhanced_service_detection=enhanced_service_detection,
         )
-        
+
         # Set force_scan attribute if --force is used
         if force:
             scanner.force_scan = True
-            
+
         # Create progress bar
         with Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(),
             "[progress.percentage]{task.percentage:>3.0f}%",
             TimeRemainingColumn(),
-            console=console
+            console=console,
         ) as progress:
             task = progress.add_task(
                 f"[cyan]Scanning {len(scanner.ports)} ports on {target}...",
-                total=len(scanner.ports)
+                total=len(scanner.ports),
             )
-            
+
             # Scan ports and update progress
             async def scan_with_progress():
                 results = []
-                
+
                 async def check_port(port):
                     result = await scanner._check_port(port)
                     progress.update(task, advance=1)
                     return result
-                
+
                 # If streaming is enabled, use the streaming scan method
                 if streaming:
                     results = await scanner.scan(streaming=True)
@@ -207,68 +196,82 @@ def scan_command(
                     # Original scanning approach
                     tasks = [check_port(port) for port in scanner.ports]
                     results = await asyncio.gather(*tasks)
-                
+
                 return results
-            
+
             # Run the scan
             results = asyncio.run(scan_with_progress())
             scanner.results = sorted(results, key=lambda x: x.port)
-        
+
         # Format and display results using the enhanced formatter
         if format == "table":
             # For table format, use the rich table with all features
             console.print(format_scan_results(scanner, format_type="table"))
-            
+
             # If saving to file, convert to markdown for better readability
             if output:
                 from rich.console import Console as RichConsole
                 from rich.terminal_theme import MONOKAI
-                
+
                 # Create a console that writes to a file
-                with open(output, 'w') as f:
-                    file_console = RichConsole(file=f, force_terminal=True, force_interactive=False, width=120)
-                    file_console.print(format_scan_results(scanner, format_type="table"))
-                
+                with open(output, "w") as f:
+                    file_console = RichConsole(
+                        file=f, force_terminal=True, force_interactive=False, width=120
+                    )
+                    file_console.print(
+                        format_scan_results(scanner, format_type="table")
+                    )
+
                 console.print(f"\n[green]Results saved to {output}[/green]")
-                
+
         elif format == "list":
             # For list format, use the enhanced list formatter
             console.print(format_scan_results(scanner, format_type="list"))
-            
+
             if output:
-                with open(output, 'w') as f:
+                with open(output, "w") as f:
                     f.write(format_scan_results(scanner, format_type="list"))
                 console.print(f"\n[green]Results saved to {output}[/green]")
-                
+
         else:  # json format
             # For JSON, use the scanner's built-in JSON method
             json_output = scanner.to_json()
             console.print_json(json_output)
-            
+
             if output:
-                with open(output, 'w') as f:
+                with open(output, "w") as f:
                     f.write(json_output)
                 console.print(f"\n[green]Results saved to {output}[/green]")
-        
+
         # File saving is now handled in the format-specific blocks above
-        
+
         # Show summary
         open_ports = len([r for r in scanner.results if r.state.name == "OPEN"])
-        filtered_ports = len([r for r in scanner.results if r.state.name == "OPEN_FILTERED" or r.state.name == "FILTERED"])
+        filtered_ports = len(
+            [
+                r
+                for r in scanner.results
+                if r.state.name == "OPEN_FILTERED" or r.state.name == "FILTERED"
+            ]
+        )
         console.print(f"\n[bold]Scan complete:[/bold] {open_ports} open ports found")
         if filtered_ports > 0 and scan_type.lower() == "udp":
-            console.print(f"[bold]Note:[/bold] {filtered_ports} ports showed filtered responses (common with UDP scanning)")
-        
+            console.print(
+                f"[bold]Note:[/bold] {filtered_ports} ports showed filtered responses (common with UDP scanning)"
+            )
+
     except Exception as e:
         import sys
+
         # Use print for stderr since Rich's Console doesn't support file parameter
         print(f"Error: {str(e)}", file=sys.stderr)
         raise click.Abort()
 
+
 # Register the command
 def register_commands(cli):
     """Register scan commands with the main CLI.
-    
+
     Args:
         cli: The main Click command group
     """

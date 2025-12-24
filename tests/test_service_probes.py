@@ -8,7 +8,7 @@ import sys
 import os
 
 # Add the project root to the path so we can import the modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.service_probes import (
     SERVICE_PROBES,
@@ -19,8 +19,9 @@ from core.service_probes import (
     _analyze_response,
     _extract_version,
     _get_service_by_port,
-    get_ssl_info
+    get_ssl_info,
 )
+
 
 class TestServiceProbes(unittest.TestCase):
     """Test cases for service probe functions."""
@@ -29,10 +30,17 @@ class TestServiceProbes(unittest.TestCase):
         """Test that SERVICE_PROBES has the expected structure."""
         # Check that we have probes for all expected services
         expected_services = [
-            "http", "https", "ssh", "ftp", "smtp",
-            "mysql", "postgresql", "redis", "mongodb"
+            "http",
+            "https",
+            "ssh",
+            "ftp",
+            "smtp",
+            "mysql",
+            "postgresql",
+            "redis",
+            "mongodb",
         ]
-        
+
         for service in expected_services:
             self.assertIn(service, SERVICE_PROBES)
             self.assertIsInstance(SERVICE_PROBES[service], list)
@@ -48,7 +56,7 @@ class TestServiceProbes(unittest.TestCase):
         self.assertEqual(_get_service_by_port(5432), "postgresql")
         self.assertEqual(_get_service_by_port(6379), "redis")
         self.assertEqual(_get_service_by_port(27017), "mongodb")
-        
+
         # Test unknown port
         self.assertIsNone(_get_service_by_port(9999))
 
@@ -58,7 +66,7 @@ class TestServiceProbes(unittest.TestCase):
         http_response = b"HTTP/1.1 200 OK\r\nServer: Apache/2.4.41\r\n\r\n<html>"
         confidence = _analyze_response("http", http_response)
         self.assertGreater(confidence, 0.8)
-        
+
         # Test response with HTML content
         html_response = b"<html><body><h1>Hello World</h1></body></html>"
         confidence = _analyze_response("http", html_response)
@@ -128,37 +136,37 @@ class TestServiceProbes(unittest.TestCase):
         # The version might include \r\n, so just check that it contains the expected version
         self.assertIn("SSH-2.0-OpenSSH_7.9", version or "")
 
-    @patch('socket.socket')
+    @patch("socket.socket")
     def test_send_probe_success(self, mock_socket_class):
         """Test successful probe sending."""
         # Mock socket behavior
         mock_socket = MagicMock()
         mock_socket_class.return_value = mock_socket
         mock_socket.recv.return_value = b"HTTP/1.1 200 OK\r\n\r\n"
-        
+
         # Test sending a probe
         response = send_probe("127.0.0.1", 80, b"GET / HTTP/1.1\r\n\r\n")
-        
+
         # Verify socket operations
         mock_socket.connect.assert_called_once_with(("127.0.0.1", 80))
         mock_socket.send.assert_called_once_with(b"GET / HTTP/1.1\r\n\r\n")
         mock_socket.recv.assert_called_once_with(4096)
         mock_socket.close.assert_called_once()
-        
+
         # Verify response
         self.assertEqual(response, b"HTTP/1.1 200 OK\r\n\r\n")
 
-    @patch('socket.socket')
+    @patch("socket.socket")
     def test_send_probe_failure(self, mock_socket_class):
         """Test probe sending failure."""
         # Mock socket to raise an exception
         mock_socket = MagicMock()
         mock_socket_class.return_value = mock_socket
         mock_socket.connect.side_effect = Exception("Connection failed")
-        
+
         # Test sending a probe that fails
         response = send_probe("127.0.0.1", 80, b"GET / HTTP/1.1\r\n\r\n")
-        
+
         # Verify socket operations
         mock_socket.connect.assert_called_once_with(("127.0.0.1", 80))
         mock_socket.send.assert_not_called()
@@ -172,23 +180,24 @@ class TestServiceProbes(unittest.TestCase):
         """Test service identification with no response."""
         # Test with localhost on a closed port (should fail)
         result = identify_service("127.0.0.1", 9999, timeout=0.1)
-        
+
         # Should fall back to port-based detection with low confidence
         self.assertIsNone(result["service"])
         self.assertEqual(result["confidence"], 0.0)
 
-    @patch('core.service_probes.send_probe')
+    @patch("core.service_probes.send_probe")
     def test_identify_service_fallback(self, mock_send_probe):
         """Test service identification falling back to port mapping."""
         # Mock all probes to return no response
         mock_send_probe.return_value = b""
-        
+
         # Test with a known port
         result = identify_service("127.0.0.1", 22)
-        
+
         # Should fall back to SSH based on port
         self.assertEqual(result["service"], "ssh")
         self.assertEqual(result["confidence"], 0.3)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

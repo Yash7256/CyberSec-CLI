@@ -1,31 +1,35 @@
 """
 Port analysis module for cybersecurity scanning results.
 """
+
 from datetime import datetime
 from typing import List, Dict, Any
 from dataclasses import dataclass
 
+
 @dataclass
 class PortResult:
     """Data class to store port scan results."""
+
     port: int
     state: str
     service: str = "unknown"
     version: str = ""
     banner: str = ""
 
+
 def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
     """
     Analyze port scan results for potential security issues.
-    
+
     Args:
         open_ports: List of PortResult objects from the port scan
-        
+
     Returns:
         List of dictionaries containing security findings
     """
     findings = []
-    
+
     # Enhanced vulnerable ports with detailed security information
     vulnerable_ports = {
         21: {
@@ -40,18 +44,18 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
                 "severity": "High",
                 "exploitability": 3.9,
-                "impact": 3.6
+                "impact": 3.6,
             },
             "exploitability": {
                 "maturity": "Functional",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Low"
+                "ease_of_exploit": "Low",
             },
             "confidence": 0.95,
             "cwe_id": "CWE-319",
             "compliance": ["PCI DSS Req 4.1", "HIPAA Security Rule"],
-            "mitre_attack": ["T1040", "T1078"]
+            "mitre_attack": ["T1040", "T1078"],
         },
         22: {
             "name": "SSH",
@@ -65,18 +69,18 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
                 "severity": "Medium",
                 "exploitability": 3.9,
-                "impact": 1.4
+                "impact": 1.4,
             },
             "exploitability": {
                 "maturity": "High",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Medium"
+                "ease_of_exploit": "Medium",
             },
             "confidence": 0.98,
             "cwe_id": "CWE-287",
             "compliance": ["NIST SP 800-53: AC-17"],
-            "mitre_attack": ["T1110", "T1078"]
+            "mitre_attack": ["T1110", "T1078"],
         },
         23: {
             "name": "Telnet",
@@ -90,18 +94,18 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
                 "severity": "High",
                 "exploitability": 3.9,
-                "impact": 3.6
+                "impact": 3.6,
             },
             "exploitability": {
                 "maturity": "Functional",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Low"
+                "ease_of_exploit": "Low",
             },
             "confidence": 0.95,
             "cwe_id": "CWE-319",
             "compliance": ["NIST SP 800-53: SC-8"],
-            "mitre_attack": ["T1040", "T1078"]
+            "mitre_attack": ["T1040", "T1078"],
         },
         53: {
             "name": "DNS",
@@ -115,18 +119,18 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
                 "severity": "Low",
                 "exploitability": 3.9,
-                "impact": 1.4
+                "impact": 1.4,
             },
             "exploitability": {
                 "maturity": "High",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Medium"
+                "ease_of_exploit": "Medium",
             },
             "confidence": 0.92,
             "cwe_id": "CWE-350",
             "compliance": ["NIST SP 800-53: SC-20,21,22"],
-            "mitre_attack": ["T1078", "T1568"]
+            "mitre_attack": ["T1078", "T1568"],
         },
         80: {
             "name": "HTTP",
@@ -140,18 +144,18 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
                 "severity": "Medium",
                 "exploitability": 3.9,
-                "impact": 1.4
+                "impact": 1.4,
             },
             "exploitability": {
                 "maturity": "High",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Medium"
+                "ease_of_exploit": "Medium",
             },
             "confidence": 0.95,
             "cwe_id": "CWE-319",
             "compliance": ["PCI DSS Req 4.1"],
-            "mitre_attack": ["T1078", "T1568"]
+            "mitre_attack": ["T1078", "T1568"],
         },
         443: {
             "name": "HTTPS",
@@ -165,18 +169,18 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:L/A:N",
                 "severity": "Low",
                 "exploitability": 3.9,
-                "impact": 1.4
+                "impact": 1.4,
             },
             "exploitability": {
                 "maturity": "High",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Medium"
+                "ease_of_exploit": "Medium",
             },
             "confidence": 0.92,
             "cwe_id": "CWE-295",
             "compliance": ["PCI DSS Req 4.1"],
-            "mitre_attack": ["T1078", "T1568"]
+            "mitre_attack": ["T1078", "T1568"],
         },
         3306: {
             "name": "MySQL",
@@ -190,26 +194,26 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
                 "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:L/A:N",
                 "severity": "High",
                 "exploitability": 3.9,
-                "impact": 3.6
+                "impact": 3.6,
             },
             "exploitability": {
                 "maturity": "Functional",
                 "code_available": True,
                 "public_exploits": True,
-                "ease_of_exploit": "Medium"
+                "ease_of_exploit": "Medium",
             },
             "confidence": 0.92,
             "cwe_id": "CWE-306",
             "compliance": ["PCI DSS Req 7", "PCI DSS Req 8"],
-            "mitre_attack": ["T1213", "T1078"]
-        }
+            "mitre_attack": ["T1213", "T1078"],
+        },
     }
-    
+
     # Process each open port and generate findings
     for port_result in open_ports:
         port = port_result.port
         service = port_result.service.lower()
-        
+
         # Check for known vulnerable ports
         if port in vulnerable_ports:
             finding = vulnerable_ports[port].copy()
@@ -219,20 +223,26 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
             finding["state"] = port_result.state
             finding["last_updated"] = datetime.utcnow().isoformat()
             findings.append(finding)
-        
+
         # Check for suspicious services on non-standard ports
-        elif service != "unknown" and port > 1024 and port not in [3000, 4000, 5000, 8000, 8080, 8443]:
-            findings.append({
-                "port": port,
-                "severity": "Medium",
-                "finding": f"Service '{service}' running on non-standard port {port}",
-                "details": "Services running on non-standard ports can be a security risk if not properly secured.",
-                "recommendation": (
-                    f"1. Verify if this service needs to be exposed on port {port}\n"
-                    f"2. If legitimate, document the purpose of this service\n"
-                    "3. Ensure proper authentication and encryption are in place\n"
-                    "4. Consider moving to a standard port if appropriate"
-                )
-            })
-    
+        elif (
+            service != "unknown"
+            and port > 1024
+            and port not in [3000, 4000, 5000, 8000, 8080, 8443]
+        ):
+            findings.append(
+                {
+                    "port": port,
+                    "severity": "Medium",
+                    "finding": f"Service '{service}' running on non-standard port {port}",
+                    "details": "Services running on non-standard ports can be a security risk if not properly secured.",
+                    "recommendation": (
+                        f"1. Verify if this service needs to be exposed on port {port}\n"
+                        f"2. If legitimate, document the purpose of this service\n"
+                        "3. Ensure proper authentication and encryption are in place\n"
+                        "4. Consider moving to a standard port if appropriate"
+                    ),
+                }
+            )
+
     return findings

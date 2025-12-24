@@ -1,6 +1,7 @@
 """
 Module for handling scan command implementation
 """
+
 import time
 from typing import List, Optional
 
@@ -12,14 +13,20 @@ from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType, PortR
 from cybersec_cli.analysis.port_analyzer import analyze_scan_results
 from cybersec_cli.ui.scan_output import create_scan_output
 
-async def handle_scan(target: str, ports: Optional[List[int]] = None, require_reachable: bool = False, force: bool = False) -> Panel:
+
+async def handle_scan(
+    target: str,
+    ports: Optional[List[int]] = None,
+    require_reachable: bool = False,
+    force: bool = False,
+) -> Panel:
     """
     Handle the scan command execution
-    
+
     Args:
         target: The target to scan
         ports: Optional list of ports to scan
-        
+
     Returns:
         Panel containing scan results
     """
@@ -34,29 +41,28 @@ async def handle_scan(target: str, ports: Optional[List[int]] = None, require_re
             max_concurrent=100,
             service_detection=True,
             banner_grabbing=True,
-            require_reachable=effective_require
+            require_reachable=effective_require,
         )
-        
+
         # Run the scan
         start_time = time.time()
         results = await scanner.scan()
         scan_duration = time.time() - start_time
-        
+
         if not results:
             return Panel("[yellow]No open ports found or scan was interrupted.[/]")
-        
+
         # Process results
         open_ports = sorted(
-            [r for r in results if r.state.value == "open"],
-            key=lambda x: x.port
+            [r for r in results if r.state.value == "open"], key=lambda x: x.port
         )
-        
+
         # Analyze for security findings
         findings = analyze_scan_results(open_ports)
-        
+
         # Create output layout
         output_layout = create_scan_output(target, findings)
         return output_layout
-        
+
     except Exception as e:
         return Panel(f"[red]Error during scan: {str(e)}[/]")

@@ -8,7 +8,7 @@ from redis import asyncio as aioredis
 # Add the src directory to the Python path to make cybersec_cli importable
 # This ensures that the package can be imported when not installed in editable mode
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-src_path = os.path.join(project_root, 'src')
+src_path = os.path.join(project_root, "src")
 sys.path.insert(0, src_path)
 
 # Also add the project root to the Python path to allow importing from core directory
@@ -49,12 +49,10 @@ def mock_config():
         max_threads=10,
         rate_limit=10,
         adaptive_scanning=True,
-        enhanced_service_detection=True
+        enhanced_service_detection=True,
     )
     config.rate_limit = RateLimitConfig(
-        client_rate_limit=10,
-        target_rate_limit=100,
-        port_limit_per_scan=1000
+        client_rate_limit=10, target_rate_limit=100, port_limit_per_scan=1000
     )
     return config
 
@@ -63,22 +61,23 @@ def mock_config():
 def mock_scan_result():
     """Mock scan result data."""
     from cybersec_cli.tools.network.port_scanner import PortResult, PortState
+
     return {
-        'host': '127.0.0.1',
-        'ports': [
-            {'port': 22, 'service': 'ssh', 'state': 'open'},
-            {'port': 80, 'service': 'http', 'state': 'open'},
-            {'port': 443, 'service': 'https', 'state': 'closed'}
+        "host": "127.0.0.1",
+        "ports": [
+            {"port": 22, "service": "ssh", "state": "open"},
+            {"port": 80, "service": "http", "state": "open"},
+            {"port": 443, "service": "https", "state": "closed"},
         ],
-        'timestamp': '2023-01-01T00:00:00Z',
-        'scan_type': 'nmap'
+        "timestamp": "2023-01-01T00:00:00Z",
+        "scan_type": "nmap",
     }
 
 
 @pytest.fixture
 def mock_cache(mock_redis_client):
     """Mock ScanCache instance."""
-    with patch('core.scan_cache.redis_client', mock_redis_client):
+    with patch("core.scan_cache.redis_client", mock_redis_client):
         cache = ScanCache()
         cache._initialized = True  # Bypass initialization
         cache.redis_client = mock_redis_client
@@ -113,13 +112,10 @@ def mock_rate_limiter():
 def mock_scanner(mock_config, mock_cache, mock_rate_limiter):
     """Mock Scanner instance."""
     # Create a PortScanner with mocked dependencies
-    with patch('cybersec_cli.tools.network.port_scanner.scan_cache', mock_cache):
-        with patch('cybersec_cli.tools.network.port_scanner.HAS_SCAN_CACHE', True):
+    with patch("cybersec_cli.tools.network.port_scanner.scan_cache", mock_cache):
+        with patch("cybersec_cli.tools.network.port_scanner.HAS_SCAN_CACHE", True):
             scanner = PortScanner(
-                target='127.0.0.1',
-                ports=[22, 80, 443],
-                timeout=1.0,
-                max_concurrent=10
+                target="127.0.0.1", ports=[22, 80, 443], timeout=1.0, max_concurrent=10
             )
             # Replace the cache with our mock
             scanner.scan_cache = mock_cache
@@ -129,13 +125,13 @@ def mock_scanner(mock_config, mock_cache, mock_rate_limiter):
 @pytest.fixture
 def sample_ip():
     """Sample IP address for testing."""
-    return '192.168.1.1'
+    return "192.168.1.1"
 
 
 @pytest.fixture
 def sample_domain():
     """Sample domain name for testing."""
-    return 'example.com'
+    return "example.com"
 
 
 @pytest.fixture

@@ -1,8 +1,10 @@
 """
 Analyzes port scan results to identify potential security issues.
 """
+
 from typing import List, Dict, Any, Optional
 from cybersec_cli.tools.network.port_scanner import PortResult
+
 
 def analyze_port_result(result: PortResult) -> Optional[Dict[str, Any]]:
     """
@@ -27,7 +29,7 @@ def analyze_port_result(result: PortResult) -> Optional[Dict[str, Any]]:
                 "recommendation": (
                     "• Disable or customize the welcome banner in the FTP server configuration.\n"
                     "• Strongly consider using SFTP (over SSH) instead of FTP for secure file transfers."
-                )
+                ),
             }
 
     # --- SSH Analysis (Port 22) ---
@@ -42,7 +44,7 @@ def analyze_port_result(result: PortResult) -> Optional[Dict[str, Any]]:
                     "• Upgrade OpenSSH to the latest stable version (9.7+).\n"
                     "• Implement key-based authentication and disable passwords.\n"
                     "• Use a tool like `fail2ban` to prevent brute-force attacks."
-                )
+                ),
             }
 
     # --- SMTP Analysis (Port 25) ---
@@ -55,7 +57,7 @@ def analyze_port_result(result: PortResult) -> Optional[Dict[str, Any]]:
             "recommendation": (
                 "• If not needed, close this port in your firewall.\n"
                 "• If needed, ensure it is properly configured to prevent being an open relay for spam."
-            )
+            ),
         }
 
     # --- DNS Analysis (Port 53) ---
@@ -68,7 +70,7 @@ def analyze_port_result(result: PortResult) -> Optional[Dict[str, Any]]:
             "recommendation": (
                 "• If this is not a DNS server, close this port.\n"
                 "• If it is, ensure recursion is disabled for untrusted clients and implement rate limiting."
-            )
+            ),
         }
 
     # --- HTTP Analysis (Port 80) ---
@@ -81,10 +83,9 @@ def analyze_port_result(result: PortResult) -> Optional[Dict[str, Any]]:
             "recommendation": (
                 "• Investigate the redirect to ensure it is legitimate.\n"
                 "• Implement HTTPS (port 443) with a proper SSL/TLS certificate and HSTS headers."
-            )
+            ),
         }
     return None
-
 
 
 def analyze_scan_results(results: List[PortResult]) -> List[Dict[str, Any]]:

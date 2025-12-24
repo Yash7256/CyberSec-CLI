@@ -60,8 +60,8 @@ jobs:
       - name: Check code style
         run: |
           pip install black flake8
-          black --check src/ web/
-          flake8 src/ web/ --max-line-length=100
+          black --check .
+          flake8 . --max-line-length=100
 
   build:
     needs: test
