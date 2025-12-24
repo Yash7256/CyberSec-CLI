@@ -11,6 +11,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src_path = os.path.join(project_root, 'src')
 sys.path.insert(0, src_path)
 
+# Also add the project root to the Python path to allow importing from core directory
+sys.path.insert(0, project_root)
+
 from cybersec_cli.config import Config, ScanningConfig, RateLimitConfig
 from core.scan_cache import ScanCache
 from core.rate_limiter import SmartRateLimiter
