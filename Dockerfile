@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     gcc \
+    netcat-openbsd \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -29,9 +30,9 @@ WORKDIR /app
 
 # Copy requirements
 COPY requirements.txt ./
-COPY web/requirements.txt ./web_requirements.txt
 
-# Combine requirements and install
+# Check if web requirements exist and install accordingly
+COPY web/requirements.txt ./web_requirements.txt
 RUN if [ -f web_requirements.txt ]; then \
     cat requirements.txt web_requirements.txt | sort -u > combined_requirements.txt; \
     else \
@@ -50,8 +51,9 @@ COPY README.md .
 # Install the package in editable mode
 RUN pip install -e .
 
-# Run database migrations
-RUN python scripts/init_db.py || echo "Database migration will run on first start"
+# Create startup scripts
+RUN echo '#!/bin/bash\n\n# Wait for database to be ready\nuntil nc -z postgres 5432; do\n  echo "Waiting for PostgreSQL..."\n  sleep 2\ndone\n\n# Run database migrations\npython scripts/init_db.py || echo "Database migration failed, will retry on next start"\n\n# Start the application\nexec "$@"' > /app/web-startup.sh && chmod +x /app/web-startup.sh && \
+    echo '#!/bin/bash\n\n# Wait for services to be ready\nuntil nc -z postgres 5432; do\n  echo "Waiting for PostgreSQL..."\n  sleep 2\ndone\n\nuntil nc -z redis 6379; do\n  echo "Waiting for Redis..."\n  sleep 2\ndone\n\n# Start the application\nexec "$@"' > /app/worker-startup.sh && chmod +x /app/worker-startup.sh
 
 # Create necessary directories
 RUN mkdir -p ~/.cybersec/models && \
@@ -69,9 +71,5 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/api/status || exit 1
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/api/status')"
-
 # Default command (web interface)
-CMD ["python", "-m", "uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/web-startup.sh", "python", "-m", "uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "8000"]

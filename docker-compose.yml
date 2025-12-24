@@ -43,7 +43,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: cybersec-celery-worker
-    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=4
+    command: ["/app/worker-startup.sh", "celery", "-A", "tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     environment:
       # Required
       - REDIS_URL=redis://redis:6379
@@ -173,7 +173,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
     cap_add:
       - NET_RAW  # Required for raw socket access (SYN scans)
     cap_drop:
