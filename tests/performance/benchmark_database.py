@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 
 import matplotlib.pyplot as plt
-from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -449,7 +449,6 @@ class DatabaseBenchmark:
 
 def main():
     """Run the database benchmark suite."""
-    from sqlalchemy import func  # Import here to avoid issues
 
     benchmark = DatabaseBenchmark()
     benchmark.run_all_benchmarks()

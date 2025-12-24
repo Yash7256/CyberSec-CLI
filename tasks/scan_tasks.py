@@ -2,6 +2,7 @@
 Celery tasks for network scanning operations.
 """
 
+import asyncio
 import json
 import logging
 import os

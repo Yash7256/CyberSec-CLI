@@ -20,12 +20,13 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add imports for streaming support
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.sql import text
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.requests import Request
-from starlette.responses import Response
+# Starlette imports already available from FastAPI
+# from starlette.requests import Request
+# from starlette.responses import Response
 
 from cybersec_cli.utils.logger import log_forced_scan
 
