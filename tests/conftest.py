@@ -1,7 +1,16 @@
 import pytest
 import asyncio
+import sys
+import os
 from unittest.mock import AsyncMock, MagicMock, patch
 from redis import asyncio as aioredis
+
+# Add the src directory to the Python path to make cybersec_cli importable
+# This ensures that the package can be imported when not installed in editable mode
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+src_path = os.path.join(project_root, 'src')
+sys.path.insert(0, src_path)
+
 from cybersec_cli.config import Config, ScanningConfig, RateLimitConfig
 from core.scan_cache import ScanCache
 from core.rate_limiter import SmartRateLimiter
