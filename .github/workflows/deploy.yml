@@ -43,6 +43,7 @@ jobs:
           pip install -r requirements.txt
           pip install -r web/requirements.txt
           pip install pytest pytest-asyncio pytest-cov
+          pip install -e .
 
       - name: Run tests
         run: |
@@ -129,7 +130,7 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v2
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
