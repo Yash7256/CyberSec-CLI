@@ -48,7 +48,6 @@ jobs:
       - name: Run tests
         run: |
           pytest tests/ -v --cov=src/cybersec_cli --cov-report=xml --cov-report=html
-        continue-on-error: true
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
@@ -56,14 +55,12 @@ jobs:
           files: ./coverage.xml
           flags: unittests
           name: codecov-umbrella
-        continue-on-error: true
 
       - name: Check code style
         run: |
           pip install black flake8
-          black --check src/ web/ --diff || true
-          flake8 src/ web/ --max-line-length=100 || true
-        continue-on-error: true
+          black --check src/ web/
+          flake8 src/ web/ --max-line-length=100
 
   build:
     needs: test
@@ -154,6 +151,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Validate secrets
+        env:
+          DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.STAGING_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.STAGING_DEPLOY_USER }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ] || [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ]; then
+            echo "❌ Required secrets are not configured"
+            echo "Please set STAGING_DEPLOY_KEY, STAGING_DEPLOY_HOST, and STAGING_DEPLOY_USER in repository secrets"
+            exit 1
+          fi
+          echo "✅ All required secrets are present"
+
       - name: Deploy to staging
         env:
           DEPLOY_KEY: ${{ secrets.STAGING_DEPLOY_KEY }}
@@ -201,6 +211,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Validate secrets
+        env:
+          DEPLOY_KEY: ${{ secrets.PRODUCTION_DEPLOY_KEY }}
+          DEPLOY_HOST: ${{ secrets.PRODUCTION_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.PRODUCTION_DEPLOY_USER }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ] || [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ]; then
+            echo "❌ Required production secrets are not configured"
+            echo "Please set PRODUCTION_DEPLOY_KEY, PRODUCTION_DEPLOY_HOST, and PRODUCTION_DEPLOY_USER in repository secrets"
+            exit 1
+          fi
+          echo "✅ All required production secrets are present"
 
       - name: Create release
         uses: actions/create-release@v1
