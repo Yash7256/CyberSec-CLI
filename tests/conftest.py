@@ -14,9 +14,9 @@ sys.path.insert(0, src_path)
 sys.path.insert(0, project_root)
 
 # Now import modules after adding paths to sys.path
-from core.scan_cache import ScanCache
-from cybersec_cli.config import RateLimitConfig, ScanningConfig
-from cybersec_cli.tools.network.port_scanner import PortScanner
+from core.scan_cache import ScanCache  # noqa: E402
+from cybersec_cli.config import RateLimitConfig, ScanningConfig  # noqa: E402
+from cybersec_cli.tools.network.port_scanner import PortScanner  # noqa: E402
 
 
 @pytest.fixture

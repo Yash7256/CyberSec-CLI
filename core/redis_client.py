@@ -8,8 +8,6 @@ from functools import wraps
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-import redis
-
 # Try to import redis, but don't fail if it's not available
 try:
     import redis

@@ -1723,7 +1723,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # (This is informational; enforcement can be stricter if desired)
                     try:
                         with open(allow_path, "r", encoding="utf-8") as f:
-                            allow_lines = [l.strip() for l in f if l.strip()]
+                            allow_lines = [line.strip() for line in f if line.strip()]
                         if allow_lines and tgt not in allow_lines:
                             await websocket.send_text(
                                 json.dumps(
