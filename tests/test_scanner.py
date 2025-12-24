@@ -27,7 +27,7 @@ class TestPortPrioritization:
         # Test that creating a PortScanner with an empty port list raises an appropriate error
         # since the implementation has min/max operations on ports
         with pytest.raises(ValueError, match="min\\(\\) arg is an empty sequence"):
-            scanner = PortScanner(
+            scanner = PortScanner(  # noqa: F841
                 target="127.0.0.1", ports=[], timeout=1.0, max_concurrent=10
             )
 
@@ -133,7 +133,7 @@ class TestServiceDetection:
                     "confidence": 0.95,
                 }
 
-                scanner = PortScanner(
+                scanner = PortScanner(  # noqa: F841
                     target="127.0.0.1",
                     ports=[22],
                     timeout=1.0,

@@ -17,11 +17,7 @@ class TestEndToEndScanWorkflow:
         # Mock the scanning process
         from cybersec_cli.tools.network.port_scanner import PortResult, PortState
 
-        mock_scan_result = [
-            PortResult(port=22, state=PortState.CLOSED),
-            PortResult(port=80, state=PortState.OPEN, service="http"),
-            PortResult(port=443, state=PortState.OPEN, service="https"),
-        ]
+# mock_scan_result is not used in this test
 
         # For this test, we'll just verify that the workflow components are properly connected
         # Since actual scanning requires network access, we'll test the structure
@@ -69,8 +65,8 @@ class TestCachingIntegration:
     @pytest.mark.asyncio
     async def test_cache_store_and_retrieve_integration(self, mock_cache):
         """Test that scan results are properly stored and retrieved from cache."""
-        target = "example.com"
-        mock_result = {"host": target, "ports": [{"port": 80, "state": "open"}]}
+        target = "example.com"  # noqa: F841
+# mock_result is not used in this test
 
         # The cache methods should be accessible
         assert hasattr(mock_cache, "get_cache_key")

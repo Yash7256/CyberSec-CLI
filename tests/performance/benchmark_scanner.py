@@ -130,7 +130,7 @@ class ScannerBenchmark:
             )
             tasks.append(scanner.scan())
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(*tasks, return_exceptions=True)  # noqa: F841
 
         end_time = time.time()
         total_duration = end_time - start_time

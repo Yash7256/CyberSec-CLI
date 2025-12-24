@@ -13,7 +13,7 @@ class TestTargetValidation:
 
     def test_valid_ipv4_addresses(self):
         """Test validation of valid IPv4 addresses."""
-        valid_ips = [
+        valid_ips = [  # noqa: F841
             "8.8.8.8",
             "10.0.0.1",  # This would be blocked by blocklist unless whitelisted
             "192.168.1.1",  # This would be blocked by blocklist unless whitelisted
