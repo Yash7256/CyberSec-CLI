@@ -39,10 +39,10 @@ COPY README.md .
 COPY requirements.txt ./
 COPY web/requirements.txt ./web_requirements.txt
 
-# Combine requirements and install
-RUN cat requirements.txt web_requirements.txt | sort -u > combined_requirements.txt && \
-    pip install --upgrade pip setuptools wheel && \
-    pip install -r combined_requirements.txt
+# Install requirements separately to avoid conflicts
+RUN pip install --upgrade pip setuptools wheel && \
+    pip install -r requirements.txt && \
+    pip install -r web_requirements.txt
 
 # Install the package in editable mode
 RUN pip install -e .
