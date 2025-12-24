@@ -1,6 +1,9 @@
 [flake8]
 max-line-length = 120
-ignore = E501
+ignore = W503, E501
 per-file-ignores =
-    */tests/*:F841,E402
+    */tests/*:F841
+    */examples/*:F541
+    */docs/*:F541
+    */test_*.py:F541
 exclude = .git,__pycache__,.venv,venv,build,dist
