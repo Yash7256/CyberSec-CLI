@@ -1,10 +1,10 @@
 [flake8]
 max-line-length = 120
 ignore = 
-    W503,  # line break before binary operator (conflicts with Black)
-    E501,  # line too long (handled by Black)
-    F541,  # f-string without placeholders (minor style preference)
+    W503,
+    E501,
+    F541
 per-file-ignores =
-    */tests/*:F841  # unused variables in tests are OK
+    */tests/*:F841,
     */examples/*:F841
 exclude = .git,__pycache__,.venv,venv,build,dist
