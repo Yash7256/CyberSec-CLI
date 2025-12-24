@@ -15,6 +15,7 @@ from datetime import datetime
 import re
 import dns.resolver
 from urllib.parse import urlparse
+from sqlalchemy.sql import text
 from cybersec_cli.utils.logger import log_forced_scan
 
 # Add imports for streaming support
@@ -382,6 +383,38 @@ async def _on_startup():
     await init_redis()
     await init_rate_limiter()
 
+
+async def wait_for_active_scans():
+    """Wait for active scans to complete before shutdown"""
+    # In a real implementation, this would check for active scans
+    # For now, just return immediately
+    pass
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Cleanup on shutdown"""
+    logger.info("Shutting down gracefully...")
+    
+    # Wait for active scans to complete (with timeout)
+    try:
+        await asyncio.wait_for(
+            wait_for_active_scans(),
+            timeout=30.0
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Shutdown timeout reached, forcing exit")
+    
+    # Close database connections
+    # In a real implementation, close any database connections
+    # await db_pool.close() if db_pool else None
+    
+    # Close Redis connections
+    if redis_client and hasattr(redis_client, 'close'):
+        redis_client.close()
+    
+    logger.info("Shutdown complete")
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -464,6 +497,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 import uuid
+import signal
+import asyncio
+
+# Global shutdown event
+shutdown_event = asyncio.Event()
 
 # Request ID tracking middleware
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -486,6 +524,16 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(RequestIDMiddleware)
+
+
+def handle_shutdown(signum, frame):
+    """Handle shutdown signals"""
+    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
+    shutdown_event.set()
+
+# Register signal handlers
+signal.signal(signal.SIGTERM, handle_shutdown)
+signal.signal(signal.SIGINT, handle_shutdown)
 
 # Global exception handlers
 @app.exception_handler(Exception)
@@ -670,6 +718,82 @@ async def redis_health_check():
             "status": "unhealthy",
             "error": str(e),
             "message": "Redis connection failed"
+        }
+
+
+@app.get("/health/postgres",
+         tags=["Health"],
+         summary="Check PostgreSQL health",
+         description="Health check endpoint for PostgreSQL connectivity.",
+         responses={
+             200: {
+                 "description": "PostgreSQL health status",
+                 "content": {
+                     "application/json": {
+                         "examples": {
+                             "healthy": {
+                                 "summary": "Healthy PostgreSQL connection",
+                                 "value": {
+                                     "status": "healthy",
+                                     "message": "PostgreSQL connection is healthy"
+                                 }
+                             },
+                             "unhealthy": {
+                                 "summary": "Unhealthy PostgreSQL connection",
+                                 "value": {
+                                     "status": "unhealthy",
+                                     "error": "Connection refused",
+                                     "message": "PostgreSQL connection failed"
+                                 }
+                             },
+                             "disabled": {
+                                 "summary": "PostgreSQL not configured",
+                                 "value": {
+                                     "status": "disabled",
+                                     "message": "PostgreSQL is not available or not configured"
+                                 }
+                             }
+                         }
+                     }
+                 }
+             }
+         })
+async def postgres_health():
+    """Health check endpoint for PostgreSQL connectivity."""
+    try:
+        import os
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import QueuePool
+        
+        database_url = os.getenv('DATABASE_URL', '')
+        if not database_url:
+            return {
+                "status": "disabled",
+                "message": "DATABASE_URL not set"
+            }
+        
+        # Create engine with minimal connection settings
+        engine = create_engine(
+            database_url,
+            poolclass=QueuePool,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=False
+        )
+        
+        # Test database connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            
+        return {
+            "status": "healthy",
+            "message": "PostgreSQL connection is healthy"
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "message": "PostgreSQL connection failed"
         }
 
 

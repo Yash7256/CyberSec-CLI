@@ -43,12 +43,47 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: cybersec-celery-worker
-    command: celery -A worker worker --loglevel=info --queues=scans --hostname=cybersec-worker@%h --concurrency=4 --prefetch-multiplier=1
+    command: celery -A tasks.celery_app worker --loglevel=info --concurrency=4
     environment:
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://cybersec:cybersec123@postgres:5432/cybersec
+      # Required
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cybersec:cybersec123@postgres:5432/cybersec
+      
+      # Optional (set these in .env file)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CYBERSEC_THEME=${CYBERSEC_THEME:-matrix}
+      - ENABLE_REDIS=true
+      - ADAPTIVE_SCANNING=true
+      
+      # Web settings
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=8000
+      - WEB_WORKERS=4
+      
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=true
+      - CLIENT_RATE_LIMIT=10
+      - TARGET_RATE_LIMIT=50
+      
+      # Security
+      - WEBSOCKET_API_KEY=${WEBSOCKET_API_KEY:-your-secure-api-key-here}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      
+      # Scanning Configuration
+      - ADAPTIVE_SCANNING=true
+      - DEFAULT_TIMEOUT=3.0
+      - MAX_CONCURRENCY=100
+      
+      # Logging
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+      
+      # Monitoring
+      - ENABLE_METRICS=true
+      - METRICS_PORT=9090
     volumes:
       - ./logs:/app/logs
+      - ./reports:/app/reports
     restart: unless-stopped
     networks:
       - cybersec-network
@@ -57,8 +92,13 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    cap_add:
+      - NET_RAW  # Required for raw socket access (SYN scans)
     cap_drop:
       - ALL
+    security_opt:
+      - no-new-privileges:true
+    user: "1000:1000"  # Match the cybersec user UID
 
   cybersec-web:
     build:
@@ -68,23 +108,58 @@ services:
     ports:
       - "8000:8000"
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      CYBERSEC_THEME: ${CYBERSEC_THEME:-matrix}
-      UI_SHOW_BANNER: ${UI_SHOW_BANNER:-true}
-      UI_COLOR_OUTPUT: ${UI_COLOR_OUTPUT:-true}
-      SCAN_DEFAULT_TIMEOUT: ${SCAN_DEFAULT_TIMEOUT:-2}
-      SCAN_MAX_THREADS: ${SCAN_MAX_THREADS:-50}
-      SCAN_RATE_LIMIT: ${SCAN_RATE_LIMIT:-10}
-      OUTPUT_DEFAULT_FORMAT: ${OUTPUT_DEFAULT_FORMAT:-table}
-      OUTPUT_SAVE_RESULTS: ${OUTPUT_SAVE_RESULTS:-true}
-      OUTPUT_EXPORT_PATH: ${OUTPUT_EXPORT_PATH:-/app/reports/}
-      SECURITY_REQUIRE_CONFIRMATION: ${SECURITY_REQUIRE_CONFIRMATION:-true}
-      SECURITY_LOG_ALL_COMMANDS: ${SECURITY_LOG_ALL_COMMANDS:-true}
-      SECURITY_ENCRYPT_STORED_DATA: ${SECURITY_ENCRYPT_STORED_DATA:-true}
-      REDIS_URL: redis://redis:6379
-      DATABASE_URL: postgresql://cybersec:cybersec123@postgres:5432/cybersec
+      # Required
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://cybersec:cybersec123@postgres:5432/cybersec
+      
+      # Optional (set these in .env file)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - CYBERSEC_THEME=${CYBERSEC_THEME:-matrix}
+      - ENABLE_REDIS=true
+      - ADAPTIVE_SCANNING=true
+      
+      # Web settings
+      - WEB_HOST=0.0.0.0
+      - WEB_PORT=8000
+      - WEB_WORKERS=4
+      
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=true
+      - CLIENT_RATE_LIMIT=10
+      - TARGET_RATE_LIMIT=50
+      
+      # Security
+      - WEBSOCKET_API_KEY=${WEBSOCKET_API_KEY:-your-secure-api-key-here}
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
+      
+      # Scanning Configuration
+      - ADAPTIVE_SCANNING=true
+      - DEFAULT_TIMEOUT=3.0
+      - MAX_CONCURRENCY=100
+      
+      # Logging
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+      
+      # Monitoring
+      - ENABLE_METRICS=true
+      - METRICS_PORT=9090
+      
+      # UI settings
+      - UI_SHOW_BANNER=true
+      - UI_COLOR_OUTPUT=true
+      - SCAN_DEFAULT_TIMEOUT=2
+      - SCAN_MAX_THREADS=50
+      - SCAN_RATE_LIMIT=10
+      - OUTPUT_DEFAULT_FORMAT=table
+      - OUTPUT_SAVE_RESULTS=true
+      - OUTPUT_EXPORT_PATH=/app/reports/
+      - SECURITY_REQUIRE_CONFIRMATION=true
+      - SECURITY_LOG_ALL_COMMANDS=true
+      - SECURITY_ENCRYPT_STORED_DATA=true
     volumes:
       - ./logs:/app/logs
+      - ./reports:/app/reports
     restart: unless-stopped
     networks:
       - cybersec-network
@@ -99,10 +174,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    cap_add:
+      - NET_RAW  # Required for raw socket access (SYN scans)
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    user: "1000:1000"  # Match the cybersec user UID
 
   nginx:
     image: nginx:alpine
@@ -127,6 +205,32 @@ services:
       retries: 3
       start_period: 40s
 
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: cybersec-redis-exporter
+    environment:
+      - REDIS_ADDR=redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - cybersec-network
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: cybersec-postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://cybersec:cybersec123@postgres:5432/cybersec?sslmode=disable
+    ports:
+      - "9187:9187"
+    networks:
+      - cybersec-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:latest
     container_name: cybersec-prometheus
@@ -147,6 +251,8 @@ services:
       - cybersec-network
     depends_on:
       - cybersec-web
+      - redis-exporter
+      - postgres-exporter
 
   grafana:
     image: grafana/grafana-enterprise:latest
