@@ -37,13 +37,10 @@ COPY README.md .
 
 # Copy requirements
 COPY requirements.txt ./
+COPY web/requirements.txt ./web_requirements.txt
 
-# Combine requirements and install (check if web requirements exist)
-RUN if [ -f web/requirements.txt ]; then \
-    cat requirements.txt web/requirements.txt | sort -u > combined_requirements.txt; \
-    else \
-    cp requirements.txt combined_requirements.txt; \
-    fi && \
+# Combine requirements and install
+RUN cat requirements.txt web_requirements.txt | sort -u > combined_requirements.txt && \
     pip install --upgrade pip setuptools wheel && \
     pip install -r combined_requirements.txt
 
