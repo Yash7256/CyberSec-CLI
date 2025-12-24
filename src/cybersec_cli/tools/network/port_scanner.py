@@ -71,6 +71,14 @@ except ImportError:
         # Fallback implementation if core module not available
         return [ports, [], [], []]
 
+# Import scan cache
+try:
+    from core.scan_cache import scan_cache
+    HAS_SCAN_CACHE = True
+except ImportError:
+    HAS_SCAN_CACHE = False
+    scan_cache = None
+
 logger = get_logger(__name__)
 
 class PortState(Enum):
@@ -93,11 +101,12 @@ class PortResult:
     protocol: str = "tcp"
     reason: Optional[str] = None
     ttl: Optional[float] = None
-    confidence: float = 0.0  # Confidence level for service detection (0.0-1.0)
-
+    confidence: float = 0.0  # Confidence level for service detection (0.0-1.0
+    cached_at: Optional[str] = None  # Timestamp when result was cached
+    
     def to_dict(self) -> Dict:
         """Convert the result to a dictionary."""
-        return {
+        result = {
             "port": self.port,
             "state": self.state.value,
             "service": self.service,
@@ -108,6 +117,9 @@ class PortResult:
             "ttl": self.ttl,
             "confidence": self.confidence
         }
+        if self.cached_at:
+            result["cached_at"] = self.cached_at
+        return result
 
 class ScanType(Enum):
     """Types of port scans."""
@@ -774,16 +786,47 @@ class PortScanner:
         self.logger.debug(f"Quick reachability: no response on ports {check_ports} for {self.ip}")
         return False
     
-    async def scan(self, streaming: bool = False) -> List[PortResult]:
+    async def scan(self, streaming: bool = False, force: bool = False) -> List[PortResult]:
         """
-        Perform the port scan.
+        Perform the port scan with optional caching.
         
         Args:
             streaming: If True, yields results after each priority tier
+            force: If True, bypasses cache and performs fresh scan
             
         Returns:
             List of PortResult objects with scan results
         """
+        # Check cache first if caching is enabled and force is False
+        if HAS_SCAN_CACHE and scan_cache and not force:
+            cache_key = scan_cache.get_cache_key(self.target, sorted(list(self.ports)))
+            cached_result = await scan_cache.check_cache(cache_key)
+            
+            if cached_result:
+                # Return cached results with cache metadata
+                self.logger.info(f"Returning cached results for {self.target}")
+                cached_results = cached_result.get('results', [])
+                self.results = [
+                    PortResult(
+                        port=r['port'],
+                        state=PortState(r['state']),
+                        service=r.get('service'),
+                        banner=r.get('banner'),
+                        version=r.get('version'),
+                        protocol=r.get('protocol', 'tcp'),
+                        reason=r.get('reason'),
+                        ttl=r.get('ttl'),
+                        confidence=r.get('confidence', 0.0)
+                    )
+                    for r in cached_results
+                ]
+                
+                # Add cache info to results
+                for result in self.results:
+                    result.cached_at = cached_result.get('cached_at')
+                
+                return self.results
+        
         # Log scan initiation with detailed info
         self.logger.info(f"Starting port scan on {self.target} ({self.ip})")
         self.logger.info(f"Scan type: {self.scan_type.value}")
@@ -796,44 +839,67 @@ class PortScanner:
         
         # If streaming is enabled and we have the priority module, use priority-based scanning
         if streaming and HAS_PRIORITY_MODULE:
-            return await self._scan_with_priority_streaming()
-        
-        # Otherwise, use the original scanning approach
-        tasks = []
-        results = []
-        
-        # Create tasks for each port
-        for port in self.ports:
-            task = asyncio.create_task(self._check_port(port))
-            task.add_done_callback(
-                lambda t, p=port: results.append(t.result())
-            )
-            tasks.append(task)
-        
-        # Show progress if there are many ports
-        if len(tasks) > 10:
-            with Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(bar_width=None),
-                "[progress.percentage]{task.percentage:>3.0f}%",
-                TimeRemainingColumn(),
-                console=Console()
-            ) as progress:
-                task = progress.add_task(
-                    f"[cyan]Scanning {len(tasks)} ports on {self.target}...",
-                    total=len(tasks)
-                )
-                
-                # Wait for all tasks to complete
-                for t in asyncio.as_completed(tasks):
-                    await t
-                    progress.update(task, advance=1)
+            results = await self._scan_with_priority_streaming()
         else:
-            # For small scans, just wait for all tasks
-            await asyncio.gather(*tasks)
+            # Otherwise, use the original scanning approach
+            tasks = []
+            results = []
+            
+            # Create tasks for each port
+            for port in self.ports:
+                task = asyncio.create_task(self._check_port(port))
+                task.add_done_callback(
+                    lambda t, p=port: results.append(t.result())
+                )
+                tasks.append(task)
+            
+            # Show progress if there are many ports
+            if len(tasks) > 10:
+                with Progress(
+                    TextColumn("[progress.description]{task.description}"),
+                    BarColumn(bar_width=None),
+                    "[progress.percentage]{task.percentage:>3.0f}%",
+                    TimeRemainingColumn(),
+                    console=Console()
+                ) as progress:
+                    task = progress.add_task(
+                        f"[cyan]Scanning {len(tasks)} ports on {self.target}...",
+                        total=len(tasks)
+                    )
+                    
+                    # Wait for all tasks to complete
+                    for t in asyncio.as_completed(tasks):
+                        await t
+                        progress.update(task, advance=1)
+            else:
+                # For small scans, just wait for all tasks
+                await asyncio.gather(*tasks)
+            
+            # Sort results by port number
+            results = sorted(results, key=lambda x: x.port)
         
-        # Sort results by port number
-        self.results = sorted(results, key=lambda x: x.port)
+        # Store results in cache if caching is enabled
+        if HAS_SCAN_CACHE and scan_cache and not force:
+            cache_key = scan_cache.get_cache_key(self.target, sorted(list(self.ports)))
+            # Convert results to serializable format
+            serializable_results = [
+                {
+                    'port': r.port,
+                    'state': r.state.value,
+                    'service': r.service,
+                    'banner': r.banner,
+                    'version': r.version,
+                    'protocol': r.protocol,
+                    'reason': r.reason,
+                    'ttl': r.ttl,
+                    'confidence': r.confidence
+                }
+                for r in results
+            ]
+            cache_data = {'results': serializable_results}
+            await scan_cache.store_cache(cache_key, cache_data, target=self.target)
+        
+        self.results = results
         
         # Log completion statistics
         open_count = len([r for r in self.results if r.state == PortState.OPEN])
@@ -846,6 +912,19 @@ class PortScanner:
             self.logger.info(f"Open ports found: {open_ports_list}")
         
         return self.results
+
+    def scan_sync(self, streaming: bool = False, force: bool = False) -> List[PortResult]:
+        """
+        Synchronous version of the scan method for use in Celery tasks.
+        
+        Args:
+            streaming: If True, yields results after each priority tier
+            force: If True, bypasses cache and performs fresh scan
+            
+        Returns:
+            List of PortResult objects with scan results
+        """
+        return asyncio.run(self.scan(streaming=streaming, force=force))
 
     async def _scan_with_priority_streaming(self) -> List[PortResult]:
         """
@@ -970,7 +1049,7 @@ async def scan_ports(
     banner_grabbing: bool = True,
     output_format: str = "table",
     require_reachable: bool = False,
-    force: bool = False
+    force: bool = False  # Add force parameter for bypassing cache
 ) -> str:
     """Scan ports on a target and return results in the specified format.
     
@@ -983,6 +1062,7 @@ async def scan_ports(
         service_detection: Whether to detect services
         banner_grabbing: Whether to grab banners
         output_format: Output format ('table', 'json', 'list')
+        force: If True, bypass cache and perform fresh scan
         
     Returns:
         Formatted scan results
@@ -1000,7 +1080,7 @@ async def scan_ports(
             require_reachable=effective_require
         )
         
-        await scanner.scan()
+        await scanner.scan(force=force)  # Pass force parameter to scan method
         
         if output_format == "json":
             return scanner.to_json()

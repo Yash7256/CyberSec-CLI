@@ -1,10 +1,13 @@
-FROM python:3.10-slim
+FROM python:3.10.14-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Create a non-root user for security
+RUN groupadd -r cybersec && useradd -r -g cybersec cybersec
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nmap \
     curl \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Set working directory
 WORKDIR /app
@@ -35,6 +39,7 @@ RUN if [ -f web_requirements.txt ]; then \
 # Copy application code
 COPY src/ src/
 COPY web/ web/
+COPY core/ core/
 COPY setup.py .
 COPY README.md .
 
@@ -44,7 +49,11 @@ RUN pip install -e .
 # Create necessary directories
 RUN mkdir -p ~/.cybersec/models && \
     mkdir -p reports && \
-    mkdir -p logs
+    mkdir -p logs && \
+    chown -R cybersec:cybersec /app
+
+# Switch to non-root user
+USER cybersec
 
 # Expose ports
 EXPOSE 8000

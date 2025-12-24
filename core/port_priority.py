@@ -1,10 +1,20 @@
 """
-Port Priority Module for Cybersec CLI.
-Defines port priority tiers and provides functions for priority-based scanning.
+Port priority implementation for CyberSec CLI.
 """
+import logging
+from typing import List, Tuple
+import json
+import os
+from pathlib import Path
 
-from typing import List, Dict, Set
-from collections import defaultdict
+# Import structured logging
+try:
+    from core.logging_config import get_logger
+    HAS_STRUCTURED_LOGGING = True
+except ImportError:
+    HAS_STRUCTURED_LOGGING = False
+
+logger = get_logger('scanner') if HAS_STRUCTURED_LOGGING else logging.getLogger(__name__)
 
 # Define port priority tiers
 PRIORITY_PORTS = {

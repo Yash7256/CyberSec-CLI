@@ -1,0 +1,186 @@
+# CyberSec-CLI API cURL Examples
+
+## Health & Status
+
+### Get API Status
+```bash
+curl -X GET "https://your-domain.com/api/status"
+```
+
+### Check Redis Health
+```bash
+curl -X GET "https://your-domain.com/health/redis"
+```
+
+### Get Prometheus Metrics
+```bash
+curl -X GET "https://your-domain.com/metrics" \
+  -H "X-API-Key: your-api-key"
+```
+
+## Scan Operations
+
+### List Scan Results
+```bash
+curl -X GET "https://your-domain.com/api/scans?limit=50" \
+  -H "X-API-Key: your-api-key"
+```
+
+### Get Scan Result by ID
+```bash
+curl -X GET "https://your-domain.com/api/scans/1" \
+  -H "X-API-Key: your-api-key"
+```
+
+## Streaming Scans
+
+### Stream Scan Results (SSE)
+```bash
+curl -X GET "https://your-domain.com/api/stream/scan/example.com?ports=1-1000&enhanced_service_detection=true" \
+  -H "Accept: text/event-stream"
+```
+
+### Stream Scan Results with Vulnerability Analysis
+```bash
+curl -X GET "https://your-domain.com/api/scan/stream?target=example.com&ports=1-1000&enhanced_service_detection=true" \
+  -H "Accept: text/event-stream"
+```
+
+## Asynchronous Scanning
+
+### Create Async Scan Task
+```bash
+curl -X POST "https://your-domain.com/api/scan?force=false" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "target": "example.com",
+    "ports": "1-1000",
+    "config": {
+      "timeout": 1.0,
+      "max_concurrent": 50,
+      "enhanced_service_detection": true
+    }
+  }'
+```
+
+### Get Async Scan Task Status
+```bash
+curl -X GET "https://your-domain.com/api/scan/c5d8e2a1-1b3f-4e8c-9d2a-4f5b8e7a1c2d" \
+  -H "X-API-Key: your-api-key"
+```
+
+## Rate Limiting
+
+### Reset Client Rate Limits
+```bash
+curl -X POST "https://your-domain.com/api/admin/rate-limits/reset/127.0.0.1" \
+  -H "X-API-Key: your-api-key"
+```
+
+### Get Rate Limit Dashboard
+```bash
+curl -X GET "https://your-domain.com/api/admin/rate-limits" \
+  -H "X-API-Key: your-api-key"
+```
+
+## Audit Logs
+
+### Get Forced Scan Audit Logs
+```bash
+curl -X GET "https://your-domain.com/api/audit/forced_scans" \
+  -H "X-API-Key: your-api-key"
+```
+
+## Advanced Examples
+
+### Full Scan with All Options
+```bash
+curl -X POST "https://your-domain.com/api/scan" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "target": "example.com",
+    "ports": "1-65535",
+    "config": {
+      "timeout": 3.0,
+      "max_concurrent": 100,
+      "enhanced_service_detection": true,
+      "scan_type": "SYN"
+    }
+  }'
+```
+
+### Scan with Caching Disabled
+```bash
+curl -X POST "https://your-domain.com/api/scan?force=true" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "target": "example.com",
+    "ports": "1-1000"
+  }'
+```
+
+### Monitor Scan Progress
+```bash
+# Start scan
+TASK_ID=$(curl -X POST "https://your-domain.com/api/scan" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"target": "example.com", "ports": "1-1000"}' \
+  | jq -r '.task_id')
+
+echo "Task ID: $TASK_ID"
+
+# Poll for status
+while true; do
+  STATUS=$(curl -X GET "https://your-domain.com/api/scan/$TASK_ID" \
+    -H "X-API-Key: your-api-key" \
+    | jq -r '.state')
+  
+  echo "Status: $STATUS"
+  
+  if [ "$STATUS" = "SUCCESS" ] || [ "$STATUS" = "FAILURE" ]; then
+    break
+  fi
+  
+  sleep 5
+done
+
+# Get final results
+curl -X GET "https://your-domain.com/api/scan/$TASK_ID" \
+  -H "X-API-Key: your-api-key"
+```
+
+### Using API Key as Query Parameter
+```bash
+curl -X GET "https://your-domain.com/api/scans?api_key=your-api-key"
+```
+
+### WebSocket Connection Example (using websocat or similar)
+```bash
+# Install websocat: https://github.com/vi/websocat
+websocat "ws://your-domain.com/ws/command?token=your-ws-token" -t
+
+# Then send commands like:
+# {"command": "scan example.com --ports 1-100", "force": false, "consent": true}
+```
+
+## Error Handling Examples
+
+### Handling Rate Limit Exceeded
+```bash
+# This will return a 429 status code if rate limit is exceeded
+curl -X POST "https://your-domain.com/api/scan" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"target": "example.com", "ports": "1-1000"}' \
+  -w "\nHTTP Status: %{http_code}\n"
+```
+
+### Handling Authentication Error
+```bash
+curl -X GET "https://your-domain.com/api/scans" \
+  -w "\nHTTP Status: %{http_code}\n" \
+  -o response.json

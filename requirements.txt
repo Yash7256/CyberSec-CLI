@@ -32,3 +32,6 @@ aioredis==2.0.1
 apscheduler==3.10.4
 reportlab==4.0.7
 redis==4.5.4
+celery==5.3.4
+asyncpg==0.29.0
+prometheus-client==0.20.0

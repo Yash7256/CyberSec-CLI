@@ -38,6 +38,9 @@ async def test_redis_health():
     
     # Get the test key
     get_result = client.get("health_test_key")
+    # Handle bytes vs string return types
+    if isinstance(get_result, bytes):
+        get_result = get_result.decode('utf-8')
     print(f"📖 Get operation result: {get_result}")
     
     # Check if key exists
@@ -54,7 +57,7 @@ async def test_redis_health():
     
     print("\n=== Test Summary ===")
     if set_result and get_result == "health_test_value" and exists_result and incr_result >= 1:
-        print("✅ All Redis operations passed (using in-memory fallback since Redis is not available)")
+        print("✅ All Redis operations passed")
     else:
         print("❌ Some operations failed")
 

@@ -1,14 +1,15 @@
 """
-Redis Client for Cybersec CLI.
-
-This module provides a Redis client with connection pooling and graceful fallback
-to in-memory cache if Redis is unavailable.
+Redis client for CyberSec CLI.
 """
-
-import os
+import redis
 import logging
-from typing import Optional, Dict, Any
+import json
+from typing import Optional, Any
+import os
+from urllib.parse import urlparse
 from functools import wraps
+import sys
+from typing import Dict
 
 # Try to import redis, but don't fail if it's not available
 try:
@@ -18,7 +19,14 @@ except ImportError:
     REDIS_AVAILABLE = False
     redis = None
 
-logger = logging.getLogger(__name__)
+# Import structured logging
+try:
+    from core.logging_config import get_logger
+    HAS_STRUCTURED_LOGGING = True
+except ImportError:
+    HAS_STRUCTURED_LOGGING = False
+
+logger = get_logger('database') if HAS_STRUCTURED_LOGGING else logging.getLogger(__name__)
 
 
 class RedisClient:
@@ -46,32 +54,20 @@ class RedisClient:
                 redis_password = os.getenv('REDIS_PASSWORD')
                 redis_db = int(os.getenv('REDIS_DB', '0'))
                 
+                # Parse the URL to extract host and port
+                parsed = urlparse(redis_url)
+                host = parsed.hostname or 'localhost'
+                port = parsed.port or 6379
+                
                 # Create connection pool
-                if redis_url.startswith('redis://'):
-                    # Parse the URL to extract host and port
-                    from urllib.parse import urlparse
-                    parsed = urlparse(redis_url)
-                    host = parsed.hostname or 'localhost'
-                    port = parsed.port or 6379
-                    
-                    connection_pool = redis.ConnectionPool(
-                        host=host,
-                        port=port,
-                        password=redis_password,
-                        db=redis_db,
-                        max_connections=20,
-                        retry_on_timeout=True
-                    )
-                else:
-                    # Direct connection parameters
-                    connection_pool = redis.ConnectionPool(
-                        host='localhost',
-                        port=6379,
-                        password=redis_password,
-                        db=redis_db,
-                        max_connections=20,
-                        retry_on_timeout=True
-                    )
+                connection_pool = redis.ConnectionPool(
+                    host=host,
+                    port=port,
+                    password=redis_password,
+                    db=redis_db,
+                    max_connections=20,
+                    retry_on_timeout=True
+                )
                 
                 self.redis_client = redis.Redis(connection_pool=connection_pool)
                 # Test connection

@@ -1,0 +1,21 @@
+flowchart TD
+    A[Start Scan Request] --> B{Target Valid?}
+    B -->|No| C[Return Validation Error]
+    B -->|Yes| D{Check Cache}
+    D -->|Hit| E[Return Cached Results]
+    D -->|Miss| F[Apply Rate Limiting]
+    F --> G{Within Limits?}
+    G -->|No| H[Return Rate Limit Error]
+    G -->|Yes| I[Initialize Port Scanner]
+    I --> J[Perform Port Scan]
+    J --> K{Service Detection?}
+    K -->|Yes| L[Run Service Probes]
+    K -->|No| M[Skip Service Detection]
+    L --> N[Process Scan Results]
+    M --> N
+    N --> O[Store in Cache]
+    O --> P[Return Results]
+    E --> Q[Output Results]
+    P --> Q
+    C --> R[Error Output]
+    H --> R

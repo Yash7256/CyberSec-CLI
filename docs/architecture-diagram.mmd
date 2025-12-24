@@ -1,0 +1,70 @@
+graph TB
+    subgraph "User Interfaces"
+        A["CLI Interface"]
+        B["Web Interface"]
+        C["API Endpoints"]
+    end
+
+    subgraph "Core Services"
+        D["Port Scanner"]
+        E["Service Probes"]
+        F["AI Assistant"]
+        G["Rate Limiter"]
+        H["Cache System"]
+    end
+
+    subgraph "Data Storage"
+        I["Redis (Cache/Rate Limit)"]
+        J["Database (Results/History)"]
+        K["File System (Logs/Configs)"]
+    end
+
+    subgraph "Background Services"
+        L["Celery Workers"]
+        M["Task Queue"]
+    end
+
+    subgraph "External Dependencies"
+        N["Nmap"]
+        O["OpenAI API"]
+        P["DNS Resolver"]
+    end
+
+    A --> D
+    B --> C
+    C --> D
+    C --> G
+    C --> H
+    D --> I
+    D --> J
+    D --> N
+    E --> D
+    F --> O
+    F --> D
+    G --> I
+    H --> I
+    L --> M
+    L --> D
+    M --> D
+    D --> P
+    E --> N
+    K --> A
+    K --> B
+    K --> L
+
+    style A fill:#e1f5fe
+    style B fill:#e1f5fe
+    style C fill:#e1f5fe
+    style D fill:#f3e5f5
+    style E fill:#f3e5f5
+    style F fill:#f3e5f5
+    style G fill:#f3e5f5
+    style H fill:#f3e5f5
+    style I fill:#e8f5e8
+    style J fill:#e8f5e8
+    style K fill:#e8f5e8
+    style L fill:#fff3e0
+    style M fill:#fff3e0
+    style N fill:#ffebee
+    style O fill:#ffebee
+    style P fill:#ffebee

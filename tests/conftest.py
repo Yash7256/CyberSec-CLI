@@ -1,0 +1,132 @@
+import pytest
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+from redis import asyncio as aioredis
+from cybersec_cli.config import Config, ScanningConfig, RateLimitConfig
+from core.scan_cache import ScanCache
+from core.rate_limiter import SmartRateLimiter
+from core.validators import validate_target, validate_port_range
+from cybersec_cli.tools.network.port_scanner import PortScanner
+
+
+@pytest.fixture
+def mock_redis_client():
+    """Mock Redis client for testing."""
+    # Create a mock that simulates the synchronous Redis client behavior
+    mock_client = MagicMock()
+    mock_client.get = MagicMock(return_value=None)
+    mock_client.set = MagicMock(return_value=True)
+    mock_client.exists = MagicMock(return_value=False)
+    mock_client.delete = MagicMock(return_value=1)  # Return 1 for successful deletion
+    mock_client.keys = MagicMock(return_value=[])
+    mock_client.flushdb = MagicMock(return_value=None)
+    mock_client.zcard = MagicMock(return_value=5)  # For rate limiter tests
+    mock_client.zremrangebyscore = MagicMock()
+    mock_client.zadd = MagicMock()
+    mock_client.expire = MagicMock()
+    mock_client.incr = MagicMock(return_value=1)
+    return mock_client
+
+
+@pytest.fixture
+def mock_config():
+    """Mock configuration object."""
+    config = MagicMock()
+    config.scanning = ScanningConfig(
+        default_timeout=30,
+        max_threads=10,
+        rate_limit=10,
+        adaptive_scanning=True,
+        enhanced_service_detection=True
+    )
+    config.rate_limit = RateLimitConfig(
+        client_rate_limit=10,
+        target_rate_limit=100,
+        port_limit_per_scan=1000
+    )
+    return config
+
+
+@pytest.fixture
+def mock_scan_result():
+    """Mock scan result data."""
+    from cybersec_cli.tools.network.port_scanner import PortResult, PortState
+    return {
+        'host': '127.0.0.1',
+        'ports': [
+            {'port': 22, 'service': 'ssh', 'state': 'open'},
+            {'port': 80, 'service': 'http', 'state': 'open'},
+            {'port': 443, 'service': 'https', 'state': 'closed'}
+        ],
+        'timestamp': '2023-01-01T00:00:00Z',
+        'scan_type': 'nmap'
+    }
+
+
+@pytest.fixture
+def mock_cache(mock_redis_client):
+    """Mock ScanCache instance."""
+    with patch('core.scan_cache.redis_client', mock_redis_client):
+        cache = ScanCache()
+        cache._initialized = True  # Bypass initialization
+        cache.redis_client = mock_redis_client
+        return cache
+
+
+@pytest.fixture
+def mock_rate_limiter():
+    """Mock RateLimiter instance."""
+    # Since we don't have the actual SmartRateLimiter implementation in the expected location,
+    # we'll create a mock directly
+    rate_limiter = MagicMock()
+    rate_limiter.check_client_limit = MagicMock(return_value=True)
+    rate_limiter.check_target_limit = MagicMock(return_value=True)
+    rate_limiter.check_port_range_limit = MagicMock(return_value=(True, ""))
+    rate_limiter.check_global_limit = MagicMock(return_value=(True, 100))
+    rate_limiter.increment_concurrent_scan = MagicMock(return_value=True)
+    rate_limiter.decrement_concurrent_scan = MagicMock()
+    rate_limiter.record_violation = MagicMock()
+    rate_limiter.get_cooldown_period = MagicMock(return_value=0)
+    rate_limiter.is_on_cooldown = MagicMock(return_value=False)
+    rate_limiter.apply_cooldown = MagicMock()
+    rate_limiter.get_rate_limit_headers = MagicMock(return_value={})
+    rate_limiter.reset_client_limits = MagicMock()
+    rate_limiter.get_all_violations = MagicMock(return_value={})
+    rate_limiter.get_abuse_patterns = MagicMock(return_value=[])
+    rate_limiter.get_violation_count = MagicMock(return_value=0)
+    return rate_limiter
+
+
+@pytest.fixture
+def mock_scanner(mock_config, mock_cache, mock_rate_limiter):
+    """Mock Scanner instance."""
+    # Create a PortScanner with mocked dependencies
+    with patch('cybersec_cli.tools.network.port_scanner.scan_cache', mock_cache):
+        with patch('cybersec_cli.tools.network.port_scanner.HAS_SCAN_CACHE', True):
+            scanner = PortScanner(
+                target='127.0.0.1',
+                ports=[22, 80, 443],
+                timeout=1.0,
+                max_concurrent=10
+            )
+            # Replace the cache with our mock
+            scanner.scan_cache = mock_cache
+            return scanner
+
+
+@pytest.fixture
+def sample_ip():
+    """Sample IP address for testing."""
+    return '192.168.1.1'
+
+
+@pytest.fixture
+def sample_domain():
+    """Sample domain name for testing."""
+    return 'example.com'
+
+
+@pytest.fixture
+def sample_port_range():
+    """Sample port range for testing."""
+    return [1, 80, 443]

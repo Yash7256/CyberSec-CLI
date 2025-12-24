@@ -1,7 +1,7 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 import os
 from pathlib import Path
 import socket
@@ -24,14 +24,18 @@ import sys
 import os
 import time
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+# Import structured logging
 try:
-    from core.port_priority import get_scan_order
-    HAS_PRIORITY_MODULE = True
+    from core.logging_config import setup_logging, get_logger, set_request_id, log_audit_event
+    from src.cybersec_cli.config import settings
+    setup_logging(
+        log_dir=settings.logging.log_dir,
+        audit_log_file=settings.logging.audit_log_file
+    )
+    HAS_STRUCTURED_LOGGING = True
 except ImportError:
-    HAS_PRIORITY_MODULE = False
-    def get_scan_order(ports):
-        # Fallback implementation if core module not available
-        return [ports, [], [], []]
+    HAS_STRUCTURED_LOGGING = False
 
 # Import Redis client
 try:
@@ -40,6 +44,34 @@ try:
 except ImportError:
     HAS_REDIS = False
     redis_client = None
+
+# Import rate limiter
+try:
+    from core.rate_limiter import SmartRateLimiter
+    from src.cybersec_cli.config import settings
+    HAS_RATE_LIMITER = True
+except ImportError:
+    HAS_RATE_LIMITER = False
+    SmartRateLimiter = None
+    settings = None
+
+# Import metrics
+try:
+    from monitoring.metrics import metrics_collector
+    HAS_METRICS = True
+except ImportError:
+    HAS_METRICS = False
+    metrics_collector = None
+
+# Import port priority
+try:
+    from core.port_priority import get_scan_order
+    HAS_PRIORITY_MODULE = True
+except ImportError:
+    HAS_PRIORITY_MODULE = False
+    def get_scan_order(ports):
+        # Fallback implementation if core module not available
+        return [ports, [], [], []]
 
 import asyncio
 import json
@@ -106,8 +138,11 @@ async def _redis_decrement_active(client: str):
         logger.debug('Redis active decrement failed')
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+if HAS_STRUCTURED_LOGGING:
+    logger = get_logger('api')
+else:
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
 
 
 async def init_redis():
@@ -129,6 +164,19 @@ async def init_redis():
     except Exception as e:
         _redis = None
         logger.debug(f'Redis not available or failed to initialize: {e}; falling back to in-memory rate limiting')
+
+
+# Initialize rate limiter
+rate_limiter = None
+
+async def init_rate_limiter():
+    """Initialize the advanced rate limiter."""
+    global rate_limiter
+    if HAS_RATE_LIMITER and HAS_REDIS and redis_client:
+        rate_limiter = SmartRateLimiter(redis_client.redis_client, settings.rate_limit.dict())
+        logger.info('Advanced rate limiter initialized')
+    else:
+        logger.warning('Rate limiter not available')
 
 
 async def _check_and_record_rate_limit(client_host: str) -> bool:
@@ -281,23 +329,222 @@ def get_scan_output(scan_id: int) -> Optional[str]:
 # Initialize DB on startup
 init_db()
 
-app = FastAPI(title="CyberSec-CLI Web")
+# Create FastAPI app with enhanced OpenAPI schema
+app = FastAPI(
+    title="CyberSec-CLI API",
+    description="Comprehensive cybersecurity CLI tool with web interface for network scanning, vulnerability assessment, and security analysis.",
+    version="1.0.0",
+    contact={
+        "name": "CyberSec-CLI Team",
+        "url": "https://github.com/CyberSec-CLI",
+        "email": "support@cybersec-cli.com",
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=[
+        {
+            "name": "Authentication",
+            "description": "API key authentication endpoints"
+        },
+        {
+            "name": "Scanning",
+            "description": "Network scanning operations and results"
+        },
+        {
+            "name": "Streaming",
+            "description": "Real-time scan result streaming"
+        },
+        {
+            "name": "Async Scanning",
+            "description": "Asynchronous scan operations with Celery"
+        },
+        {
+            "name": "Rate Limiting",
+            "description": "Rate limiting and abuse prevention"
+        },
+        {
+            "name": "Health",
+            "description": "System health and monitoring endpoints"
+        },
+        {
+            "name": "WebSocket",
+            "description": "WebSocket-based real-time communication"
+        }
+    ]
+)
 
 
 # Initialize optional services on startup (e.g. Redis)
 @app.on_event("startup")
 async def _on_startup():
     await init_redis()
+    await init_rate_limiter()
 
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors.allow_origins,
+    allow_credentials=settings.cors.allow_credentials,
+    allow_methods=settings.cors.allow_methods,
+    allow_headers=settings.cors.allow_headers,
 )
 
+# Security headers middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        
+        # Add security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-ancestors 'none';"
+        
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# API Key Authentication Middleware
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # List of endpoints that don't require authentication
+        public_endpoints = [
+            "/",
+            "/health/redis", 
+            "/api/status",
+            "/api/scan/stream",
+            "/api/stream/scan",
+            "/metrics",
+            "/static",
+            "/docs",
+            "/redoc",
+            "/openapi.json"
+        ]
+        
+        # Check if the endpoint is public
+        is_public = any(request.url.path.startswith(ep) for ep in public_endpoints)
+        
+        if not is_public:
+            # Check for API key in header
+            api_key = request.headers.get("X-API-Key")
+            if not api_key:
+                # Check for API key in query parameter as fallback
+                api_key = request.query_params.get("api_key")
+            
+            if not api_key:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=401,
+                    detail="API key is required for this endpoint"
+                )
+            
+            # Verify the API key
+            from core.auth import verify_api_key
+            key_info = verify_api_key(api_key)
+            if not key_info:
+                from fastapi import HTTPException
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid API key"
+                )
+        
+        response = await call_next(request)
+        return response
+
+app.add_middleware(APIKeyAuthMiddleware)
+
+# Import for request ID tracking
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+import uuid
+
+# Request ID tracking middleware
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Generate or extract request ID
+        request_id = request.headers.get('X-Request-ID') or str(uuid.uuid4())
+        
+        # Add request ID to request state for access in endpoints
+        request.state.request_id = request_id
+        
+        # Set context for logging
+        from core.logging_config import set_request_id
+        set_request_id(request_id)
+        
+        response = await call_next(request)
+        
+        # Add request ID to response headers
+        response.headers['X-Request-ID'] = request_id
+        
+        return response
+
+app.add_middleware(RequestIDMiddleware)
+
+# Global exception handlers
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler for all unhandled exceptions"""
+    from core.logging_config import get_logger
+    logger = get_logger('api')
+    from src.cybersec_cli.utils.exceptions import ServiceUnavailableError, DatabaseError
+    
+    # Log the exception with full context
+    logger.error(
+        f"Unhandled exception in API: {str(exc)}",
+        extra={
+            'context': {
+                'endpoint': request.url.path,
+                'method': request.method,
+                'client_ip': request.client.host if request.client else None,
+                'exception_type': type(exc).__name__
+            }
+        }
+    )
+    
+    # Return user-friendly error message
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "message": "An unexpected error occurred. Please try again later.",
+            "request_id": getattr(request.state, 'request_id', None)
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions"""
+    from core.logging_config import get_logger
+    logger = get_logger('api')
+    
+    # Log HTTP exceptions as well
+    logger.warning(
+        f"HTTP exception: {exc.status_code} - {exc.detail}",
+        extra={
+            'context': {
+                'endpoint': request.url.path,
+                'method': request.method,
+                'client_ip': request.client.host if request.client else None,
+                'status_code': exc.status_code
+            }
+        }
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "Request error",
+            "message": exc.detail,
+            "request_id": getattr(request.state, 'request_id', None)
+        }
+    )
 
 # Static files directory
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
@@ -330,20 +577,75 @@ class ConnectionManager:
             try:
                 await connection.send_text(message)
             except Exception as e:
+                from core.logging_config import get_logger
+                logger = get_logger('api')
                 logger.error(f"Error broadcasting message: {e}")
 
 manager = ConnectionManager()
 
 # API Endpoints
-@app.get("/")
+@app.get("/", 
+         tags=["Static Content"],
+         summary="Serve main page",
+         description="Serves the main HTML page for the CyberSec-CLI web interface.")
 async def read_root():
     return FileResponse(os.path.join(STATIC_DIR, 'index.html'))
 
-@app.get("/api/status")
+@app.get("/api/status",
+         tags=["Health"],
+         summary="Get API status",
+         description="Returns the current status of the CyberSec-CLI API.",
+         responses={
+             200: {
+                 "description": "API status information",
+                 "content": {
+                     "application/json": {
+                         "example": {"status": "CyberSec-CLI API is running"}
+                     }
+                 }
+             }
+         })
 async def get_status():
     return {"status": "CyberSec-CLI API is running"}
 
-@app.get("/health/redis")
+@app.get("/health/redis",
+         tags=["Health"],
+         summary="Check Redis health",
+         description="Health check endpoint for Redis connectivity and latency.",
+         responses={
+             200: {
+                 "description": "Redis health status",
+                 "content": {
+                     "application/json": {
+                         "examples": {
+                             "healthy": {
+                                 "summary": "Healthy Redis connection",
+                                 "value": {
+                                     "status": "healthy",
+                                     "latency_ms": 2.5,
+                                     "message": "Redis connection is healthy"
+                                 }
+                             },
+                             "unhealthy": {
+                                 "summary": "Unhealthy Redis connection",
+                                 "value": {
+                                     "status": "unhealthy",
+                                     "error": "Connection refused",
+                                     "message": "Redis connection failed"
+                                 }
+                             },
+                             "disabled": {
+                                 "summary": "Redis not configured",
+                                 "value": {
+                                     "status": "disabled",
+                                     "message": "Redis is not available or not configured"
+                                 }
+                             }
+                         }
+                     }
+                 }
+             }
+         })
 async def redis_health_check():
     """Health check endpoint for Redis connectivity and latency."""
     if not HAS_REDIS or redis_client is None:
@@ -371,7 +673,30 @@ async def redis_health_check():
         }
 
 
-@app.get('/api/audit/forced_scans')
+@app.get('/api/audit/forced_scans',
+         tags=["Audit"],
+         summary="Get forced scan audit logs",
+         description="Returns the forced scan audit log as JSON list (read from reports/forced_scans.jsonl).",
+         responses={
+             200: {
+                 "description": "List of forced scan audit entries",
+                 "content": {
+                     "application/json": {
+                         "example": [
+                             {
+                                 "timestamp": "2023-01-01T12:00:00Z",
+                                 "target": "example.com",
+                                 "resolved_ip": "93.184.216.34",
+                                 "original_command": "scan example.com",
+                                 "client_host": "127.0.0.1",
+                                 "consent": True,
+                                 "note": "forced_via_websocket"
+                             }
+                         ]
+                     }
+                 }
+             }
+         })
 async def get_forced_scans():
     """Return the forced scan audit log as JSON list (read from reports/forced_scans.jsonl)."""
     reports_file = os.path.join(os.path.dirname(BASE_DIR), 'reports', 'forced_scans.jsonl')
@@ -389,24 +714,99 @@ async def get_forced_scans():
                 except Exception:
                     continue
     except Exception as e:
+        from core.logging_config import get_logger
+        logger = get_logger('api')
         logger.error(f"Error reading audit file: {e}")
         return []
     return entries
 
 
-@app.get('/api/scans')
+@app.get('/api/scans',
+         tags=["Scanning"],
+         summary="List scan results",
+         description="Returns a list of previous scan results.",
+         responses={
+             200: {
+                 "description": "List of scan results",
+                 "content": {
+                     "application/json": {
+                         "example": [
+                             {
+                                 "id": 1,
+                                 "timestamp": "2023-01-01T12:00:00Z",
+                                 "target": "example.com",
+                                 "ip": "93.184.216.34",
+                                 "command": "scan example.com --ports 1-1000"
+                             }
+                         ]
+                     }
+                 }
+             }
+         })
 async def api_list_scans(limit: int = 50):
     return list_scans(limit)
 
 
-@app.get('/api/scans/{scan_id}')
+@app.get('/api/scans/{scan_id}',
+         tags=["Scanning"],
+         summary="Get scan result by ID",
+         description="Returns the detailed output of a specific scan by its ID.",
+         responses={
+             200: {
+                 "description": "Scan result details",
+                 "content": {
+                     "application/json": {
+                         "example": {
+                             "id": 1,
+                             "output": "Scan results for example.com..."
+                         }
+                     }
+                 }
+             },
+             404: {
+                 "description": "Scan not found",
+                 "content": {
+                     "application/json": {
+                         "example": {
+                             "detail": "Scan not found"
+                         }
+                     }
+                 }
+             }
+         })
 async def api_get_scan(scan_id: int):
     out = get_scan_output(scan_id)
     if out is None:
         raise HTTPException(status_code=404, detail='Scan not found')
     return { 'id': scan_id, 'output': out }
 
-@app.get('/api/stream/scan/{target}')
+@app.get('/api/stream/scan/{target}',
+         tags=["Streaming"],
+         summary="Stream scan results (SSE)",
+         description="Stream port scan results using Server-Sent Events (SSE). Scans ports on the target and streams results as they become available.",
+         responses={
+             200: {
+                 "description": "Streaming scan results",
+                 "content": {
+                     "text/event-stream": {
+                         "examples": {
+                             "scan_start": {
+                                 "summary": "Scan started event",
+                                 "value": "data: {\"type\": \"scan_start\", \"target\": \"example.com\", \"total_ports\": 1000, \"message\": \"Starting scan on example.com with 1000 ports\"}\n\n"
+                             },
+                             "open_port": {
+                                 "summary": "Open port event",
+                                 "value": "data: {\"type\": \"open_port\", \"port\": {\"port\": 80, \"service\": \"http\", \"version\": \"Apache/2.4.41\", \"banner\": \"Apache/2.4.41\", \"confidence\": 0.9, \"protocol\": \"tcp\"}, \"progress\": 25}\n\n"
+                             },
+                             "scan_complete": {
+                                 "summary": "Scan completed event",
+                                 "value": "data: {\"type\": \"scan_complete\", \"message\": \"Scan completed\", \"progress\": 100}\n\n"
+                             }
+                         }
+                     }
+                 }
+             }
+         })
 async def stream_scan_results(target: str, ports: str = "1-1000", enhanced_service_detection: bool = True):
     """
     Stream port scan results using Server-Sent Events (SSE).
@@ -489,7 +889,33 @@ async def stream_scan_results(target: str, ports: str = "1-1000", enhanced_servi
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-@app.get('/api/scan/stream')
+@app.get('/api/scan/stream',
+         tags=["Streaming"],
+         summary="Stream scan results with vulnerability analysis",
+         description="Stream port scan results using Server-Sent Events (SSE) after each priority tier completes, with vulnerability analysis.",
+         responses={
+             200: {
+                 "description": "Streaming scan results with vulnerability analysis",
+                 "content": {
+                     "text/event-stream": {
+                         "examples": {
+                             "scan_start": {
+                                 "summary": "Scan started event",
+                                 "value": "data: {\"type\": \"scan_start\", \"target\": \"example.com\", \"total_ports\": 1000, \"progress\": 0}\n\n"
+                             },
+                             "tier_results": {
+                                 "summary": "Tier results with vulnerability analysis",
+                                 "value": "data: {\"type\": \"tier_results\", \"priority\": \"critical\", \"open_ports\": [{\"port\": 22, \"service\": \"ssh\", \"version\": \"OpenSSH_7.9\", \"risk\": \"HIGH\", \"cvss_score\": 7.5, \"vulnerabilities\": [\"CVE-2019-6111\"]}], \"progress\": 25}\n\n"
+                             },
+                             "scan_complete": {
+                                 "summary": "Scan completed event",
+                                 "value": "data: {\"type\": \"scan_complete\", \"message\": \"Scan completed\", \"progress\": 100}\n\n"
+                             }
+                         }
+                     }
+                 }
+             }
+         })
 async def stream_scan_results_new(target: str, ports: str = "1-1000", enhanced_service_detection: bool = True):
     """
     Stream port scan results using Server-Sent Events (SSE) after each priority tier completes.
@@ -594,6 +1020,336 @@ async def stream_scan_results_new(target: str, ports: str = "1-1000", enhanced_s
             yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+# Celery-based asynchronous scan endpoints
+try:
+    # Import Celery task
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from tasks.scan_tasks import perform_scan_task
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
+    logger.warning("Celery not available, async scan endpoints will not work")
+
+if CELERY_AVAILABLE:
+    from pydantic import BaseModel
+    from typing import Optional, Dict, Any
+    
+    class ScanRequest(BaseModel):
+        """
+        Request model for asynchronous scan operations.
+        
+        Attributes:
+            target (str): Target hostname or IP address to scan
+            ports (str): Port range to scan (e.g., "1-1000", "80,443", "22-25,80,443"). Default: "1-1000"
+            config (Optional[Dict[str, Any]]): Configuration options for the scan
+        """
+        target: str
+        ports: str = "1-1000"
+        config: Optional[Dict[str, Any]] = None
+    
+    @app.post('/api/scan',
+              tags=["Async Scanning"],
+              summary="Create asynchronous scan task",
+              description="Create an asynchronous scan task using Celery. Returns a task ID for tracking the scan progress.",
+              responses={
+                  200: {
+                      "description": "Scan task created successfully",
+                      "content": {
+                          "application/json": {
+                              "example": {
+                                  "task_id": "c5d8e2a1-1b3f-4e8c-9d2a-4f5b8e7a1c2d",
+                                  "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                                  "status": "queued",
+                                  "message": "Scan queued for target example.com",
+                                  "force": False
+                              }
+                          }
+                      }
+                  },
+                  500: {
+                      "description": "Celery not available",
+                      "content": {
+                          "application/json": {
+                              "example": {
+                                  "detail": "Celery not available"
+                              }
+                          }
+                      }
+                  }
+              })
+    async def create_async_scan(scan_request: ScanRequest, force: bool = False, request: Request = None):
+        """
+        Create an asynchronous scan task using Celery.
+        
+        Args:
+            scan_request: Scan request with target, ports, and config
+            force: If True, bypass cache and perform fresh scan
+            request: FastAPI request object for client IP
+            
+        Returns:
+            Dictionary with task_id for tracking the scan progress
+        """
+        import uuid
+        from fastapi import Request
+        
+        # Get client IP for rate limiting
+        client_ip = request.client.host
+        
+        # Record scan start metrics
+        if HAS_METRICS and metrics_collector:
+            metrics_collector.increment_scan(status="started", user_type="api")
+        
+        scan_id = str(uuid.uuid4())
+        
+        # Add force parameter to config
+        if scan_request.config is None:
+            scan_request.config = {}
+        scan_request.config['force'] = force
+        
+        # Queue the scan task
+        task = perform_scan_task.delay(scan_id, scan_request.target, scan_request.ports, scan_request.config)
+        
+        response = {
+            "task_id": task.id,
+            "scan_id": scan_id,
+            "status": "queued",
+            "message": f"Scan queued for target {scan_request.target}",
+            "force": force
+        }
+        
+        return response
+    
+    @app.get('/api/scan/{task_id}',
+             tags=["Async Scanning"],
+             summary="Get scan task status",
+             description="Get the status of an asynchronous scan task.",
+             responses={
+                 200: {
+                     "description": "Scan task status",
+                     "content": {
+                         "application/json": {
+                             "examples": {
+                                 "pending": {
+                                     "summary": "Task pending",
+                                     "value": {
+                                         "state": "PENDING",
+                                         "status": "Task is waiting to be processed"
+                                     }
+                                 },
+                                 "progress": {
+                                     "summary": "Task in progress",
+                                     "value": {
+                                         "state": "PROGRESS",
+                                         "status": "Scanning critical priority ports",
+                                         "progress": 25
+                                     }
+                                 },
+                                 "success": {
+                                     "summary": "Task completed",
+                                     "value": {
+                                         "state": "SUCCESS",
+                                         "result": {
+                                             "scan_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+                                             "target": "example.com",
+                                             "open_ports": [
+                                                 {
+                                                     "port": 80,
+                                                     "service": "http",
+                                                     "risk": "MEDIUM"
+                                                 }
+                                             ],
+                                             "status": "completed",
+                                             "progress": 100
+                                         }
+                                     }
+                                 },
+                                 "error": {
+                                     "summary": "Task failed",
+                                     "value": {
+                                         "state": "FAILURE",
+                                         "error": "Connection timeout"
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                 },
+                 404: {
+                     "description": "Task not found",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "detail": "Task not found"
+                             }
+                         }
+                     }
+                 }
+             })
+    async def get_scan_status(task_id: str):
+        """
+        Get the status of an asynchronous scan task.
+        
+        Returns:
+            Dictionary with task status and results if completed
+        """
+        from celery.result import AsyncResult
+        
+        # Get task result
+        task_result = AsyncResult(task_id, app=perform_scan_task.app)
+        
+        if task_result.state == 'PENDING':
+            # Task is waiting to be processed
+            response = {
+                'state': task_result.state,
+                'status': 'Task is waiting to be processed'
+            }
+        elif task_result.state == 'PROGRESS':
+            # Task is currently being processed
+            response = {
+                'state': task_result.state,
+                'status': task_result.info.get('status', ''),
+                'progress': task_result.info.get('progress', 0)
+            }
+            # Add any additional metadata
+            for key, value in task_result.info.items():
+                if key not in ['status', 'progress']:
+                    response[key] = value
+        elif task_result.state == 'SUCCESS':
+            # Task completed successfully
+            result_data = task_result.result
+            response = {
+                'state': task_result.state,
+                'result': result_data
+            }
+            
+            # Add cache information to response if available
+            if isinstance(result_data, dict):
+                if result_data.get('cached'):
+                    response['cached'] = True
+                    response['cached_at'] = result_data.get('cached_at')
+                else:
+                    response['cached'] = False
+        else:
+            # Task failed
+            response = {
+                'state': task_result.state,
+                'error': str(task_result.info) if isinstance(task_result.info, Exception) else task_result.info
+            }
+        
+        return response
+
+# Admin endpoints for rate limiting
+@app.post('/api/admin/rate-limits/reset/{client_id}',
+          tags=["Rate Limiting"],
+          summary="Reset client rate limits",
+          description="Reset rate limits for a specific client (admin endpoint)",
+          responses={
+              200: {
+                  "description": "Rate limits reset successfully",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "message": "Rate limits reset for client 127.0.0.1"
+                          }
+                      }
+                  }
+              },
+              500: {
+                  "description": "Rate limiter not available",
+                  "content": {
+                      "application/json": {
+                          "example": {
+                              "detail": "Rate limiter not available"
+                          }
+                      }
+                  }
+              }
+          })
+async def reset_client_limits(client_id: str, request: Request):
+    """Reset rate limits for a specific client (admin endpoint)"""
+    # In a real implementation, you would add authentication here
+    if HAS_RATE_LIMITER and rate_limiter:
+        rate_limiter.reset_client_limits(client_id)
+        return {"message": f"Rate limits reset for client {client_id}"}
+    else:
+        raise HTTPException(status_code=500, detail="Rate limiter not available")
+
+
+@app.get('/api/admin/rate-limits',
+         tags=["Rate Limiting"],
+         summary="Get rate limit dashboard",
+         description="Get rate limit dashboard data for monitoring",
+         responses={
+             200: {
+                 "description": "Rate limit dashboard data",
+                 "content": {
+                     "application/json": {
+                         "example": {
+                             "violations": {
+                                 "127.0.0.1": 3,
+                                 "192.168.1.100": 1
+                             },
+                             "abuse_patterns": [
+                                 {
+                                     "client_id": "127.0.0.1",
+                                     "violation_count": 3,
+                                     "is_on_cooldown": True
+                                 }
+                             ],
+                             "rate_limiter_status": "active"
+                         }
+                     }
+                 }
+             }
+         })
+async def get_rate_limit_dashboard():
+    """Get rate limit dashboard data for monitoring"""
+    if HAS_RATE_LIMITER and rate_limiter:
+        violations = rate_limiter.get_all_violations()
+        abuse_patterns = rate_limiter.get_abuse_patterns()
+        return {
+            "violations": violations,
+            "abuse_patterns": abuse_patterns,
+            "rate_limiter_status": "active"
+        }
+    else:
+        return {
+            "violations": {},
+            "abuse_patterns": [],
+            "rate_limiter_status": "inactive"
+        }
+
+@app.get("/metrics",
+         tags=["Health"],
+         summary="Get Prometheus metrics",
+         description="Prometheus metrics endpoint for system monitoring.",
+         responses={
+             200: {
+                 "description": "Prometheus metrics in text format",
+                 "content": {
+                     "text/plain": {
+                         "example": "# HELP cybersec_scan_total Total number of scans\n# TYPE cybersec_scan_total counter\ncybersec_scan_total{status=\"completed\",user_type=\"api\"} 42\n"
+                     }
+                 }
+             },
+             500: {
+                 "description": "Metrics not available",
+                 "content": {
+                     "application/json": {
+                         "example": {
+                             "detail": "Metrics not available"
+                         }
+                     }
+                 }
+             }
+         })
+async def get_metrics():
+    """Prometheus metrics endpoint"""
+    if not HAS_METRICS or not metrics_collector:
+        raise HTTPException(status_code=500, detail="Metrics not available")
+    
+    return Response(content=metrics_collector.get_metrics(), media_type="text/plain")
 
 # WebSocket endpoint for command execution
 @app.websocket("/ws/command")
@@ -932,7 +1688,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await _record_scan_end(client_host)
             except Exception:
                 pass
-            
+
             
     except WebSocketDisconnect:
         manager.disconnect(websocket)

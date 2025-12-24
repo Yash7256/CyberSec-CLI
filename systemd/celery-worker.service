@@ -1,0 +1,17 @@
+[Unit]
+Description=CyberSec-CLI Celery Worker
+After=network.target redis.service
+
+[Service]
+Type=forking
+User=cybersec
+Group=cybersec
+WorkingDirectory=/opt/cybersec-cli
+ExecStart=/opt/cybersec-cli/venv/bin/celery -A worker worker --loglevel=info --queues=scans --hostname=cybersec-worker@%h --concurrency=4 --prefetch-multiplier=1
+ExecReload=/bin/kill -HUP $MAINPID
+KillSignal=SIGTERM
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

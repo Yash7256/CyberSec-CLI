@@ -1,0 +1,98 @@
+groups:
+  - name: cybersec-cli-alerts
+    rules:
+      # Alert when error rate exceeds 10%
+      - alert: HighErrorRate
+        expr: rate(scan_errors_total[5m]) / rate(scans_total[5m]) > 0.10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} which exceeds 10% threshold"
+          impact: "Degraded service quality"
+          action: "Investigate scan errors and check system logs"
+
+      # Alert when scan queue exceeds 100 jobs
+      - alert: HighScanQueue
+        expr: celery_queue_length > 100
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High scan queue length"
+          description: "Scan queue has {{ $value }} jobs which exceeds the threshold of 100"
+          impact: "Potential scan delays and resource exhaustion"
+          action: "Check worker availability and system resources"
+
+      # Alert when cache hit rate falls below 30%
+      - alert: LowCacheHitRate
+        expr: rate(cache_hits_total[5m]) / (rate(cache_hits_total[5m]) + rate(cache_misses_total[5m])) < 0.30
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} which is below the 30% threshold"
+          impact: "Increased load on scanning infrastructure"
+          action: "Review cache configuration and consider increasing cache size"
+
+      # Alert when rate limit violations are high
+      - alert: HighRateLimitViolations
+        expr: rate(rate_limit_violations_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate limit violations"
+          description: "There are {{ $value }} rate limit violations per minute"
+          impact: "Potential abuse or misconfiguration"
+          action: "Review rate limit configuration and investigate source of violations"
+
+      # Alert when average scan duration exceeds 60 seconds
+      - alert: HighScanDuration
+        expr: histogram_quantile(0.95, scan_duration_seconds_sum / scan_duration_seconds_count) > 60
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High scan duration"
+          description: "95th percentile of scan duration is {{ $value }} seconds, exceeding 60 seconds"
+          impact: "Slow response times for users"
+          action: "Investigate scan performance bottlenecks"
+
+      # Alert when active scans exceed system capacity
+      - alert: HighActiveScans
+        expr: active_scans_current > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High number of active scans"
+          description: "There are {{ $value }} active scans, which may exceed system capacity"
+          impact: "Resource exhaustion and degraded performance"
+          action: "Review scan concurrency limits and system resources"
+
+      # Alert when database connections are high
+      - alert: HighDatabaseConnections
+        expr: database_connections_active > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High database connections"
+          description: "Database has {{ $value }} active connections, which may approach connection limits"
+          impact: "Potential database connection errors"
+          action: "Review database connection pooling and query performance"
+
+      # Alert when Redis connection pool is high
+      - alert: HighRedisConnections
+        expr: redis_connection_pool_size > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High Redis connection pool size"
+          description: "Redis connection pool has {{ $value }} connections, which may approach limits"
+          impact: "Potential Redis connection errors"
+          action: "Review Redis connection configuration and performance"

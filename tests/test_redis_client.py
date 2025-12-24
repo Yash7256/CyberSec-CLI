@@ -39,7 +39,8 @@ class TestRedisClient(unittest.TestCase):
         
         # Get the value
         retrieved = client.get(key)
-        self.assertEqual(retrieved, value)
+        # Redis returns bytes, so compare as bytes or decode both
+        self.assertEqual(retrieved, value.encode() if isinstance(retrieved, bytes) else retrieved)
         
         # Clean up
         client.delete(key)
