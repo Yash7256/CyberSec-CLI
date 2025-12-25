@@ -20,14 +20,12 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconn
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add imports for streaming support
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.sql import text
 from starlette.middleware.base import BaseHTTPMiddleware
-
-# Starlette imports already available from FastAPI
-# from starlette.requests import Request
-# from starlette.responses import Response
+from starlette.requests import Request
+from starlette.responses import Response
 
 from cybersec_cli.utils.logger import log_forced_scan
 
@@ -627,6 +625,20 @@ os.makedirs(os.path.join(STATIC_DIR, "img"), exist_ok=True)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Admin files
+ADMIN_DIR = os.path.join(BASE_DIR, "admin")
+if os.path.exists(ADMIN_DIR):
+    app.mount("/admin", StaticFiles(directory=ADMIN_DIR), name="admin")
+
+@app.get("/admin", include_in_schema=False)
+async def admin_dashboard():
+    """Serve the admin dashboard page."""
+    admin_html_path = os.path.join(ADMIN_DIR, "rate_limits.html")
+    if os.path.exists(admin_html_path):
+        return FileResponse(admin_html_path)
+    else:
+        raise HTTPException(status_code=404, detail="Admin dashboard not found")
 
 # WebSocket connections
 active_connections: List[WebSocket] = []
@@ -1723,7 +1735,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # (This is informational; enforcement can be stricter if desired)
                     try:
                         with open(allow_path, "r", encoding="utf-8") as f:
-                            allow_lines = [line.strip() for line in f if line.strip()]
+                            allow_lines = [l.strip() for l in f if l.strip()]
                         if allow_lines and tgt not in allow_lines:
                             await websocket.send_text(
                                 json.dumps(
