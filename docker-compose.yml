@@ -46,8 +46,8 @@ services:
     command: ["/app/worker-startup.sh", "celery", "-A", "tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     environment:
       # Required
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://cybersec:cybersec123@postgres:5432/cybersec
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://cybersec:cybersec123@postgres:5432/cybersec}
       
       # Optional (set these in .env file)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -109,8 +109,8 @@ services:
       - "8000:8000"
     environment:
       # Required
-      - REDIS_URL=redis://redis:6379
-      - DATABASE_URL=postgresql://cybersec:cybersec123@postgres:5432/cybersec
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - DATABASE_URL=${DATABASE_URL:-postgresql://cybersec:cybersec123@postgres:5432/cybersec}
       
       # Optional (set these in .env file)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -209,7 +209,7 @@ services:
     image: oliver006/redis_exporter:latest
     container_name: cybersec-redis-exporter
     environment:
-      - REDIS_ADDR=redis:6379
+      - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
     ports:
       - "9121:9121"
     networks:
@@ -222,7 +222,7 @@ services:
     image: prometheuscommunity/postgres-exporter:latest
     container_name: cybersec-postgres-exporter
     environment:
-      - DATA_SOURCE_NAME=postgresql://cybersec:cybersec123@postgres:5432/cybersec?sslmode=disable
+      - DATA_SOURCE_NAME=${DATA_SOURCE_NAME:-postgresql://cybersec:cybersec123@postgres:5432/cybersec?sslmode=disable}
     ports:
       - "9187:9187"
     networks:

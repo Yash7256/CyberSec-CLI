@@ -48,8 +48,8 @@ RUN pip install --upgrade pip setuptools wheel && \
 RUN pip install -e .
 
 # Create startup scripts
-RUN echo '#!/bin/bash\n\n# Wait for database to be ready\nuntil nc -z postgres 5432; do\n  echo "Waiting for PostgreSQL..."\n  sleep 2\ndone\n\n# Run database migrations\npython scripts/init_db.py || echo "Database migration failed, will retry on next start"\n\n# Start the application\nexec "$@"' > /app/web-startup.sh && chmod +x /app/web-startup.sh && \
-    echo '#!/bin/bash\n\n# Wait for services to be ready\nuntil nc -z postgres 5432; do\n  echo "Waiting for PostgreSQL..."\n  sleep 2\ndone\n\nuntil nc -z redis 6379; do\n  echo "Waiting for Redis..."\n  sleep 2\ndone\n\n# Start the application\nexec "$@"' > /app/worker-startup.sh && chmod +x /app/worker-startup.sh
+RUN echo '#!/bin/bash\n\n# Get database host from environment, default to postgres\nDB_HOST=${DB_HOST:-postgres}\n\n# Wait for database to be ready\nuntil nc -z $DB_HOST 5432; do\n  echo "Waiting for PostgreSQL at $DB_HOST..."\n  sleep 2\ndone\n\n# Run database migrations\npython scripts/init_db.py || echo "Database migration failed, will retry on next start"\n\n# Start the application\nexec "$@"' > /app/web-startup.sh && chmod +x /app/web-startup.sh && \
+    echo '#!/bin/bash\n\n# Get database host from environment, default to postgres\nDB_HOST=${DB_HOST:-postgres}\nREDIS_HOST=${REDIS_HOST:-redis}\n\n# Wait for services to be ready\nuntil nc -z $DB_HOST 5432; do\n  echo "Waiting for PostgreSQL at $DB_HOST..."\n  sleep 2\ndone\n\nuntil nc -z $REDIS_HOST 6379; do\n  echo "Waiting for Redis at $REDIS_HOST..."\n  sleep 2\ndone\n\n# Start the application\nexec "$@"' > /app/worker-startup.sh && chmod +x /app/worker-startup.sh
 
 # Create necessary directories
 RUN mkdir -p ~/.cybersec/models && \
