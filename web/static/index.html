@@ -9,6 +9,21 @@
     <link href="/static/css/styles.css" rel="stylesheet">
     <link href="/static/css/port-scan.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Minimal fallback CSS: used when Tailwind or external CSS fails to load -->
+    <style>
+        html,body{margin:0;padding:0;font-family: 'Fira Code', monospace;background:#0f1720;color:#e6edf3}
+        .container{max-width:980px;margin:0 auto;padding:32px}
+        header h1{color:#6ee7b7;margin:0 0 6px;font-size:28px}
+        header p{color:#98a6b3;margin:0 0 16px}
+        .card{background:#0b1220;padding:18px;border-radius:8px;margin-bottom:18px;border:1px solid rgba(255,255,255,0.03)}
+        label{display:block;color:#9fb0c7;margin-bottom:6px;font-size:13px}
+        input[type=text]{width:100%;padding:8px;border-radius:6px;border:1px solid #2b3946;background:#071021;color:#e6edf3}
+        button{background:#10b981;color:#fff;border:none;padding:10px 14px;border-radius:6px;cursor:pointer}
+        button.secondary{background:#ef4444}
+        .hidden{display:none}
+        h2,h3{color:#9be7c6}
+        .border-l-4{border-left:4px solid #c026d3;padding-left:12px}
+    </style>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen">
     <div id="root" class="container mx-auto px-4 py-8">
