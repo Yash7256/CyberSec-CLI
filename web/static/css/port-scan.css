@@ -1,12 +1,12 @@
-/* Port Scan Container */
+/* Port Scan Container - Updated for new design */
 .port-scan-container {
     margin: 1rem 0;
     font-family: 'Fira Code', 'Courier New', monospace;
-    background-color: #1a202c;
+    background-color: #1f2937; /* Updated to match new theme */
     border-radius: 0.75rem;
     overflow: hidden;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
-    border: 1px solid #2d3748;
+    border: 1px solid #374151; /* Updated border color */
 }
 
 /* Port Scan Results */
@@ -15,7 +15,7 @@
 }
 
 .port-scan-results h3 {
-    border-bottom: 2px solid #2d3748;
+    border-bottom: 2px solid #374151; /* Updated border color */
     padding-bottom: 0.75rem;
     margin-bottom: 1.25rem;
     font-weight: 600;
@@ -29,17 +29,17 @@
 }
 
 .port-scan-results::-webkit-scrollbar-track {
-    background: #1a202c;
+    background: #1f2937; /* Updated to match new theme */
     border-radius: 4px;
 }
 
 .port-scan-results::-webkit-scrollbar-thumb {
-    background: #4a5568;
+    background: #4b5563; /* Updated to match new theme */
     border-radius: 4px;
 }
 
 .port-scan-results::-webkit-scrollbar-thumb:hover {
-    background: #718096;
+    background: #6b7280; /* Updated to match new theme */
 }
 
 /* Port card animations */

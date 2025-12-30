@@ -1,0 +1,452 @@
+/* Custom properties for the cybersecurity theme */
+:root {
+  --background-main: #0A0B14;
+  --background-sidebar: rgba(255, 255, 255, 0.02);
+  --background-main-area: #0A0B14;
+  --text-primary: #E5E7EB;
+  --text-secondary: #9AA0B4;
+  --text-placeholder: #9AA0B4;
+  --input-background: rgba(255, 255, 255, 0.03);
+  --input-border: rgba(255, 255, 255, 0.1);
+  --button-gradient-start: #8B7FEB;
+  --button-gradient-end: #7B6FDB;
+  --button-text: #C9C6E3;
+  --empty-state-text: rgba(255, 255, 255, 0.15);
+  --empty-state-subtext: rgba(255, 255, 255, 0.08);
+  --nav-background: rgba(255, 255, 255, 0.02);
+  --border-separator: rgba(255, 255, 255, 0.05);
+}
+
+/* Main layout styles */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Satoshi', 'Inter', 'SF Pro Display', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: var(--background-main);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Top Navigation Bar */
+.top-nav {
+  background-color: var(--nav-background);
+  height: 80px;
+  border-bottom: 1px solid var(--border-separator);
+}
+
+.logo-container h1 {
+  color: white;
+  font-size: 1.25rem;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+}
+
+.nav-menu ul li a.nav-item {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  transition: color 0.2s ease;
+}
+
+.nav-menu ul li a.nav-item:hover {
+  color: white;
+}
+
+.user-profile .profile-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: #374151;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-profile .profile-icon i {
+  color: #9CA3AF;
+  font-size: 0.875rem;
+}
+
+/* Main container */
+.main-container {
+  min-height: calc(100vh - 80px);
+  background-color: var(--background-main);
+  display: flex;
+}
+
+/* Sidebar panel */
+.sidebar-panel {
+  width: 35%;
+  background-color: var(--background-sidebar);
+  border-right: 1px solid var(--border-separator);
+  padding: 40px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-panel h2 {
+  color: white;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 2rem;
+}
+
+/* Input sections */
+.target-host-section label,
+.port-range-section label {
+  display: block;
+  color: var(--text-primary);
+  font-size: 17.72px;
+  font-weight: 500;
+  font-family: 'Satoshi', 'Inter', 'SF Pro Display', system-ui;
+  margin-bottom: 32px;
+}
+
+/* Input fields */
+input[type="text"] {
+  width: 100%;
+  padding: 16px 20px;
+  background-color: var(--input-background);
+  border: 1px solid var(--input-border);
+  border-radius: 12px;
+  color: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+input[type="text"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(139, 127, 235, 0.3);
+}
+
+input[type="text"]::placeholder {
+  color: var(--text-placeholder);
+  font-size: 10px;
+}
+
+/* Enhanced detection checkbox */
+.enhanced-detection-section {
+  margin-bottom: 32px;
+}
+
+.enhanced-detection-section .flex.items-center {
+  align-items: center;
+}
+
+.enhanced-detection-section input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid #4B5563;
+  background-color: #1F2937;
+  accent-color: #8B7FEB;
+}
+
+.enhanced-detection-section label {
+  color: #9CA3AF;
+  font-size: 0.875rem;
+  margin-left: 0.5rem;
+}
+
+/* Start scan button */
+.start-scan-btn {
+  width: 100%;
+  height: 52px;
+  background: linear-gradient(90deg, var(--button-gradient-start), var(--button-gradient-end));
+  color: var(--button-text);
+  font-size: 15px;
+  font-weight: 700;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.start-scan-btn:hover {
+  opacity: 0.9;
+}
+
+.start-scan-btn:active {
+  transform: scale(0.98);
+}
+
+.start-scan-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(139, 127, 235, 0.4);
+}
+
+/* Bottom icon */
+.bottom-icon {
+  position: absolute;
+  bottom: 32px;
+  left: 40px;
+}
+
+.bottom-icon i {
+  color: var(--text-secondary);
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+}
+
+/* Main area */
+.main-area {
+  width: 65%;
+  background-color: var(--background-main-area);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+}
+
+.empty-heading {
+  color: var(--empty-state-text);
+  font-size: 48px;
+  font-weight: 300;
+  margin-bottom: 16px;
+  font-family: 'Satoshi', 'Inter', 'SF Pro Display', system-ui;
+  letter-spacing: 0.02em;
+}
+
+.empty-subtext {
+  color: var(--empty-state-subtext);
+  font-size: 18px;
+  font-weight: 400;
+  font-family: 'Satoshi', 'Inter', 'SF Pro Display', system-ui;
+}
+
+/* Scan results container */
+.scan-results-container {
+  width: 100%;
+  padding: 20px;
+}
+
+/* Progress section */
+.progress-section {
+  background-color: #1F2937;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.progress-section .flex.justify-between.items-center {
+  margin-bottom: 0.5rem;
+}
+
+.progress-section .text-sm.text-gray-300 {
+  color: #D1D5DB;
+}
+
+.progress-section .w-full.bg-gray-700 {
+  background-color: #374151;
+  border-radius: 0.625rem;
+  height: 0.625rem;
+}
+
+.progress-section .bg-green-600 {
+  background-color: #10B981;
+  height: 0.625rem;
+  border-radius: 0.625rem;
+}
+
+.progress-section .text-sm.text-yellow-400 {
+  color: #FBBF24;
+}
+
+.progress-section .text-sm.text-green-400 {
+  color: #10B981;
+}
+
+/* Results sections */
+.results-section {
+  background-color: #1F2937;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.results-section h3 {
+  color: #F87171;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+}
+
+.results-section .border-l-4.border-red-600 {
+  border-left-color: #DC2626;
+}
+
+.results-section .border-l-4.border-red-500 {
+  border-left-color: #EF4444;
+}
+
+.results-section .border-l-4.border-yellow-500 {
+  border-left-color: #F59E0B;
+}
+
+.results-section .border-l-4.border-blue-400 {
+  border-left-color: #60A5FA;
+}
+
+/* Port cards */
+.port-card {
+  background-color: #1F2937;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border-left-width: 0.25rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 1rem;
+}
+
+.port-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+  border-color: rgba(66, 153, 225, 0.2);
+}
+
+.port-card .bg-gray-700 {
+  background-color: #374151;
+  padding: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.port-card .font-mono.font-bold.text-lg {
+  color: white;
+  font-weight: bold;
+}
+
+.port-card .text-sm.text-gray-300 {
+  color: #D1D5DB;
+}
+
+.port-card .p-4 {
+  padding: 1rem;
+}
+
+.port-card .text-sm.text-gray-400 {
+  color: #9CA3AF;
+}
+
+.port-card .font-mono.break-all {
+  color: white;
+}
+
+.port-card .bg-gray-900 {
+  background-color: #111827;
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+  .sidebar-panel {
+    width: 40%;
+  }
+  
+  .main-area {
+    width: 60%;
+  }
+}
+
+@media (max-width: 768px) {
+  .main-container {
+    flex-direction: column;
+  }
+  
+  .sidebar-panel {
+    width: 100%;
+    padding: 20px;
+  }
+  
+  .main-area {
+    width: 100%;
+    padding: 20px;
+  }
+  
+  .top-nav {
+    height: auto;
+    padding: 1rem;
+  }
+  
+  .nav-menu {
+    order: 3;
+    margin-top: 1rem;
+  }
+  
+  .nav-menu ul {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  
+  .logo-container {
+    order: 1;
+  }
+  
+  .user-profile {
+    order: 2;
+    margin-left: auto;
+  }
+  
+  .empty-heading {
+    font-size: 32px;
+  }
+  
+  .empty-subtext {
+    font-size: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-panel {
+    padding: 16px;
+  }
+  
+  .bottom-icon {
+    position: static;
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+  }
+  
+  .target-host-section label,
+  .port-range-section label {
+    font-size: 16px;
+  }
+  
+  .empty-heading {
+    font-size: 24px;
+  }
+  
+  .empty-subtext {
+    font-size: 14px;
+  }
+}
+
+/* Accessibility focus states */
+input:focus,
+button:focus,
+a:focus {
+  outline: 2px solid var(--button-gradient-start);
+  outline-offset: 2px;
+}
+
+/* Smooth transitions for all interactive elements */
+* {
+  transition: all 0.2s ease;
+}
+
+/* Backdrop blur for overlays if supported */
+@supports (backdrop-filter: blur(10px)) {
+  .sidebar-panel {
+    backdrop-filter: blur(10px);
+  }
+}
