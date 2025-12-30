@@ -218,9 +218,8 @@
             width: 65%;
             background: var(--bg-primary);
             display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 3rem;
+            flex-direction: column;
+            padding: 0;
             position: relative;
             overflow: hidden;
         }
@@ -242,17 +241,36 @@
         }
 
         .empty-state {
-            position: relative;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
 
         .results-container {
-            position: relative;
-            z-index: 1;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .empty-state {
             text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
         }
 
         .empty-heading {
@@ -277,8 +295,97 @@
             padding: 2rem;
         }
 
-        .results-container.hidden {
+        .results-container:not(.hidden) ~ .empty-state {
             display: none;
+        }
+        
+        .results-container:not(.hidden) {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .filter-controls {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+        
+        .filter-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--input-border);
+            background: var(--input-bg);
+            color: var(--text-secondary);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .filter-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+        }
+        
+        .filter-btn.active {
+            background: linear-gradient(135deg, var(--purple-gradient-start), var(--purple-gradient-end));
+            color: var(--button-text);
+            border-color: var(--purple-gradient-start);
+        }
+        
+        .scan-progress {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .progress-text {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .progress-bar-container {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--purple-gradient-start), var(--purple-gradient-end));
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+
+        .error-state {
+            text-align: center;
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .error-state h3 {
+            font-size: 1.5rem;
+            color: #EF4444;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .error-state p {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            max-width: 400px;
         }
 
         .progress-section {
@@ -668,10 +775,10 @@
         
         <nav>
             <ul class="nav-menu">
-                <li><a href="#">Scan</a></li>
-                <li><a href="#">Live results</a></li>
-                <li><a href="#">History</a></li>
-                <li><a href="#">Docs</a></li>
+                <li><a href="#"></a></li>
+                <li><a href="#"></a></li>
+                <li><a href="#"></a></li>
+                <li><a href="#"></a></li>
             </ul>
         </nav>
         
@@ -730,65 +837,30 @@
             <!-- Empty State -->
             <div id="emptyState" class="empty-state">
                 <h2 class="empty-heading">CLI Streaming Port Scanner</h2>
-                <p class="empty-subtext">Your results will appear here</p>
+               
             </div>
             
             <!-- Results Container (Initially Hidden) -->
             <div id="resultsContainer" class="results-container hidden">
-                <!-- Progress Section -->
-                <div id="progressSection" class="progress-section hidden">
-                    <div class="progress-header">
-                        <span id="statusText">Ready to scan</span>
-                        <span id="progressText">0%</span>
+                <!-- Scan Progress Indicator -->
+                <div id="scanProgress" class="scan-progress hidden">
+                    <div class="progress-text">
+                        <span id="statusText"></span>
+                        <span id="scanProgressPercent" style="float:right;color:var(--text-secondary);font-weight:600">0%</span>
                     </div>
                     <div class="progress-bar-container">
-                        <div id="progressBar" class="progress-bar"></div>
-                    </div>
-                    <div id="scanningMessage" class="status-message status-scanning hidden">
-                        <i class="fas fa-spinner fa-spin"></i>
-                        <span>Scanning in progress...</span>
-                    </div>
-                    <div id="completeMessage" class="status-message status-complete hidden">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Scan completed successfully!</span>
+                        <div id="scanProgressBar" class="progress-bar" style="width:0%"></div>
                     </div>
                 </div>
                 
-                <!-- Critical Priority Ports -->
-                <div id="criticalSection" class="results-section critical hidden">
-                    <h3 class="results-title critical">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        Critical Priority Ports
-                    </h3>
-                    <div id="criticalPorts"></div>
+                <!-- Risk Filter Controls -->
+                <div class="filter-controls">
+                    <button class="filter-btn active" data-filter="all">All Ports</button>
+                    <button class="filter-btn" data-filter="high">High Risk</button>
+                    <button class="filter-btn" data-filter="medium">Medium Risk</button>
+                    <button class="filter-btn" data-filter="low">Low Risk</button>
                 </div>
-                
-                <!-- High Priority Ports -->
-                <div id="highSection" class="results-section high hidden">
-                    <h3 class="results-title high">
-                        <i class="fas fa-fire"></i>
-                        High Priority Ports
-                    </h3>
-                    <div id="highPorts"></div>
-                </div>
-                
-                <!-- Medium Priority Ports -->
-                <div id="mediumSection" class="results-section medium hidden">
-                    <h3 class="results-title medium">
-                        <i class="fas fa-exclamation-circle"></i>
-                        Medium Priority Ports
-                    </h3>
-                    <div id="mediumPorts"></div>
-                </div>
-                
-                <!-- Low Priority Ports -->
-                <div id="lowSection" class="results-section low hidden">
-                    <h3 class="results-title low">
-                        <i class="fas fa-info-circle"></i>
-                        Low Priority Ports
-                    </h3>
-                    <div id="lowPorts"></div>
-                </div>
+                <div id="allPorts"></div>
             </div>
         </div>
     </div>
@@ -909,8 +981,6 @@
                     }
                 }, 300000); // 5 minutes
 
-                // Show scanning indicator
-                this.showScanningIndicator();
 
                 // Build URL with parameters
                 const url = new URL('/api/scan/stream', window.location.origin);
@@ -955,6 +1025,8 @@
 
                     this.eventSource.onopen = () => {
                         console.log('SSE connection opened');
+                        // Only show the indicator when the SSE connection is established
+                        this.showScanningIndicator();
                         this.updateStatus(`Scanning ${target}...`);
                     };
 
@@ -1032,24 +1104,16 @@
             }
 
             handleGroupComplete(data) {
-                this.updateProgress(data.progress);
                 this.updateStatus(`${data.priority.charAt(0).toUpperCase() + data.priority.slice(1)} priority scan complete (${data.open_count} open ports)`);
             }
 
             handleScanComplete(data) {
-                this.updateProgress(100);
-                this.updateStatus('Scan completed');
+                this.updateStatus('Scan completed successfully!', 'complete');
+                
+                // Close the connection
                 this.close();
                 
-                // Show completion message
-                const completionMsg = document.getElementById('completeMessage');
-                if (completionMsg) {
-                    completionMsg.classList.remove('hidden');
-                    completionMsg.innerHTML = '<i class="fas fa-check-circle"></i> Scan completed successfully!';
-                    setTimeout(() => {
-                        completionMsg.classList.add('hidden');
-                    }, 5000);
-                }
+
                 
                 // Show start button again after completion
                 const startBtn = document.getElementById('startBtn');
@@ -1067,32 +1131,25 @@
                 if (startBtn) {
                     startBtn.classList.remove('hidden');
                 }
+                
+                // Show error in results area if no results were received yet
+                if (this.totalPorts === 0) {
+                    const resultsContainer = document.getElementById('resultsContainer');
+                    resultsContainer.classList.remove('hidden');
+                    resultsContainer.innerHTML = `
+                        <div class="error-state">
+                            <h3><i class="fas fa-exclamation-triangle"></i> Scan Error</h3>
+                            <p>${message}</p>
+                        </div>
+                    `;
+                }
             }
 
             renderPriorityGroup(priority, ports) {
-                // Map the priority to the correct section
-                let sectionId;
-                switch(priority) {
-                    case 'critical':
-                        sectionId = 'criticalPorts';
-                        break;
-                    case 'high':
-                        sectionId = 'highPorts';
-                        break;
-                    case 'medium':
-                        sectionId = 'mediumPorts';
-                        break;
-                    case 'low':
-                        sectionId = 'lowPorts';
-                        break;
-                    default:
-                        sectionId = 'lowPorts';
-                }
-                
-                const container = document.getElementById(sectionId);
+                const container = document.getElementById('allPorts');
                 
                 if (!container) {
-                    console.warn(`Container not found: ${sectionId}`);
+                    console.warn('Container not found: allPorts');
                     return;
                 }
 
@@ -1101,12 +1158,6 @@
                     const portElement = this.createPortElement(port, priority);
                     container.appendChild(portElement);
                 });
-                
-                // Show the section if it was hidden
-                const section = document.getElementById(sectionId.replace('Ports', 'Section'));
-                if (section) {
-                    section.classList.remove('hidden');
-                }
             }
 
             createPortElement(port, priority) {
@@ -1116,6 +1167,7 @@
                 // Create the port item element
                 const portItem = document.createElement('div');
                 portItem.className = 'port-item';
+                portItem.setAttribute('data-risk', riskLevel);
                 
                 // Add click event to open modal
                 portItem.addEventListener('click', () => {
@@ -1186,37 +1238,65 @@
             }
 
             updateProgress(percentage) {
-                const progressBar = document.getElementById('progressBar');
-                const progressText = document.getElementById('progressText');
-                
+                const progressBar = document.getElementById('scanProgressBar');
+                const percentEl = document.getElementById('scanProgressPercent');
+                const statusEl = document.getElementById('statusText');
+
                 if (progressBar) {
-                    progressBar.style.width = `\${percentage}%`;
+                    const pct = Math.max(0, Math.min(100, Number(percentage) || 0));
+                    progressBar.style.width = pct + '%';
+                    if (percentEl) percentEl.textContent = pct + '%';
                 }
-                
-                if (progressText) {
-                    progressText.textContent = `\${percentage}%`;
+
+                if (statusEl) {
+                    if (percentage >= 100) {
+                        statusEl.textContent = 'Scan complete';
+                        statusEl.className = 'status-complete';
+                    } else if (percentage > 0) {
+                        statusEl.textContent = `Scanning... ${percentage}%`;
+                        statusEl.className = 'status-scanning';
+                    } else {
+                        statusEl.textContent = 'Scanning in progress...';
+                        statusEl.className = 'status-scanning';
+                    }
                 }
             }
 
             updateStatus(message, type = 'info') {
-                const statusElement = document.getElementById('statusText');
-                if (statusElement) {
-                    statusElement.innerHTML = message;
-                    statusElement.className = `status-message \${type === 'error' ? 'status-error' : type === 'success' ? 'status-complete' : type === 'warning' ? 'status-warning' : 'status-scanning'}`;
+                const statusEl = document.getElementById('statusText');
+                const percentEl = document.getElementById('scanProgressPercent');
+
+                if (statusEl) {
+                    statusEl.textContent = message;
+                    if (type === 'error') statusEl.className = 'status-error';
+                    else if (type === 'warning') statusEl.className = 'status-warning';
+                    else if (type === 'complete') statusEl.className = 'status-complete';
+                    else statusEl.className = 'status-scanning';
+                }
+
+                // If scan finished or errored, update progress and hide indicator shortly after
+                if (type === 'complete') {
+                    this.updateProgress(100);
+                    setTimeout(() => this.hideScanningIndicator(), 800);
+                    if (percentEl) percentEl.textContent = '100%';
+                } else if (type === 'error') {
+                    this.updateProgress(0);
+                    setTimeout(() => this.hideScanningIndicator(), 1200);
+                    if (percentEl) percentEl.textContent = '0%';
                 }
             }
 
             showScanningIndicator() {
-                const indicator = document.getElementById('scanningMessage');
-                if (indicator) {
-                    indicator.classList.remove('hidden');
+                const scanProgress = document.getElementById('scanProgress');
+                if (scanProgress) {
+                    scanProgress.classList.remove('hidden');
                 }
             }
 
             hideScanningIndicator() {
-                const indicator = document.getElementById('scanningMessage');
-                if (indicator) {
-                    indicator.classList.add('hidden');
+                const scanProgress = document.getElementById('scanProgress');
+                if (scanProgress) {
+                    scanProgress.classList.add('hidden');
                 }
             }
 
@@ -1291,7 +1371,7 @@
                 if (port.cvss_score) {
                     const cvssScore = port.cvss_score.toFixed(1);
                     const cvssClass = cvssScore >= 7.0 ? 'cvss-high' : cvssScore >= 4.0 ? 'cvss-medium' : 'cvss-low';
-                    modalCvss.innerHTML = `CVSS: <span class="\${cvssClass}">${cvssScore}/10</span>`;
+                    modalCvss.innerHTML = `CVSS: <span class="${cvssClass}">${cvssScore}/10</span>`;
                 } else {
                     modalCvss.innerHTML = 'CVSS: <span class="cvss-low">N/A</span>';
                 }
@@ -1347,6 +1427,7 @@
                 // Prevent background scrolling
                 document.body.style.overflow = 'hidden';
             }
+
         }
         
         // Initialize stream handler
@@ -1366,34 +1447,53 @@
             // Hide empty state and show results
             document.getElementById('emptyState').classList.add('hidden');
             document.getElementById('resultsContainer').classList.remove('hidden');
-            document.getElementById('progressSection').classList.remove('hidden');
-            document.getElementById('scanningMessage').classList.remove('hidden');
             
             // Clear previous results
-            document.getElementById('criticalPorts').innerHTML = '';
-            document.getElementById('highPorts').innerHTML = '';
-            document.getElementById('mediumPorts').innerHTML = '';
-            document.getElementById('lowPorts').innerHTML = '';
+            document.getElementById('allPorts').innerHTML = '';
             
-            // Hide sections initially
-            document.getElementById('criticalSection').classList.add('hidden');
-            document.getElementById('highSection').classList.add('hidden');
-            document.getElementById('mediumSection').classList.add('hidden');
-            document.getElementById('lowSection').classList.add('hidden');
-            
-            // Hide completion message
-            document.getElementById('completeMessage').classList.add('hidden');
-            
-// ... existing code ...
-            
-            // Start streaming
+            // Start streaming (streamHandler will show progress indicator once connected)
             streamHandler.startStream(target, ports, enhancedDetection);
             
             // Hide start button during scan
             document.getElementById('startBtn').classList.add('hidden');
         });
         
-// ... existing code ...
+        // Add event listeners for filter buttons
+        document.querySelectorAll('.filter-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                // Remove active class from all buttons
+                document.querySelectorAll('.filter-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                
+                // Add active class to clicked button
+                this.classList.add('active');
+                
+                // Apply filter
+                const filter = this.getAttribute('data-filter');
+                applyFilter(filter);
+            });
+        });
+        
+        // Function to apply filter to port results
+        function applyFilter(filter) {
+            const allPorts = document.getElementById('allPorts');
+            const portItems = allPorts.querySelectorAll('.port-item');
+            
+            portItems.forEach(item => {
+                const riskLevel = item.getAttribute('data-risk');
+                
+                if (filter === 'all') {
+                    item.style.display = 'block';
+                } else {
+                    if (riskLevel === filter) {
+                        item.style.display = 'block';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                }
+            });
+        }
         
         // Function to show scan tips
         function showScanTips() {

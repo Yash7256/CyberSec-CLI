@@ -39,8 +39,6 @@ class StreamHandler {
         this.totalPorts = 0;
         this.scannedPorts = 0;
 
-        // Show scanning indicator
-        this.showScanningIndicator();
 
         // Build URL with parameters
         const url = new URL('/api/scan/stream', window.location.origin);
@@ -75,6 +73,8 @@ class StreamHandler {
 
             this.eventSource.onopen = () => {
                 console.log('SSE connection opened');
+                // Show the indicator only once the connection is established
+                this.showScanningIndicator();
             };
 
         } catch (error) {
@@ -425,14 +425,14 @@ class StreamHandler {
      * @param {number} percentage - Progress percentage
      */
     updateProgress(percentage) {
-        const progressBar = document.getElementById('scan-progress-bar');
-        const progressText = document.getElementById('scan-progress-text');
-        
+        const progressBar = document.getElementById('scanProgressBar') || document.getElementById('scan-progress-bar');
+        const progressText = document.getElementById('scanProgressPercent') || document.getElementById('scan-progress-text');
+
         if (progressBar) {
             progressBar.style.width = `${percentage}%`;
             progressBar.setAttribute('aria-valuenow', percentage);
         }
-        
+
         if (progressText) {
             progressText.textContent = `${percentage}%`;
         }
@@ -444,10 +444,10 @@ class StreamHandler {
      * @param {string} type - Message type (info, error, success)
      */
     updateStatus(message, type = 'info') {
-        const statusElement = document.getElementById('scan-status');
+        const statusElement = document.getElementById('statusText') || document.getElementById('scan-status');
         if (statusElement) {
             statusElement.textContent = message;
-            statusElement.className = `text-sm ${type === 'error' ? 'text-red-400' : type === 'success' ? 'text-green-400' : 'text-gray-300'}`;
+            statusElement.className = type === 'error' ? 'status-error' : type === 'success' ? 'status-complete' : 'status-scanning';
         }
     }
 
@@ -455,9 +455,14 @@ class StreamHandler {
      * Show scanning indicator
      */
     showScanningIndicator() {
-        const indicator = document.getElementById('scanning-indicator');
+        const indicator = document.getElementById('scanProgress') || document.getElementById('scanning-indicator');
         if (indicator) {
             indicator.classList.remove('hidden');
+            // reset progress
+            const pb = document.getElementById('scanProgressBar');
+            const pct = document.getElementById('scanProgressPercent');
+            if (pb) pb.style.width = '0%';
+            if (pct) pct.textContent = '0%';
         }
     }
 
@@ -465,7 +470,7 @@ class StreamHandler {
      * Hide scanning indicator
      */
     hideScanningIndicator() {
-        const indicator = document.getElementById('scanning-indicator');
+        const indicator = document.getElementById('scanProgress') || document.getElementById('scanning-indicator');
         if (indicator) {
             indicator.classList.add('hidden');
         }
