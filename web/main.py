@@ -1137,6 +1137,13 @@ async def stream_scan_results_new(
                 ScanType,
             )
             from cybersec_cli.utils.formatters import get_vulnerability_info
+            # Import live enrichment
+            try:
+                from cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
+            except ImportError:
+                # Fallback if imports fail
+                async def enrich_service_with_live_data(*args): return []
+
 
             # Track critical ports separately
             critical_ports_found = []
@@ -1174,6 +1181,40 @@ async def stream_scan_results_new(
                     if result.state == PortState.OPEN:
                         # Get vulnerability information for this port
                         vuln_info = get_vulnerability_info(result.port, result.service)
+                        
+                        # Live enrichment
+                        if result.service and result.service != "unknown":
+                            try:
+                                live_cves = await enrich_service_with_live_data(result.service, result.version)
+                                if live_cves:
+                                    # Merge/Override with live data
+                                    existing_cves = set(vuln_info.get("cves", []))
+                                    for cve in live_cves:
+                                        cve_id = cve.get("id")
+                                        if cve_id and cve_id not in existing_cves:
+                                            vuln_info.setdefault("cves", []).append(cve_id)
+                                            # We can also append the description to recommendations if needed, 
+                                            # or just let the frontend handle the IDs.
+                                    
+                                    # Update severity if we found higher severity CVEs
+                                    from cybersec_cli.utils.formatters import Severity
+                                    max_live_severity = "LOW"
+                                    for c in live_cves:
+                                        s = c.get("severity", "LOW")
+                                        # Simple severity ranking
+                                        rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+                                        if rank.get(s, 0) > rank.get(max_live_severity, 0):
+                                            max_live_severity = s
+                                    
+                                    # Compare with current severity
+                                    if max_live_severity in Severity.__members__:
+                                        live_sev_enum = Severity[max_live_severity]
+                                        if live_sev_enum.value > vuln_info["severity"].value:
+                                            vuln_info["severity"] = live_sev_enum
+
+                            except Exception as e:
+                                logger.warning(f"Live enrichment failed: {e}")
+
 
                         port_info = {
                             "port": result.port,

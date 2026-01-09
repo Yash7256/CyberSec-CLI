@@ -13,7 +13,16 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 from cybersec_cli.tools.network import PortScanner, ScanType
 from cybersec_cli.utils.formatters import (
     format_scan_results,
+    get_vulnerability_info,
+    VULNERABILITY_DB
 )
+# Import live enrichment
+try:
+    from cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
+except ImportError:
+    # Fallback
+    async def enrich_service_with_live_data(*args): return []
+
 
 console = Console()
 
@@ -198,6 +207,38 @@ def scan_command(
             # Run the scan
             results = asyncio.run(scan_with_progress())
             scanner.results = sorted(results, key=lambda x: x.port)
+
+            # Perform post-scan enrichment
+            console.print("[cyan]Enriching results with live CVE data...[/cyan]")
+            async def perform_enrichment():
+                 for result in scanner.results:
+                    if result.state.name == "OPEN" and result.service and result.service != "unknown":
+                        try:
+                            live_cves = await enrich_service_with_live_data(result.service, result.version)
+                            if live_cves:
+                                # We need to update the VULNERABILITY_DB or the result object somehow.
+                                # The formatter uses get_vulnerability_info(port, service) which looks up VULNERABILITY_DB.
+                                # We can inject into VULNERABILITY_DB for this session.
+                                
+                                # Check if port entry exists, if not create a copy of default
+                                if result.port not in VULNERABILITY_DB:
+                                     # Find default or service match to verify basics
+                                     base_info = get_vulnerability_info(result.port, result.service).copy()
+                                     VULNERABILITY_DB[result.port] = base_info
+                                
+                                # Now update VULNERABILITY_DB[result.port]
+                                current_entry = VULNERABILITY_DB[result.port]
+                                
+                                existing_cves = set(current_entry.get("cves", []))
+                                for cve in live_cves:
+                                    cve_id = cve.get("id")
+                                    if cve_id and cve_id not in existing_cves:
+                                        current_entry.setdefault("cves", []).append(cve_id)
+                        except Exception as e:
+                            pass # Fail silently for CLI enrichment
+            
+            asyncio.run(perform_enrichment())
+
 
         # Format and display results using the enhanced formatter
         if format == "table":
