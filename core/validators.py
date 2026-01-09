@@ -7,7 +7,17 @@ import re
 import socket
 from typing import List
 
-logger = logging.getLogger(__name__)
+# Import structured logging
+try:
+    from core.logging_config import get_logger
+
+    HAS_STRUCTURED_LOGGING = True
+except ImportError:
+    HAS_STRUCTURED_LOGGING = False
+
+logger = (
+    get_logger("scanner") if HAS_STRUCTURED_LOGGING else logging.getLogger(__name__)
+)
 
 # Blocklist of potentially dangerous targets
 BLOCKLIST = [

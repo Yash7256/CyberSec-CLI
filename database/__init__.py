@@ -89,13 +89,12 @@ class DatabaseInterface:
             return await postgres_client.create_scan(target, user_id, config)
         else:
             # Fallback to SQLite implementation
-            pass
-
             # For compatibility, we'll create a dummy scan record
             # In a real implementation, this would be properly integrated
             import uuid
 
             scan_id = str(uuid.uuid4())
+            logger.debug(f"Created SQLite fallback scan record: {scan_id}")
             return scan_id
 
     async def update_scan_status(
@@ -117,7 +116,7 @@ class DatabaseInterface:
             await postgres_client.update_scan_status(scan_id, status, completed_at)
         else:
             # SQLite doesn't have this concept in the current implementation
-            pass
+            logger.debug(f"SQLite fallback: update_scan_status not implemented for scan {scan_id}")
 
     async def save_scan_results(self, scan_id: str, results: List[Dict[str, Any]]):
         """
@@ -137,7 +136,7 @@ class DatabaseInterface:
             # Fallback to SQLite implementation
             # In the current implementation, results are saved as a single JSON blob
             # We'll need to modify the web API to use the new structure
-            pass
+            logger.debug(f"SQLite fallback: save_scan_results not fully implemented for scan {scan_id}")
 
     async def get_scan(self, scan_id: str) -> Optional[Dict[str, Any]]:
         """

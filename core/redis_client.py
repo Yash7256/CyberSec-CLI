@@ -4,8 +4,9 @@ Redis client for CyberSec CLI.
 
 import logging
 import os
+import time
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 # Try to import redis, but don't fail if it's not available
@@ -46,7 +47,10 @@ class RedisClient:
             return
 
         self.redis_client = None
-        self.in_memory_cache: Dict[str, Any] = {}
+        # In-memory cache stores (value, expiration_timestamp) tuples
+        self.in_memory_cache: Dict[str, Tuple[Any, Optional[float]]] = {}
+        self._cleanup_counter = 0
+        self._cleanup_threshold = 100  # Clean up expired entries every N operations
         self.enabled = os.getenv("ENABLE_REDIS", "true").lower() == "true"
 
         if self.enabled and REDIS_AVAILABLE:
@@ -104,9 +108,36 @@ class RedisClient:
 
         return wrapper
 
+    def _cleanup_expired(self) -> None:
+        """Remove expired entries from in-memory cache (lazy cleanup)."""
+        now = time.time()
+        expired_keys = [
+            key for key, (_, exp_time) in self.in_memory_cache.items()
+            if exp_time is not None and exp_time <= now
+        ]
+        for key in expired_keys:
+            del self.in_memory_cache[key]
+        if expired_keys:
+            logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
+
+    def _maybe_cleanup(self) -> None:
+        """Periodically clean up expired entries."""
+        self._cleanup_counter += 1
+        if self._cleanup_counter >= self._cleanup_threshold:
+            self._cleanup_expired()
+            self._cleanup_counter = 0
+
     def _in_memory_get(self, key: str) -> Optional[str]:
-        """In-memory implementation of get."""
-        return self.in_memory_cache.get(key)
+        """In-memory implementation of get with TTL support."""
+        self._maybe_cleanup()
+        if key in self.in_memory_cache:
+            value, exp_time = self.in_memory_cache[key]
+            if exp_time is None or exp_time > time.time():
+                return value
+            else:
+                # Entry has expired, remove it
+                del self.in_memory_cache[key]
+        return None
 
     def get(self, key: str) -> Optional[str]:
         """Get value by key from Redis or in-memory cache."""
@@ -121,9 +152,10 @@ class RedisClient:
         return self._in_memory_get(key)
 
     def _in_memory_set(self, key: str, value: str, ttl: int = 3600) -> bool:
-        """In-memory implementation of set."""
-        self.in_memory_cache[key] = value
-        # Note: In a production implementation, we would implement TTL for in-memory cache
+        """In-memory implementation of set with TTL support."""
+        self._maybe_cleanup()
+        exp_time = time.time() + ttl if ttl > 0 else None
+        self.in_memory_cache[key] = (value, exp_time)
         return True
 
     def set(self, key: str, value: str, ttl: int = 3600) -> bool:
@@ -158,8 +190,15 @@ class RedisClient:
         return self._in_memory_delete(key)
 
     def _in_memory_exists(self, key: str) -> bool:
-        """In-memory implementation of exists."""
-        return key in self.in_memory_cache
+        """In-memory implementation of exists with TTL support."""
+        if key in self.in_memory_cache:
+            value, exp_time = self.in_memory_cache[key]
+            if exp_time is None or exp_time > time.time():
+                return True
+            else:
+                # Entry has expired, remove it
+                del self.in_memory_cache[key]
+        return False
 
     def exists(self, key: str) -> bool:
         """Check if key exists in Redis or in-memory cache."""
@@ -174,14 +213,25 @@ class RedisClient:
         return self._in_memory_exists(key)
 
     def _in_memory_increment(self, key: str, amount: int = 1) -> int:
-        """In-memory implementation of increment."""
-        current = self.in_memory_cache.get(key, 0)
-        try:
-            current = int(current)
-        except (ValueError, TypeError):
-            current = 0
+        """In-memory implementation of increment with TTL preservation."""
+        self._maybe_cleanup()
+        current = 0
+        exp_time = None  # Preserve expiration time if key exists
+        
+        if key in self.in_memory_cache:
+            value, exp_time = self.in_memory_cache[key]
+            # Check if not expired
+            if exp_time is None or exp_time > time.time():
+                try:
+                    current = int(value)
+                except (ValueError, TypeError):
+                    current = 0
+            else:
+                # Expired, start fresh
+                exp_time = None
+        
         new_value = current + amount
-        self.in_memory_cache[key] = str(new_value)
+        self.in_memory_cache[key] = (str(new_value), exp_time)
         return new_value
 
     def increment(self, key: str, amount: int = 1) -> int:
@@ -197,13 +247,17 @@ class RedisClient:
         return self._in_memory_increment(key, amount)
 
     def _in_memory_expire(self, key: str, seconds: int) -> bool:
-        """In-memory implementation of expire.
-
-        Note: This is a simplified implementation. A full implementation would
-        require a background task to clean up expired keys.
-        """
-        # In a real implementation, we would track expiration times
-        return key in self.in_memory_cache
+        """In-memory implementation of expire with proper TTL tracking."""
+        if key not in self.in_memory_cache:
+            return False
+        
+        value, _ = self.in_memory_cache[key]
+        # Check if current value is expired  
+        if self._in_memory_exists(key):  # This also cleans up if expired
+            new_exp_time = time.time() + seconds
+            self.in_memory_cache[key] = (value, new_exp_time)
+            return True
+        return False
 
     def expire(self, key: str, seconds: int) -> bool:
         """Set expiration time for a key."""

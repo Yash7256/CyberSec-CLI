@@ -17,7 +17,17 @@ except ImportError:
     HAS_REDIS = False
     redis_client = None
 
-logger = logging.getLogger(__name__)
+# Import structured logging
+try:
+    from core.logging_config import get_logger
+
+    HAS_STRUCTURED_LOGGING = True
+except ImportError:
+    HAS_STRUCTURED_LOGGING = False
+
+logger = (
+    get_logger("api") if HAS_STRUCTURED_LOGGING else logging.getLogger(__name__)
+)
 
 # Use environment variable for API key prefix
 API_KEY_PREFIX = os.getenv("API_KEY_PREFIX", "cs_")

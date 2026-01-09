@@ -123,8 +123,8 @@ def delete_scheduled_scan(scan_id: int) -> bool:
             job_id = f"scan_{scan_id}"
             try:
                 _scheduler.remove_job(job_id)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Job {job_id} not found in scheduler (may already be removed): {e}")
 
         return True
     except Exception as e:
@@ -150,8 +150,8 @@ def toggle_scheduled_scan(scan_id: int, enabled: bool) -> bool:
                 job = _scheduler.get_job(job_id)
                 if job:
                     job.reschedule(trigger="cron", reschedule_on_remove=not enabled)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Could not reschedule job {job_id}: {e}")
 
         return True
     except Exception as e:

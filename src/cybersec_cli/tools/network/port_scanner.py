@@ -401,6 +401,42 @@ class PortScanner:
                 )
                 self.rate_limit_last_refill = time.time()
 
+    def _maybe_adjust_adaptive_params(self, success: bool) -> None:
+        """
+        Record attempt for adaptive scanning and adjust parameters if threshold reached.
+        
+        This method consolidates the adaptive scanning logic that was previously
+        duplicated in multiple places within _check_port.
+        
+        Args:
+            success: Whether the port scan attempt was successful
+        """
+        if not (self.adaptive_scanning and self.adaptive_config):
+            return
+            
+        self.adaptive_config.record_attempt(success)
+        self.attempts_since_last_adjustment += 1
+
+        # Adjust parameters after every 50 port attempts
+        if self.attempts_since_last_adjustment >= 50:
+            old_concurrency = self.adaptive_config.concurrency
+            old_timeout = self.adaptive_config.timeout
+
+            self.adaptive_config.adjust_parameters()
+
+            # Apply new concurrency/timeout values
+            if old_concurrency != self.adaptive_config.concurrency:
+                self.max_concurrent = self.adaptive_config.concurrency
+                # Create new semaphore with updated concurrency
+                self._semaphore = asyncio.Semaphore(
+                    self.adaptive_config.concurrency
+                )
+
+            if old_timeout != self.adaptive_config.timeout:
+                self.timeout = self.adaptive_config.timeout
+
+            self.attempts_since_last_adjustment = 0
+
     async def _check_port(self, port: int) -> PortResult:
         """Check a single port asynchronously."""
         result = PortResult(port=port, state=PortState.CLOSED)
@@ -460,86 +496,20 @@ class PortScanner:
                                 await self._grab_banner(port, result)
 
                 # Record attempt for adaptive scanning
-                if self.adaptive_scanning and self.adaptive_config:
-                    self.adaptive_config.record_attempt(success)
-                    self.attempts_since_last_adjustment += 1
-
-                    # Adjust parameters after every 50 port attempts
-                    if self.attempts_since_last_adjustment >= 50:
-                        old_concurrency = self.adaptive_config.concurrency
-                        old_timeout = self.adaptive_config.timeout
-
-                        self.adaptive_config.adjust_parameters()
-
-                        # Apply new concurrency/timeout values
-                        if old_concurrency != self.adaptive_config.concurrency:
-                            self.max_concurrent = self.adaptive_config.concurrency
-                            # Create new semaphore with updated concurrency
-                            self._semaphore = asyncio.Semaphore(
-                                self.adaptive_config.concurrency
-                            )
-
-                        if old_timeout != self.adaptive_config.timeout:
-                            self.timeout = self.adaptive_config.timeout
-
-                        self.attempts_since_last_adjustment = 0
+                self._maybe_adjust_adaptive_params(success)
 
                 return result
 
         except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
             # Port is closed or filtered
             # Record failed attempt for adaptive scanning
-            if self.adaptive_scanning and self.adaptive_config:
-                self.adaptive_config.record_attempt(False)
-                self.attempts_since_last_adjustment += 1
-
-                # Adjust parameters after every 50 port attempts
-                if self.attempts_since_last_adjustment >= 50:
-                    old_concurrency = self.adaptive_config.concurrency
-                    old_timeout = self.adaptive_config.timeout
-
-                    self.adaptive_config.adjust_parameters()
-
-                    # Apply new concurrency/timeout values
-                    if old_concurrency != self.adaptive_config.concurrency:
-                        self.max_concurrent = self.adaptive_config.concurrency
-                        # Create new semaphore with updated concurrency
-                        self._semaphore = asyncio.Semaphore(
-                            self.adaptive_config.concurrency
-                        )
-
-                    if old_timeout != self.adaptive_config.timeout:
-                        self.timeout = self.adaptive_config.timeout
-
-                    self.attempts_since_last_adjustment = 0
+            self._maybe_adjust_adaptive_params(False)
 
             return PortResult(port=port, state=PortState.CLOSED)
         except Exception as e:
             self.logger.error(f"Error scanning port {port}: {e}")
             # Record failed attempt for adaptive scanning
-            if self.adaptive_scanning and self.adaptive_config:
-                self.adaptive_config.record_attempt(False)
-                self.attempts_since_last_adjustment += 1
-
-                # Adjust parameters after every 50 port attempts
-                if self.attempts_since_last_adjustment >= 50:
-                    old_concurrency = self.adaptive_config.concurrency
-                    old_timeout = self.adaptive_config.timeout
-
-                    self.adaptive_config.adjust_parameters()
-
-                    # Apply new concurrency/timeout values
-                    if old_concurrency != self.adaptive_config.concurrency:
-                        self.max_concurrent = self.adaptive_config.concurrency
-                        # Create new semaphore with updated concurrency
-                        self._semaphore = asyncio.Semaphore(
-                            self.adaptive_config.concurrency
-                        )
-
-                    if old_timeout != self.adaptive_config.timeout:
-                        self.timeout = self.adaptive_config.timeout
-
-                    self.attempts_since_last_adjustment = 0
+            self._maybe_adjust_adaptive_params(False)
 
             return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
 

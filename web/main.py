@@ -1578,8 +1578,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 json.dumps({"type": "auth_error", "message": "Authentication failed"})
             )
             await websocket.close(code=1008)
-        except Exception:
-            pass
+        except Exception as close_err:
+            logger.debug(f"Error closing WebSocket after auth failure: {close_err}")
         return
     try:
         while True:
@@ -1745,10 +1745,10 @@ async def websocket_endpoint(websocket: WebSocket):
                                     }
                                 )
                             )
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+                    except Exception as allow_err:
+                        logger.debug(f"Error reading allowlist: {allow_err}")
+            except Exception as list_err:
+                logger.debug(f"Error during denylist/allowlist check: {list_err}")
             # derive client id for rate-limiting and concurrency
             client_host = None
             try:
@@ -1851,8 +1851,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         _active_scans[client_host] = max(
                             0, _active_scans.get(client_host, 1) - 1
                         )
-                except Exception:
-                    pass
+                except Exception as dec_err:
+                    logger.warning(f"Error decrementing scan counter on failure: {dec_err}")
                 raise
 
             # Collect complete output
@@ -1944,8 +1944,8 @@ async def websocket_endpoint(websocket: WebSocket):
             try:
                 if len(parts) >= 2 and parts[0].lower() == "scan":
                     await _record_scan_end(client_host)
-            except Exception:
-                pass
+            except Exception as end_err:
+                logger.debug(f"Error recording scan end for {client_host}: {end_err}")
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
