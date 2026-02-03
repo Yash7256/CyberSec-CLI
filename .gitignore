@@ -176,3 +176,5 @@ htmlcov/
 .envrc
 .dirlocals
 .zshenv
+.vercel
+.env*.local

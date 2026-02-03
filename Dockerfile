@@ -28,10 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy application code first to make web/ available
+# Copy application code
 COPY src/ src/
 COPY web/ web/
-COPY core/ core/
 COPY setup.py .
 COPY README.md .
 
