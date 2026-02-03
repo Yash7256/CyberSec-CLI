@@ -14,26 +14,40 @@ import time
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 import dns.resolver
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 # Add imports for streaming support
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.sql import text
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
-from cybersec_cli.utils.logger import log_forced_scan
+from pydantic import BaseModel
+
+
+class OSFingerprintRequest(BaseModel):
+    target: str
+    os_detection: bool = True
+    enhanced_service_detection: bool = True
+    service_detection: bool = True
+
+
+from src.cybersec_cli.utils.logger import log_forced_scan
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 # Import structured logging
 try:
-    from core.logging_config import (
+    from src.cybersec_cli.core.logging_config import (
         get_logger,
         setup_logging,
     )
@@ -48,7 +62,7 @@ except ImportError:
 
 # Import Redis client
 try:
-    from core.redis_client import redis_client
+    from src.cybersec_cli.core.redis_client import redis_client
 
     HAS_REDIS = True
 except ImportError:
@@ -57,7 +71,7 @@ except ImportError:
 
 # Import rate limiter
 try:
-    from core.rate_limiter import SmartRateLimiter
+    from src.cybersec_cli.core.rate_limiter import SmartRateLimiter
     from src.cybersec_cli.config import settings
 
     HAS_RATE_LIMITER = True
@@ -77,7 +91,7 @@ except ImportError:
 
 # Import port priority
 try:
-    from core.port_priority import get_scan_order
+    from src.cybersec_cli.core.port_priority import get_scan_order
 
     HAS_PRIORITY_MODULE = True
 except ImportError:
@@ -430,6 +444,18 @@ async def shutdown():
     logger.info("Shutdown complete")
 
 
+# Include Chat Router
+try:
+    from web.routes.chat import router as chat_router
+    app.include_router(chat_router)
+    logger.info("Chat router registered")
+except ImportError as e:
+    logger.warning(f"Failed to register chat router: {e}")
+    # Fallback/Debug note: Ensure src/ is in path or web/ package structure is correct
+except Exception as e:
+    logger.error(f"Error registering chat router: {e}")
+
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -454,7 +480,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "max-age=31536000; includeSubDomains"
         )
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https:; connect-src 'self' https:; frame-ancestors 'none';"
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+            "img-src 'self' data: https:; "
+            "font-src 'self' https: https://fonts.gstatic.com https://cdnjs.cloudflare.com; "
+            "connect-src 'self' https:; "
+            "frame-ancestors 'none';"
         )
 
         return response
@@ -498,7 +530,7 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
                 )
 
             # Verify the API key
-            from core.auth import verify_api_key
+            from src.cybersec_cli.core.auth import verify_api_key
 
             key_info = verify_api_key(api_key)
             if not key_info:
@@ -528,7 +560,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         request.state.request_id = request_id
 
         # Set context for logging
-        from core.logging_config import set_request_id
+        from src.cybersec_cli.core.logging_config import set_request_id
 
         set_request_id(request_id)
 
@@ -558,7 +590,7 @@ signal.signal(signal.SIGINT, handle_shutdown)
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for all unhandled exceptions"""
-    from core.logging_config import get_logger
+    from src.cybersec_cli.core.logging_config import get_logger
 
     logger = get_logger("api")
 
@@ -589,7 +621,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Handle HTTP exceptions"""
-    from core.logging_config import get_logger
+    from src.cybersec_cli.core.logging_config import get_logger
 
     logger = get_logger("api")
 
@@ -662,7 +694,7 @@ class ConnectionManager:
             try:
                 await connection.send_text(message)
             except Exception as e:
-                from core.logging_config import get_logger
+                from src.cybersec_cli.core.logging_config import get_logger
 
                 logger = get_logger("api")
                 logger.error(f"Error broadcasting message: {e}")
@@ -887,7 +919,7 @@ async def get_forced_scans():
                 except Exception:
                     continue
     except Exception as e:
-        from core.logging_config import get_logger
+        from src.cybersec_cli.core.logging_config import get_logger
 
         logger = get_logger("api")
         logger.error(f"Error reading audit file: {e}")
@@ -1011,7 +1043,7 @@ async def stream_scan_results(
             yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'message': f'Starting scan on {target} with {total_ports} ports'})}\n\n"
 
             # Import scanner
-            from cybersec_cli.tools.network.port_scanner import (
+            from src.cybersec_cli.tools.network.port_scanner import (
                 PortScanner,
                 PortState,
                 ScanType,
@@ -1131,15 +1163,15 @@ async def stream_scan_results_new(
             yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'progress': 0})}\n\n"
 
             # Import scanner and analyzer
-            from cybersec_cli.tools.network.port_scanner import (
+            from src.cybersec_cli.tools.network.port_scanner import (
                 PortScanner,
                 PortState,
                 ScanType,
             )
-            from cybersec_cli.utils.formatters import get_vulnerability_info
+            from src.cybersec_cli.utils.formatters import get_vulnerability_info
             # Import live enrichment
             try:
-                from cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
+                from src.cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
             except ImportError:
                 # Fallback if imports fail
                 async def enrich_service_with_live_data(*args): return []
@@ -1197,7 +1229,7 @@ async def stream_scan_results_new(
                                             # or just let the frontend handle the IDs.
                                     
                                     # Update severity if we found higher severity CVEs
-                                    from cybersec_cli.utils.formatters import Severity
+                                    from src.cybersec_cli.utils.formatters import Severity
                                     max_live_severity = "LOW"
                                     for c in live_cves:
                                         s = c.get("severity", "LOW")
@@ -1995,6 +2027,89 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.send_text(f"[ERR] Error executing command: {str(e)}")
     finally:
         manager.disconnect(websocket)
+
+
+@app.post(
+    "/api/os-fingerprint",
+    tags=["OS Fingerprinting"],
+    summary="Perform OS fingerprinting",
+    description="Perform OS fingerprinting on a target host to identify the operating system.",
+    responses={
+        200: {
+            "description": "OS fingerprinting results",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "target": "example.com",
+                        "ip": "93.184.216.34",
+                        "os_info": {
+                            "os_name": "Linux 2.6.x",
+                            "vendor": "Linux",
+                            "os_family": "Linux",
+                            "os_gen": "2.6.x",
+                            "accuracy": "98"
+                        },
+                        "open_ports_count": 3
+                    }
+                }
+            },
+        },
+    },
+)
+async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
+    """Perform OS fingerprinting on a target host."""
+    from src.cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
+    
+    # Get client IP for rate limiting
+    client_ip = request.client.host
+    
+    # Check rate limits
+    allowed = await _redis_check_and_increment_rate(client_ip)
+    if not allowed:
+        # Fallback to in-memory rate limiting
+        last_scan_time = _last_scan_time.get(client_ip, 0)
+        if time.time() - last_scan_time < (60 / WS_RATE_LIMIT):  # 60 seconds / rate limit
+            raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        _last_scan_time[client_ip] = time.time()
+    
+    try:
+        # Create PortScanner instance with OS detection enabled
+        scanner = PortScanner(
+            target=req_data.target,
+            scan_type=ScanType.TCP_CONNECT,
+            timeout=2.0,
+            max_concurrent=50,
+            os_detection=req_data.os_detection,
+            service_detection=req_data.service_detection,
+            enhanced_service_detection=req_data.enhanced_service_detection,
+        )
+        
+        # Perform the scan
+        results = await scanner.scan()
+        
+        # Get OS information from the scanner
+        os_info = scanner._perform_os_detection() if req_data.os_detection else {}
+        
+        # Count open ports
+        open_ports_count = len([r for r in results if r.state.name == "OPEN"])
+        
+        # Prepare response
+        response_data = {
+            "target": scanner.target,
+            "ip": scanner.ip,
+            "os_info": os_info,
+            "open_ports_count": open_ports_count,
+            "scan_results": [r.to_dict() for r in results]
+        }
+        
+        # Log the scan
+        save_scan_result(req_data.target, scanner.ip, f"scan {req_data.target} --os", json.dumps(response_data))
+        
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"OS fingerprinting error: {e}")
+        raise HTTPException(status_code=500, detail=f"OS fingerprinting failed: {str(e)}")
 
 
 if __name__ == "__main__":

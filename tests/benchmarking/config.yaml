@@ -1,0 +1,159 @@
+# Benchmarking Configuration
+
+# Test Targets
+targets:
+  local: "127.0.0.1"
+  test_server: "scanme.nmap.org"  # Nmap's official test server
+  localhost_range: "127.0.0.1/24"
+
+# Port Ranges for Testing
+port_ranges:
+  small: "1-100"
+  medium: "1-1000"
+  large: "1-10000"
+  full: "1-65535"
+  common: "21,22,23,25,53,80,110,143,443,445,3306,3389,5432,8080,8443"
+
+# Performance Budgets (acceptance criteria)
+budgets:
+  duration:
+    max: 10.0      # Maximum acceptable duration in seconds
+    target: 5.0    # Target duration
+  memory_mb:
+    max: 500       # Maximum memory usage in MB
+    target: 250    # Target memory usage
+  throughput:
+    min: 50        # Minimum throughput (ops/sec)
+    target: 100    # Target throughput
+  cpu_percent:
+    max: 90        # Maximum CPU usage percentage
+    target: 70     # Target CPU usage
+
+# Comparison Tool Paths
+tools:
+  nmap: "/usr/bin/nmap"
+  masscan: "/usr/bin/masscan"
+  zmap: "/usr/bin/zmap"
+  rustscan: "~/.cargo/bin/rustscan"
+
+# Benchmark Settings
+benchmark_settings:
+  # Number of iterations for micro-benchmarks
+  micro_iterations: 100
+  
+  # Number of iterations for macro-benchmarks
+  macro_iterations: 10
+  
+  # Timeout for individual operations (seconds)
+  operation_timeout: 5.0
+  
+  # Confidence level for statistical tests
+  confidence_level: 0.95
+  
+  # Significance level for hypothesis testing
+  alpha: 0.05
+  
+  # Regression detection threshold (5% degradation)
+  regression_threshold: 0.05
+  
+  # Metrics collection interval (seconds)
+  metrics_interval: 0.1
+
+# Output Settings
+output:
+  results_dir: "tests/benchmarking/results"
+  plots_dir: "tests/benchmarking/results/plots"
+  reports_dir: "tests/benchmarking/results/reports"
+  
+  # Save plots in these formats
+  plot_formats: ["png", "pdf"]
+  
+  # DPI for plots
+  plot_dpi: 300
+
+# Network Simulation Settings (for test_network_conditions.py)
+network_simulation:
+  bandwidth_levels:  # In Kbps
+    - 56      # Dial-up
+    - 1000    # Slow broadband
+    - 10000   # Typical broadband
+    - 100000  # Fast connection
+    - 1000000 # Gigabit
+  
+  latency_levels:  # In milliseconds
+    - 1       # Local network
+    - 20      # Regional
+    - 100     # Cross-country
+    - 300     # International
+    - 700     # Satellite
+  
+  packet_loss_levels:  # Percentage
+    - 0       # Ideal
+    - 1       # Good
+    - 5       # Degraded
+    - 10      # Poor
+    - 25      # Severely degraded
+
+# Stress Test Settings
+stress_test:
+  # Duration for endurance tests (seconds)
+  short_duration: 3600      # 1 hour
+  medium_duration: 86400    # 24 hours
+  long_duration: 604800     # 7 days
+  
+  # Memory stress settings
+  memory_fill_percentage: 90  # Fill memory to 90%
+  
+  # CPU stress settings
+  cpu_target_percentage: 100  # Target 100% CPU
+  
+  # Concurrent operations for stress test
+  max_concurrent_scans: 1000
+
+# Accuracy Test Settings
+accuracy_test:
+  # Known test environments
+  test_environments:
+    - name: "Metasploitable"
+      target: "192.168.56.101"
+      expected_ports: [21, 22, 23, 25, 53, 80, 111, 139, 445, 512, 513, 514, 1099, 1524, 2049, 2121, 3306, 5432, 5900, 6000, 6667, 8009, 8180]
+    
+    - name: "DVWA"
+      target: "192.168.56.102"
+      expected_ports: [80, 3306]
+  
+  # Precision/recall thresholds
+  min_precision: 0.99
+  min_recall: 0.99
+  min_f1_score: 0.99
+
+# Comparative Benchmark Settings
+comparative:
+  # Nmap timing templates to test
+  nmap_timing_templates: ["T0", "T1", "T2", "T3", "T4", "T5"]
+  
+  # Number of runs for each comparison
+  comparison_runs: 5
+  
+  # Timeout for comparison tools (seconds)
+  tool_timeout: 300
+
+# Continuous Integration Settings
+ci:
+  # Run benchmarks on every commit
+  run_on_commit: true
+  
+  # Alert on regression
+  alert_on_regression: true
+  
+  # Store historical results
+  store_history: true
+  
+  # Maximum number of historical results to keep
+  max_history: 100
+
+# Logging Settings
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "tests/benchmarking/benchmark.log"

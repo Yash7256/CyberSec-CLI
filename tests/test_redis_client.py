@@ -10,7 +10,7 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 try:
-    from core.redis_client import RedisClient
+    from cybersec_cli.core.redis_client import RedisClient
 
     REDIS_AVAILABLE = True
 except ImportError:

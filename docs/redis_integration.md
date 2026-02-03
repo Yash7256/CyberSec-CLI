@@ -49,7 +49,7 @@ The Redis client provides a simple interface with automatic fallback:
 
 1. **get(key)** - Retrieve value by key
    ```python
-   from core.redis_client import redis_client
+   from cybersec_cli.core.redis_client import redis_client
    value = redis_client.get("my_key")
    ```
 
@@ -177,7 +177,7 @@ Set appropriate TTL values:
 The Redis client automatically falls back to in-memory cache if Redis is unavailable, but you should still handle potential errors:
 
 ```python
-from core.redis_client import redis_client
+from cybersec_cli.core.redis_client import redis_client
 
 try:
     result = redis_client.get("important_key")

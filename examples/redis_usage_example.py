@@ -9,7 +9,7 @@ import os
 import sys
 import time
 
-from core.redis_client import redis_client
+from cybersec_cli.core.redis_client import redis_client
 
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))

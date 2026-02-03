@@ -4,7 +4,7 @@ Unit tests for the port priority module.
 
 import unittest
 
-from core.port_priority import PRIORITY_PORTS, get_priority_for_port, get_scan_order
+from cybersec_cli.core.port_priority import PRIORITY_PORTS, get_priority_for_port, get_scan_order
 
 
 class TestPortPriority(unittest.TestCase):

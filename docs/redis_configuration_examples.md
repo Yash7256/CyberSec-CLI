@@ -145,7 +145,7 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('.'))
 
-from core.redis_client import redis_client
+from cybersec_cli.core.redis_client import redis_client
 
 def test_redis_config():
     print("Testing Redis Configuration...")

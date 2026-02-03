@@ -1,0 +1,52 @@
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    nmap \
+    netcat-openbsd \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+COPY web/requirements.txt ./web_requirements.txt
+
+# Install Python dependencies
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install -r web_requirements.txt
+
+# Copy application
+COPY . .
+
+# Install package
+RUN pip install -e .
+
+# Create startup script
+RUN echo '#!/bin/bash\n\n# Wait for database to be ready\nif [ -n "$DATABASE_URL" ]; then\n  # Extract host from DATABASE_URL\n  DB_HOST=$(echo "$DATABASE_URL" | sed -E "s#[^/]*//([^:@]*(:[^@]*)?@)?([^:/]+).*#\\2#" | cut -d"/" -f1)\n  DB_PORT=$(echo "$DATABASE_URL" | sed -E "s#[^:]*:[0-9]+/?.*@[^:]*:([0-9]+)/?.*#\\1#" | grep -E "^[0-9]+$" || echo "5432")\n  \n  echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."\n  until nc -z "$DB_HOST" "$DB_PORT"; do\n    echo "Waiting for PostgreSQL at $DB_HOST:$DB_PORT..."\n    sleep 2\n  done\nelse\n  echo "DATABASE_URL not set, continuing without database check"\nfi\n\n# Run database migrations if needed\npython scripts/init_db.py || echo "Database migration failed, will retry on next start"\n\n# Start the application\nexec "$@"' > /app/railway-startup.sh && chmod +x /app/railway-startup.sh
+
+# Create non-root user
+RUN useradd -m -u 1000 cybersec && \
+    chown -R cybersec:cybersec /app
+
+USER cybersec
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/api/status || exit 1
+
+# Start command
+CMD ["/app/railway-startup.sh", "uvicorn", "web.main:app", "--host", "0.0.0.0", "--port", "$PORT"]

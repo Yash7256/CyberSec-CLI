@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from core.rate_limiter import SmartRateLimiter
+from cybersec_cli.core.rate_limiter import SmartRateLimiter
 
 
 class TestClientLimits:

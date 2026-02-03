@@ -1,8 +1,0 @@
-                finding_panels.append(
-                    Panel(
-                        Text.from_markup(content),
-                        title=f"[bold]Port {finding['port']} - [{color}]{severity}[/][/]",
-                        border_style=color,
-                        expand=False
-                    )
-                )

@@ -1,4 +1,4 @@
-from core.validators import (
+from cybersec_cli.core.validators import (
     is_safe_path,
     sanitize_input,
     validate_file_path,

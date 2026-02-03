@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.scan_cache import ScanCache
+from cybersec_cli.core.scan_cache import ScanCache
 
 
 class TestCacheKeyGeneration:

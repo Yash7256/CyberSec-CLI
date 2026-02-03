@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 # Import structured logging
 try:
-    from core.logging_config import get_logger, setup_logging
+    from src.cybersec_cli.core.logging_config import get_logger, setup_logging
     from src.cybersec_cli.config import settings
 
     setup_logging(
@@ -32,9 +32,9 @@ except ImportError:
 
 # Import scanning utilities
 try:
-    from core.port_priority import get_scan_order
-    from cybersec_cli.tools.network.port_scanner import PortScanner, PortState, ScanType
-    from cybersec_cli.utils.formatters import get_vulnerability_info
+    from src.cybersec_cli.core.port_priority import get_scan_order
+    from src.cybersec_cli.tools.network.port_scanner import PortScanner, PortState, ScanType
+    from src.cybersec_cli.utils.formatters import get_vulnerability_info
 
     HAS_SCAN_MODULES = True
 except ImportError as e:
@@ -56,7 +56,7 @@ except ImportError as e:
 
 # Import scan cache
 try:
-    from core.scan_cache import scan_cache
+    from src.cybersec_cli.core.scan_cache import scan_cache
 
     HAS_SCAN_CACHE = True
 except ImportError:

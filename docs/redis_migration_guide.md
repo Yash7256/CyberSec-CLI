@@ -80,7 +80,7 @@ ENABLE_REDIS=true
 The Redis client is already integrated into the application. You can use it by importing:
 
 ```python
-from core.redis_client import redis_client
+from cybersec_cli.core.redis_client import redis_client
 ```
 
 ### 4. Using Redis Methods

@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from core.validators import validate_port_range, validate_target
+from cybersec_cli.core.validators import validate_port_range, validate_target
 
 
 class TestEndToEndScanWorkflow:

@@ -7,7 +7,7 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
-from core.service_probes import (
+from cybersec_cli.core.service_probes import (
     SERVICE_PROBES,
     _analyze_response,
     _extract_version,

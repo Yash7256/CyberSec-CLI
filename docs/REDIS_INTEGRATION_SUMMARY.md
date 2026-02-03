@@ -78,7 +78,7 @@ All components have been tested and verified:
 
 ### Basic Operations:
 ```python
-from core.redis_client import redis_client
+from cybersec_cli.core.redis_client import redis_client
 
 # Set a value
 redis_client.set("my_key", "my_value", ttl=3600)

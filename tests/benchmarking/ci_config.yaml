@@ -1,0 +1,150 @@
+# CI/CD Benchmark Configuration
+# Optimized settings for continuous integration environments
+
+# Test Targets (safe for CI)
+targets:
+  local: "127.0.0.1"
+  docker_host: "host.docker.internal"
+  
+# Reduced scope for CI
+port_ranges:
+  small: "1-50"      # Much smaller range for CI
+  medium: "1-100"    # Even smaller for CI
+  large: "1-500"     # Reduced for CI
+  full: "1-1000"     # Very limited for CI (would take too long)
+  common: "22,80,443,3306,5432"  # Common ports only
+
+# Performance Budgets (adjusted for CI environment)
+budgets:
+  duration:
+    max: 30.0      # Increased for CI (some tests take longer in virtualized env)
+    target: 15.0   # But still expect reasonable performance
+  memory_mb:
+    max: 1000      # Higher limit for CI environment
+    target: 500
+  throughput:
+    min: 10        # Lower minimum for CI
+    target: 25
+  cpu_percent:
+    max: 95        # Allow higher CPU usage in CI
+    target: 80
+
+# Benchmark Settings (optimized for CI)
+benchmark_settings:
+  # Reduced iterations for CI
+  micro_iterations: 10     # Much fewer for CI
+  macro_iterations: 3      # Just a few iterations
+  
+  # Shorter timeouts for CI
+  operation_timeout: 10.0  # Increased for CI
+  
+  # Statistical settings
+  confidence_level: 0.90   # Slightly lower for CI
+  alpha: 0.10              # Higher tolerance for CI
+  
+  # Regression detection (more sensitive in CI)
+  regression_threshold: 0.10  # 10% regression detection in CI
+  
+  # Metrics collection
+  metrics_interval: 0.5    # Less frequent in CI
+
+# Network Simulation (disabled or reduced in CI)
+network_simulation:
+  bandwidth_levels:  # Reduced set for CI
+    - 1000    # Skip dial-up, start with broadband
+    - 10000
+    - 100000  # Skip 1G for CI
+  
+  latency_levels:  # Reduced set for CI
+    - 1       # Local
+    - 100     # Skip satellite/long-distance for CI
+  
+  packet_loss_levels:  # Reduced set for CI
+    - 0       # Ideal
+    - 5       # Skip extreme losses for CI
+
+# Stress Test Settings (much more conservative for CI)
+stress_test:
+  # Shorter durations for CI
+  short_duration: 60       # 1 minute instead of 1 hour
+  medium_duration: 300     # 5 minutes instead of 24 hours
+  long_duration: 600       # 10 minutes instead of 7 days
+  
+  # Conservative memory settings for CI
+  memory_fill_percentage: 50  # Only 50% to avoid killing CI runners
+  
+  # Conservative CPU settings for CI
+  cpu_target_percentage: 80   # Lower to avoid disrupting CI
+  
+  # Fewer concurrent operations for CI
+  max_concurrent_scans: 10    # Much lower for CI
+
+# Accuracy Test Settings (adjusted for CI)
+accuracy_test:
+  # Use only localhost for CI safety
+  test_environments:
+    - name: "Localhost"
+      target: "127.0.0.1"
+      expected_ports: [22, 80, 443, 3306, 5432]  # Common local ports
+  
+  # Slightly more lenient thresholds for CI
+  min_precision: 0.95
+  min_recall: 0.95
+  min_f1_score: 0.95
+
+# Comparative Benchmark Settings (CI-friendly)
+comparative:
+  # Reduced timing templates for CI
+  nmap_timing_templates: ["T3", "T4"]  # Skip extremes
+  
+  # Fewer runs for CI
+  comparison_runs: 2
+  
+  # Longer timeout for CI environment
+  tool_timeout: 60
+
+# CI-Specific Settings
+ci:
+  # Run benchmarks on every commit
+  run_on_commit: true
+  
+  # Alert on significant regression (10%+)
+  alert_on_regression: true
+  
+  # Store results for trending
+  store_history: true
+  
+  # Limit history in CI to save space
+  max_history: 20
+  
+  # Enable detailed logging in CI
+  enable_verbose_logging: true
+  
+  # Skip certain heavy tests in PRs (run full suite on merge)
+  skip_heavy_tests_in_pr: true
+
+# Output Settings
+output:
+  results_dir: "tests/benchmarking/results/ci"
+  plots_dir: "tests/benchmarking/results/ci/plots"
+  reports_dir: "tests/benchmarking/results/ci/reports"
+  
+  # Enable all formats for CI artifacts
+  plot_formats: ["png", "svg"]
+  
+  # Higher DPI for clearer CI artifacts
+  plot_dpi: 150
+
+# Safety Settings for CI
+safety:
+  # Maximum time for any single test
+  max_test_time: 300  # 5 minutes max per test
+  
+  # Maximum memory usage allowed
+  max_memory_usage_mb: 2000
+  
+  # Skip tests that might be disruptive in shared CI environments
+  skip_disruptive_tests: true
+  
+  # Run tests in isolation to prevent interference
+  isolate_tests: true

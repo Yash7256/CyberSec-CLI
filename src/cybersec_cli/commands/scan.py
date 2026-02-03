@@ -92,6 +92,14 @@ console = Console()
     help="Run a test scan against a safe, controlled target (scanme.nmap.org)",
 )
 @click.option(
+    "--os", "--os-detection", is_flag=True,
+    help="Perform OS detection using native fingerprinting",
+)
+@click.option(
+    "--os-only", is_flag=True,
+    help="Perform OS detection and show only OS information (suppresses port list)",
+)
+@click.option(
     "--adaptive/--no-adaptive",
     default=None,
     help="Enable/disable adaptive concurrency control (default: enabled from config)",
@@ -115,6 +123,8 @@ def scan_command(
     force: bool,
     adaptive: Optional[bool],
     enhanced_service_detection: Optional[bool],
+    os: bool,
+    os_only: bool,
     output: Optional[str],
     format: str,
     verbose: bool,
@@ -129,6 +139,10 @@ def scan_command(
     \b
     # Scan common ports on example.com
     cybersec scan example.com
+
+    \b
+    # Scan with OS detection only
+    cybersec scan example.com --os-only
 
     \b
     # Scan specific ports with service detection
@@ -152,6 +166,10 @@ def scan_command(
     elif not target:
         raise click.UsageError("No target specified. Use --help for usage information.")
 
+    # Enable OS detection if --os-only is specified
+    if os_only:
+        os = True
+
     try:
         # Initialize the port scanner
         scanner = PortScanner(
@@ -162,6 +180,7 @@ def scan_command(
             max_concurrent=concurrent,
             service_detection=not no_service_detection,
             banner_grabbing=not no_banner,
+            os_detection=os,
             rate_limit=rate_limit,
             require_reachable=effective_require,
             adaptive_scanning=adaptive,
@@ -207,37 +226,66 @@ def scan_command(
             # Run the scan
             results = asyncio.run(scan_with_progress())
             scanner.results = sorted(results, key=lambda x: x.port)
+            
+            # If OS detection was enabled, trigger it now (after scan results are populated)
+            if os:
+                console.print("[cyan]Performing native OS fingerprinting...[/cyan]")
+                # This populates scanner.os_info (assuming implementation stores it)
+                # Based on recent changes, _perform_os_detection returns dict but doesn't auto-run in scan() unless configured
+                # We need to explicitly run it if results are ready
+                os_info = scanner._perform_os_detection()
+                scanner.os_info = os_info # Store it for formatter/access
 
             # Perform post-scan enrichment
-            console.print("[cyan]Enriching results with live CVE data...[/cyan]")
-            async def perform_enrichment():
-                 for result in scanner.results:
-                    if result.state.name == "OPEN" and result.service and result.service != "unknown":
-                        try:
-                            live_cves = await enrich_service_with_live_data(result.service, result.version)
-                            if live_cves:
-                                # We need to update the VULNERABILITY_DB or the result object somehow.
-                                # The formatter uses get_vulnerability_info(port, service) which looks up VULNERABILITY_DB.
-                                # We can inject into VULNERABILITY_DB for this session.
-                                
-                                # Check if port entry exists, if not create a copy of default
-                                if result.port not in VULNERABILITY_DB:
-                                     # Find default or service match to verify basics
-                                     base_info = get_vulnerability_info(result.port, result.service).copy()
-                                     VULNERABILITY_DB[result.port] = base_info
-                                
-                                # Now update VULNERABILITY_DB[result.port]
-                                current_entry = VULNERABILITY_DB[result.port]
-                                
-                                existing_cves = set(current_entry.get("cves", []))
-                                for cve in live_cves:
-                                    cve_id = cve.get("id")
-                                    if cve_id and cve_id not in existing_cves:
-                                        current_entry.setdefault("cves", []).append(cve_id)
-                        except Exception as e:
-                            pass # Fail silently for CLI enrichment
-            
-            asyncio.run(perform_enrichment())
+            if not os_only: # Skip enrichment for os-only to be faster/cleaner
+                console.print("[cyan]Enriching results with live CVE data...[/cyan]")
+                async def perform_enrichment():
+                     for result in scanner.results:
+                        if result.state.name == "OPEN" and result.service and result.service != "unknown":
+                            try:
+                                live_cves = await enrich_service_with_live_data(result.service, result.version)
+                                if live_cves:
+                                    # ... (existing enrichment logic) ...
+                                    if result.port not in VULNERABILITY_DB:
+                                         base_info = get_vulnerability_info(result.port, result.service).copy()
+                                         VULNERABILITY_DB[result.port] = base_info
+                                    
+                                    current_entry = VULNERABILITY_DB[result.port]
+                                    existing_cves = set(current_entry.get("cves", []))
+                                    for cve in live_cves:
+                                        cve_id = cve.get("id")
+                                        if cve_id and cve_id not in existing_cves:
+                                            current_entry.setdefault("cves", []).append(cve_id)
+                            except Exception:
+                                pass 
+                
+                asyncio.run(perform_enrichment())
+
+
+        # Handle output based on --os-only flag
+        if os_only:
+             # Print specialized OS-only output
+             from rich.panel import Panel
+             from rich.text import Text
+             
+             os_data = getattr(scanner, "os_info", {})
+             if not os_data:
+                 os_data = {"error": "OS detection failed or yielded no results."}
+                 
+             if "error" in os_data:
+                 console.print(Panel(f"[red]{os_data['error']}[/red]", title="OS Detection Result"))
+             else:
+                 details = (
+                     f"[bold]Target:[/bold] {target}\n"
+                     f"[bold]Detected OS:[/bold] [green]{os_data.get('os_name', 'Unknown')}[/green]\n"
+                     f"[bold]Accuracy:[/bold] {os_data.get('accuracy', 'N/A')}\n"
+                     f"[bold]Details:[/bold] {os_data.get('details', '')}\n"
+                 )
+                 console.print(Panel(details, title="🖥️  OS Fingerprinting Result", border_style="blue"))
+                 
+             return # Stop here for OS-only mode
+
+        # ... rest of normal output logic ...
 
 
         # Format and display results using the enhanced formatter

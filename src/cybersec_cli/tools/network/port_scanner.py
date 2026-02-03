@@ -11,7 +11,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime as dt
 from enum import Enum
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List, Optional, Set, Union, Any
 
 from rich.console import Console
 from rich.progress import (
@@ -27,7 +27,7 @@ from cybersec_cli.utils.logger import get_logger, setup_logger
 
 # Import adaptive configuration
 try:
-    from core.adaptive_config import AdaptiveScanConfig
+    from cybersec_cli.core.adaptive_config import AdaptiveScanConfig
 
     HAS_ADAPTIVE_CONFIG = True
 except ImportError:
@@ -50,7 +50,7 @@ except ImportError:
 
 # Import service probes
 try:
-    from core.service_probes import get_ssl_info, identify_service_async
+    from cybersec_cli.core.service_probes import get_ssl_info, identify_service_async
 
     HAS_SERVICE_PROBES = True
 except ImportError:
@@ -66,7 +66,7 @@ except ImportError:
 
 # Add import for our new priority module
 try:
-    from core.port_priority import get_scan_order
+    from cybersec_cli.core.port_priority import get_scan_order
 
     HAS_PRIORITY_MODULE = True
 except ImportError:
@@ -79,7 +79,7 @@ except ImportError:
 
 # Import scan cache
 try:
-    from core.scan_cache import scan_cache
+    from cybersec_cli.core.scan_cache import scan_cache
 
     HAS_SCAN_CACHE = True
 except ImportError:
@@ -112,6 +112,7 @@ class PortResult:
     protocol: str = "tcp"
     reason: Optional[str] = None
     ttl: Optional[float] = None
+    window_size: Optional[int] = None  # TCP Window Size
     confidence: float = 0.0  # Confidence level for service detection (0.0-1.0
     cached_at: Optional[str] = None  # Timestamp when result was cached
 
@@ -126,6 +127,7 @@ class PortResult:
             "protocol": self.protocol,
             "reason": self.reason,
             "ttl": self.ttl,
+            "window_size": self.window_size,
             "confidence": self.confidence,
         }
         if self.cached_at:
@@ -208,6 +210,7 @@ class PortScanner:
         rate_limit: int = 0,
         service_detection: bool = True,
         banner_grabbing: bool = True,
+        os_detection: bool = False,
         require_reachable: bool = False,
         adaptive_scanning: Optional[bool] = None,
         enhanced_service_detection: Optional[bool] = None,
@@ -275,6 +278,7 @@ class PortScanner:
         self.max_concurrent = max_concurrent
         self.service_detection = service_detection
         self.banner_grabbing = banner_grabbing
+        self.os_detection = os_detection
         self.ports = (
             self._parse_ports(ports) if ports is not None else self.COMMON_PORTS
         )
@@ -470,8 +474,15 @@ class PortScanner:
                     reader, writer = await asyncio.wait_for(
                         asyncio.open_connection(self.ip, port), timeout=self.timeout
                     )
-                    writer.close()
-                    await writer.wait_closed()
+                    
+                    # Ensure we don't hang on close (Tarpit protection)
+                    try:
+                        writer.close()
+                        await asyncio.wait_for(writer.wait_closed(), timeout=1.0)
+                    except (asyncio.TimeoutError, Exception):
+                        # If closing hangs, just ignore and move on, the socket will eventually be collected
+                        pass
+                        
                     result = PortResult(port=port, state=PortState.OPEN)
                     success = True
 
@@ -514,205 +525,202 @@ class PortScanner:
             return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
 
     async def _check_udp_port(self, port: int) -> PortResult:
-        """Check a UDP port asynchronously."""
+        """Check a UDP port asynchronously using asyncio DatagramProtocol."""
+        class UDPScanProtocol(asyncio.DatagramProtocol):
+            def __init__(self):
+                self.transport = None
+                self.received_data = None
+                self.error = None
+                self.done_future = asyncio.Future()
+
+            def connection_made(self, transport):
+                self.transport = transport
+
+            def datagram_received(self, data, addr):
+                self.received_data = data
+                if not self.done_future.done():
+                    self.done_future.set_result(True)
+
+            def error_received(self, exc):
+                self.error = exc
+                if not self.done_future.done():
+                    self.done_future.set_result(False)
+            
+            def connection_lost(self, exc):
+                if not self.done_future.done():
+                    self.ordered_future.set_result(False)
+
         try:
-            # Create UDP socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.settimeout(self.timeout)
+            loop = asyncio.get_running_loop()
+            
+            # Create datagram endpoint
+            # We explicitly bind to port 0 to let OS choose ephemeral port
+            transport, protocol = await loop.create_datagram_endpoint(
+                lambda: UDPScanProtocol(),
+                remote_addr=(self.ip, port)
+            )
 
-            # Send a simple UDP packet (empty payload)
-            sock.sendto(b"", (self.ip, port))
-
-            # Try to receive response
             try:
-                data, addr = sock.recvfrom(1024)
-                # If we receive data, port is open
-                sock.close()
-                result = PortResult(port=port, state=PortState.OPEN, protocol="udp")
+                # Send empty packet
+                transport.sendto(b"")
+                
+                # Wait for response with timeout
+                await asyncio.wait_for(protocol.done_future, timeout=self.timeout)
+                
+                # If we got here, we received data
+                if protocol.received_data:
+                    result = PortResult(port=port, state=PortState.OPEN, protocol="udp")
+                    
+                    # Try to identify service
+                    if self.service_detection:
+                         # For now, just use what we have or generic logic
+                         # Full identification might need more interaction
+                         if self.enhanced_service_detection and HAS_SERVICE_PROBES:
+                             # This is still potentially blocking or needs refactor, 
+                             # but we'll leave it for the service probe refactor step
+                             # For now, use the data we got
+                             result.service = self._identify_udp_service(port, protocol.received_data)
+                             if self.banner_grabbing:
+                                 result.banner = protocol.received_data.decode("utf-8", errors="ignore").strip()
+                         else:
+                             result.service = self._identify_udp_service(port, protocol.received_data)
+                             if self.banner_grabbing:
+                                 result.banner = protocol.received_data.decode("utf-8", errors="ignore").strip()
+                                 
+                    return result
+                else:
+                    return PortResult(port=port, state=PortState.OPEN_FILTERED, protocol="udp")
 
-                # Try to identify service from response
-                if self.service_detection:
-                    if self.enhanced_service_detection and HAS_SERVICE_PROBES:
-                        # Use enhanced service detection
-                        service_info = await identify_service_async(
-                            self.ip, port, self.timeout
-                        )
-                        result.service = service_info[
-                            "service"
-                        ] or self._identify_udp_service(port, data)
-                        result.version = service_info["version"]
-                        result.banner = (
-                            service_info["banner"]
-                            or data.decode("utf-8", errors="ignore").strip()
-                        )
-                        result.confidence = service_info["confidence"]
-                    else:
-                        # Use traditional UDP service detection
-                        result.service = self._identify_udp_service(port, data)
-                        # Try to grab banner if enabled
-                        if self.banner_grabbing and data:
-                            result.banner = data.decode(
-                                "utf-8", errors="ignore"
-                            ).strip()
-
-                return result
-            except socket.timeout:
-                # No response - port could be open or filtered
-                sock.close()
-                return PortResult(
-                    port=port, state=PortState.OPEN_FILTERED, protocol="udp"
-                )
+            except asyncio.TimeoutError:
+                # Timeout means open|filtered for UDP
+                return PortResult(port=port, state=PortState.OPEN_FILTERED, protocol="udp")
+            finally:
+                transport.close()
 
         except Exception as e:
-            # Handle specific ICMP errors that indicate port is closed
-            # This is platform-dependent and may not work on all systems
+            # Handle specific ICMP errors (ConnectionRefused usually means closed for UDP)
+            # But in asyncio/UDP, we catch them in error_received or connection_lost often
             error_str = str(e).lower()
-            if (
-                "network is unreachable" in error_str
-                or "permission denied" in error_str
-            ):
-                return PortResult(port=port, state=PortState.CLOSED, protocol="udp")
-            else:
-                # Other errors likely mean filtered
-                return PortResult(port=port, state=PortState.FILTERED, protocol="udp")
+            if "connection refused" in error_str or "unreachable" in error_str:
+                 return PortResult(port=port, state=PortState.CLOSED, protocol="udp")
+            
+            return PortResult(port=port, state=PortState.FILTERED, protocol="udp")
+
+    async def _run_scapy_scan(self, scan_func, port: int) -> PortResult:
+        """Run a blocking scapy scan function in a separate thread."""
+        loop = asyncio.get_running_loop()
+        try:
+            # Run in default executor to avoid blocking main loop
+            result = await loop.run_in_executor(None, scan_func, port)
+            return result
+        except Exception as e:
+            self.logger.error(f"Error during scapy scan on port {port}: {e}")
+            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+
+    def _scapy_syn_scan(self, port: int) -> PortResult:
+        """Blocking SYN scan logic using scapy."""
+        try:
+             # Import scapy locally
+            from scapy.all import IP, TCP, sr1
+            
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="S")
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+
+            if response is None:
+                return PortResult(port=port, state=PortState.FILTERED)
+            elif response.haslayer(TCP):
+                # Extract TTL and Window for OS fingerprinting
+                ttl = response.ttl
+                window = response.getlayer(TCP).window
+                
+                if response.getlayer(TCP).flags == 0x12:  # SYN-ACK
+                    rst_packet = IP(dst=self.ip) / TCP(dport=port, flags="R")
+                    sr1(rst_packet, timeout=0.1, verbose=0)
+                    return PortResult(
+                        port=port, 
+                        state=PortState.OPEN,
+                        ttl=ttl,
+                        window_size=window
+                    )
+                elif response.getlayer(TCP).flags == 0x14:  # RST-ACK
+                    return PortResult(
+                        port=port, 
+                        state=PortState.CLOSED,
+                        ttl=ttl,
+                        window_size=window
+                    )
+            return PortResult(port=port, state=PortState.FILTERED)
+        except PermissionError:
+             return PortResult(port=port, state=PortState.CLOSED, reason="Requires root privileges")
+        except Exception as e:
+            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+
+    def _scapy_fin_scan(self, port: int) -> PortResult:
+        """Blocking FIN scan logic using scapy."""
+        try:
+            from scapy.all import IP, TCP, sr1
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="F")
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                return PortResult(port=port, state=PortState.OPEN_FILTERED)
+            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:
+                return PortResult(port=port, state=PortState.CLOSED)
+            return PortResult(port=port, state=PortState.FILTERED)
+        except PermissionError:
+             return PortResult(port=port, state=PortState.CLOSED, reason="Requires root privileges")
+        except Exception as e:
+            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+
+    def _scapy_null_scan(self, port: int) -> PortResult:
+        """Blocking NULL scan logic using scapy."""
+        try:
+            from scapy.all import IP, TCP, sr1
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="")
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                return PortResult(port=port, state=PortState.OPEN_FILTERED)
+            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:
+                return PortResult(port=port, state=PortState.CLOSED)
+            return PortResult(port=port, state=PortState.FILTERED)
+        except PermissionError:
+             return PortResult(port=port, state=PortState.CLOSED, reason="Requires root privileges")
+        except Exception as e:
+            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+
+    def _scapy_xmas_scan(self, port: int) -> PortResult:
+        """Blocking XMAS scan logic using scapy."""
+        try:
+            from scapy.all import IP, TCP, sr1
+            packet = IP(dst=self.ip) / TCP(dport=port, flags="FPU")
+            response = sr1(packet, timeout=self.timeout, verbose=0)
+            
+            if response is None:
+                return PortResult(port=port, state=PortState.OPEN_FILTERED)
+            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:
+                return PortResult(port=port, state=PortState.CLOSED)
+            return PortResult(port=port, state=PortState.FILTERED)
+        except PermissionError:
+             return PortResult(port=port, state=PortState.CLOSED, reason="Requires root privileges")
+        except Exception as e:
+            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
 
     async def _check_tcp_syn_port(self, port: int) -> PortResult:
         """Perform a TCP SYN scan (requires root privileges on Unix systems)."""
-        try:
-            # Import scapy here to avoid dependency issues if not needed
-            from scapy.all import IP, TCP, sr1
-
-            # Create SYN packet
-            packet = IP(dst=self.ip) / TCP(dport=port, flags="S")
-
-            # Send packet and wait for response
-            response = sr1(packet, timeout=self.timeout, verbose=0)
-
-            if response is None:
-                # No response - either filtered or host is down
-                return PortResult(port=port, state=PortState.FILTERED)
-            elif response.haslayer(TCP):
-                if response.getlayer(TCP).flags == 0x12:  # SYN-ACK
-                    # Port is open - send RST to close connection
-                    rst_packet = IP(dst=self.ip) / TCP(dport=port, flags="R")
-                    sr1(rst_packet, timeout=0.1, verbose=0)
-                    return PortResult(port=port, state=PortState.OPEN)
-                elif response.getlayer(TCP).flags == 0x14:  # RST-ACK
-                    # Port is closed
-                    return PortResult(port=port, state=PortState.CLOSED)
-
-            # Unexpected response
-            return PortResult(port=port, state=PortState.FILTERED)
-
-        except PermissionError:
-            # Scapy requires root privileges for sending raw packets
-            return PortResult(
-                port=port,
-                state=PortState.CLOSED,
-                reason="TCP SYN scan requires root privileges",
-            )
-        except Exception as e:
-            self.logger.error(f"Error during TCP SYN scan on port {port}: {e}")
-            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+        return await self._run_scapy_scan(self._scapy_syn_scan, port)
 
     async def _check_fin_port(self, port: int) -> PortResult:
         """Perform a FIN scan (stealth scan technique)."""
-        try:
-            # Import scapy here to avoid dependency issues if not needed
-            from scapy.all import IP, TCP, sr1
-
-            # Create FIN packet
-            packet = IP(dst=self.ip) / TCP(dport=port, flags="F")
-
-            # Send packet and wait for response
-            response = sr1(packet, timeout=self.timeout, verbose=0)
-
-            if response is None:
-                # No response - port is open or filtered
-                return PortResult(port=port, state=PortState.OPEN_FILTERED)
-            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:  # RST
-                # Port is closed
-                return PortResult(port=port, state=PortState.CLOSED)
-
-            # Any other response means port is filtered
-            return PortResult(port=port, state=PortState.FILTERED)
-
-        except PermissionError:
-            # Scapy requires root privileges for sending raw packets
-            return PortResult(
-                port=port,
-                state=PortState.CLOSED,
-                reason="FIN scan requires root privileges",
-            )
-        except Exception as e:
-            self.logger.error(f"Error during FIN scan on port {port}: {e}")
-            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+        return await self._run_scapy_scan(self._scapy_fin_scan, port)
 
     async def _check_null_port(self, port: int) -> PortResult:
         """Perform a NULL scan (no flags set)."""
-        try:
-            # Import scapy here to avoid dependency issues if not needed
-            from scapy.all import IP, TCP, sr1
-
-            # Create NULL packet (no flags)
-            packet = IP(dst=self.ip) / TCP(dport=port, flags="")
-
-            # Send packet and wait for response
-            response = sr1(packet, timeout=self.timeout, verbose=0)
-
-            if response is None:
-                # No response - port is open or filtered
-                return PortResult(port=port, state=PortState.OPEN_FILTERED)
-            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:  # RST
-                # Port is closed
-                return PortResult(port=port, state=PortState.CLOSED)
-
-            # Any other response means port is filtered
-            return PortResult(port=port, state=PortState.FILTERED)
-
-        except PermissionError:
-            # Scapy requires root privileges for sending raw packets
-            return PortResult(
-                port=port,
-                state=PortState.CLOSED,
-                reason="NULL scan requires root privileges",
-            )
-        except Exception as e:
-            self.logger.error(f"Error during NULL scan on port {port}: {e}")
-            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+        return await self._run_scapy_scan(self._scapy_null_scan, port)
 
     async def _check_xmas_port(self, port: int) -> PortResult:
         """Perform an XMAS scan (FIN, PSH, URG flags set)."""
-        try:
-            # Import scapy here to avoid dependency issues if not needed
-            from scapy.all import IP, TCP, sr1
-
-            # Create XMAS packet (FIN, PSH, URG flags)
-            packet = IP(dst=self.ip) / TCP(dport=port, flags="FPU")
-
-            # Send packet and wait for response
-            response = sr1(packet, timeout=self.timeout, verbose=0)
-
-            if response is None:
-                # No response - port is open or filtered
-                return PortResult(port=port, state=PortState.OPEN_FILTERED)
-            elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:  # RST
-                # Port is closed
-                return PortResult(port=port, state=PortState.CLOSED)
-
-            # Any other response means port is filtered
-            return PortResult(port=port, state=PortState.FILTERED)
-
-        except PermissionError:
-            # Scapy requires root privileges for sending raw packets
-            return PortResult(
-                port=port,
-                state=PortState.CLOSED,
-                reason="XMAS scan requires root privileges",
-            )
-        except Exception as e:
-            self.logger.error(f"Error during XMAS scan on port {port}: {e}")
-            return PortResult(port=port, state=PortState.CLOSED, reason=str(e))
+        return await self._run_scapy_scan(self._scapy_xmas_scan, port)
 
     def _is_banner_port(self, port: int) -> bool:
         """Check if we should attempt to grab a banner from this port."""
@@ -794,45 +802,61 @@ class PortScanner:
         try:
             probe = self._get_probe_for_port(port)
             if not probe:
-                return
+                # Default generic probe if no specific one
+                probe = b"\r\n\r\n"
 
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(self.ip, port), timeout=self.timeout
-            )
-
+            # Determine if SSL is needed
+            use_ssl = (port == 443 or port == 8443)
+            
             try:
-                writer.write(probe)
-                await writer.drain()
+                # Open connection
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(self.ip, port, ssl=use_ssl if use_ssl else None), 
+                    timeout=self.timeout
+                )
 
-                # Read banner with a timeout
-                banner = await asyncio.wait_for(reader.read(1024), timeout=self.timeout)
-                if banner:
-                    result.banner = banner.decode("utf-8", errors="ignore").strip()
+                try:
+                    writer.write(probe)
+                    await writer.drain()
 
-            except asyncio.TimeoutError:
-                self.logger.debug(f"Banner grab timed out for port {port}")
+                    # Read banner with a timeout
+                    # Read slightly more to ensure we get headers
+                    banner = await asyncio.wait_for(reader.read(2048), timeout=self.timeout)
+                    if banner:
+                        result.banner = banner.decode("utf-8", errors="ignore").strip()
+
+                except asyncio.TimeoutError:
+                    self.logger.debug(f"Banner grab timed out for port {port}")
+                except Exception as e:
+                    self.logger.debug(f"Error reading banner from port {port}: {e}")
+                finally:
+                    if writer:
+                        writer.close()
+                        await asyncio.sleep(0) # Yield to let close happen
+                        
             except Exception as e:
-                self.logger.debug(f"Error reading banner from port {port}: {e}")
+                # Retry without SSL if SSL failed for 443 (sometimes it's misconfigured or user error)
+                if use_ssl:
+                     # Fallback logic could go here, but keep it simple for now
+                     pass
+                self.logger.debug(f"Connection failed for banner grab on {port}: {e}")
 
         except Exception as e:
             self.logger.debug(f"Banner grab failed for port {port}: {e}")
 
-        finally:
-            # Ensure writer is properly closed
-            if "writer" in locals():
-                writer.close()
-                await writer.wait_closed()
-
     def _get_probe_for_port(self, port: int) -> Optional[bytes]:
         """Get an appropriate probe for banner grabbing based on port."""
+        host = getattr(self, "hostname", "example.com")
+        
         probes = {
             21: b"\r\n",  # FTP
             22: b"SSH-2.0-CyberSecCLI\r\n",  # SSH
-            25: b"EHLO example.com\r\n",  # SMTP
-            80: b"GET / HTTP/1.0\r\nHost: example.com\r\n\r\n",  # HTTP
+            25: b"EHLO " + host.encode() + b"\r\n",  # SMTP
+            80: b"GET / HTTP/1.0\r\nHost: " + host.encode() + b"\r\n\r\n",  # HTTP
             110: b"USER guest\r\n",  # POP3
             143: b"a1 CAPABILITY\r\n",  # IMAP
-            443: b"GET / HTTP/1.0\r\nHost: example.com\r\n\r\n",  # HTTPS
+            443: b"GET / HTTP/1.0\r\nHost: " + host.encode() + b"\r\n\r\n",  # HTTPS
+            8080: b"GET / HTTP/1.0\r\nHost: " + host.encode() + b"\r\n\r\n", # HTTP-Alt
             3306: b"\x0a\x00\x00\x01\x85\xa6\x3f\x20\x00\x00\x00\x01\x21",  # MySQL
             3389: b"\x03\x00\x00\x0b\x06\xd0\x00\x00\x12\x34\x00",  # RDP
         }
@@ -928,7 +952,15 @@ class PortScanner:
             # Create tasks for each port
             for port in self.ports:
                 task = asyncio.create_task(self._check_port(port))
-                task.add_done_callback(lambda t, p=port: results.append(t.result()))
+                
+                def harvest_safe(t, p=port):
+                    try:
+                        results.append(t.result())
+                    except Exception as e:
+                        self.logger.error(f"Task crash on port {p}: {e}")
+                        results.append(PortResult(port=p, state=PortState.CLOSED, reason=str(e)))
+                
+                task.add_done_callback(harvest_safe)
                 tasks.append(task)
 
             # Show progress if there are many ports
@@ -947,11 +979,17 @@ class PortScanner:
 
                     # Wait for all tasks to complete
                     for t in asyncio.as_completed(tasks):
-                        await t
+                        try:
+                            await t
+                        except Exception:
+                            pass # Already handled in callback
                         progress.update(task, advance=1)
             else:
                 # For small scans, just wait for all tasks
-                await asyncio.gather(*tasks)
+                try:
+                    await asyncio.gather(*tasks)
+                except Exception:
+                    pass # Already handled in callback
 
             # Sort results by port number
             results = sorted(results, key=lambda x: x.port)
@@ -983,6 +1021,16 @@ class PortScanner:
         open_count = len([r for r in self.results if r.state == PortState.OPEN])
         closed_count = len([r for r in self.results if r.state == PortState.CLOSED])
         filtered_count = len([r for r in self.results if r.state == PortState.FILTERED])
+
+        # Perform OS detection if enabled and we have open ports
+        if self.os_detection and open_count > 0:
+            self.logger.info("Performing OS detection...")
+            try:
+                os_info = self._perform_os_detection()
+                if os_info:
+                    self.logger.info(f"OS Detection results: {os_info}")
+            except Exception as e:
+                self.logger.warning(f"OS detection failed: {e}")
 
         self.logger.info(
             f"Scan completed: {open_count} open, {closed_count} closed, {filtered_count} filtered"
@@ -1038,9 +1086,15 @@ class PortScanner:
             # Create tasks for each port in this group
             for port in group:
                 task = asyncio.create_task(self._check_port(port))
-                task.add_done_callback(
-                    lambda t, p=port: group_results.append(t.result())
-                )
+                
+                def harvest_safe_group(t, p=port):
+                    try:
+                        group_results.append(t.result())
+                    except Exception as e:
+                        self.logger.error(f"Task crash on priority port {p}: {e}")
+                        group_results.append(PortResult(port=p, state=PortState.CLOSED, reason=str(e)))
+                
+                task.add_done_callback(harvest_safe_group)
                 tasks.append(task)
 
             # Show progress for this group
@@ -1058,7 +1112,10 @@ class PortScanner:
 
                 # Wait for all tasks in this group to complete
                 for t in asyncio.as_completed(tasks):
-                    await t
+                    try:
+                        await t
+                    except Exception:
+                        pass # Already handled in callback
                     progress.update(task, advance=1)
 
             # Sort group results by port number and add to all results
@@ -1130,6 +1187,165 @@ class PortScanner:
 
         return table
 
+    def _perform_os_detection(self) -> Dict[str, Any]:
+        """
+        Perform OS detection using passive fingerprinting (TTL and TCP Window Size).
+        Replaces Nmap with native Python implementation.
+        """
+        if not self.results:
+            return {"error": "No scan results available for OS fingerprinting"}
+
+        # Collect fingerprints from open ports
+        fingerprints = []
+        for result in self.results:
+            if result.state == PortState.OPEN:
+                 # If TTL is missing (e.g. from TCP Connect scan), try to get it actively
+                 if result.ttl is None:
+                     try:
+                         # Run a quick SYN probe to this port to get TTL/Window
+                         # Note: This requires root privileges (sudo). 
+                         # If we are not root, this will fail/return None, and we fall back to banner analysis.
+                         async def probe():
+                             return await self._check_tcp_syn_port(result.port)
+                             
+                         probe_result = asyncio.run(probe())
+                         if probe_result and probe_result.ttl:
+                             result.ttl = probe_result.ttl
+                             result.window_size = probe_result.window_size
+                     except Exception:
+                         pass
+
+            if result.ttl is not None:
+                fp = {"ttl": int(result.ttl), "window": result.window_size}
+                fingerprints.append(fp)
+        
+        if not fingerprints:
+            # Fallback to service banner analysis (for non-root users)
+            return self._perform_service_os_detection()
+
+        # OS Signatures (Simplified)
+        # (TTL, Window Size) -> (OS Name, Accuracy)
+        candidates = {}
+        
+        for fp in fingerprints:
+            ttl = fp["ttl"]
+            win = fp.get("window", 0)
+            
+            # Estimate initial TTL
+            if ttl <= 64:
+                initial_ttl = 64
+            elif ttl <= 128:
+                initial_ttl = 128
+            else:
+                initial_ttl = 255
+                
+            # Heuristic Analysis
+            if initial_ttl == 64:
+                # Likely Linux, MacOS, FreeBsd
+                if win is not None and win > 60000:
+                    candidates["MacOS/iOS"] = candidates.get("MacOS/iOS", 0) + 1
+                else:
+                    candidates["Linux"] = candidates.get("Linux", 0) + 2
+                    
+            elif initial_ttl == 128:
+                # Likely Windows
+                candidates["Windows"] = candidates.get("Windows", 0) + 2
+                
+            elif initial_ttl == 255:
+                # Likely Cisco, Solaris, etc.
+                if win == 0:
+                     candidates["Cisco IOS"] = candidates.get("Cisco IOS", 0) + 1
+                else:
+                     candidates["Solaris/Unix"] = candidates.get("Solaris/Unix", 0) + 1
+                     
+        if not candidates:
+             # Try service fallback even if we had inconclusive packet data
+             return self._perform_service_os_detection()
+             
+        # Select best candidate
+        best_os = max(candidates.items(), key=lambda x: x[1])
+        
+        return {
+            "os_name": best_os[0],
+            "accuracy": "85%" if best_os[1] > 1 else "50%",
+            "details": f"Based on TTL/Window analysis of {len(fingerprints)} packets",
+            "fingerprints_analyzed": len(fingerprints)
+        }
+
+    def _perform_service_os_detection(self) -> Dict[str, Any]:
+        """
+        Perform OS detection based on service banners (Application Layer).
+        Useful when root privileges are not available for packet analysis.
+        """
+        candidates = {}
+        analyzed_banners = 0
+
+        for result in self.results:
+            if not result.banner:
+                continue
+                
+            banner = result.banner.lower()
+            analyzed_banners += 1
+            
+            # Windows Indicators
+            if "windows" in banner or "microsoft" in banner or "iis/" in banner or "asp.net" in banner:
+                 candidates["Windows"] = candidates.get("Windows", 0) + 3
+            
+            # Linux Indicators
+            if "ubuntu" in banner:
+                candidates["Linux (Ubuntu)"] = candidates.get("Linux (Ubuntu)", 0) + 4
+                candidates["Linux"] = candidates.get("Linux", 0) + 2
+            elif "debian" in banner:
+                candidates["Linux (Debian)"] = candidates.get("Linux (Debian)", 0) + 4
+                candidates["Linux"] = candidates.get("Linux", 0) + 2
+            elif "centos" in banner or "red hat" in banner or "rhel" in banner:
+                candidates["Linux (RHEL/CentOS)"] = candidates.get("Linux (RHEL/CentOS)", 0) + 4
+                candidates["Linux"] = candidates.get("Linux", 0) + 2
+            elif "alpine" in banner:
+                candidates["Linux (Alpine)"] = candidates.get("Linux (Alpine)", 0) + 4
+                candidates["Linux"] = candidates.get("Linux", 0) + 2
+            elif "linux" in banner:
+                candidates["Linux"] = candidates.get("Linux", 0) + 2
+            
+            # Weak Linux Indicators (Common Open Source software)
+            if "apache" in banner or "nginx" in banner or "php" in banner or "openssl" in banner:
+                 candidates["Linux"] = candidates.get("Linux", 0) + 1
+            elif "gws" in banner or "sffe" in banner or "esf" in banner:
+                 # Google Web Server
+                 candidates["Linux (Google)"] = candidates.get("Linux (Google)", 0) + 4
+            elif "cloudflare" in banner:
+                 candidates["Linux (Cloudflare)"] = candidates.get("Linux (Cloudflare)", 0) + 4
+                
+            # Other Unix
+            if "freebsd" in banner:
+                 candidates["FreeBSD"] = candidates.get("FreeBSD", 0) + 4
+            elif "openbsd" in banner:
+                 candidates["OpenBSD"] = candidates.get("OpenBSD", 0) + 4
+                 
+            # Apple
+            if "darwin" in banner or "macos" in banner:
+                 candidates["MacOS"] = candidates.get("MacOS", 0) + 4
+                 
+        if not candidates:
+             return {
+                 "os_name": "Unknown",
+                 "accuracy": "N/A",
+                 "details": f"No matching signatures in {analyzed_banners} banners analyzed",
+                 "fingerprints_analyzed": 0,
+                 "method": "Banner Analysis"
+             }
+             
+        # Select best candidate
+        best_os = max(candidates.items(), key=lambda x: x[1])
+        
+        return {
+            "os_name": best_os[0],
+            "accuracy": "Low (Inferred)" if best_os[1] < 3 else "Medium (Banner)",
+            "details": f"Inferred from application banners (analyzed {analyzed_banners} banners)",
+            "fingerprints_analyzed": 0,
+            "method": "Banner Analysis"
+        }
+
 
 # Helper function for command-line usage
 async def scan_ports(
@@ -1140,6 +1356,7 @@ async def scan_ports(
     max_concurrent: int = 100,
     service_detection: bool = True,
     banner_grabbing: bool = True,
+    os_detection: bool = False,
     output_format: str = "table",
     require_reachable: bool = False,
     force: bool = False,  # Add force parameter for bypassing cache
@@ -1170,6 +1387,7 @@ async def scan_ports(
             max_concurrent=max_concurrent,
             service_detection=service_detection,
             banner_grabbing=banner_grabbing,
+            os_detection=os_detection,
             require_reachable=effective_require,
         )
 

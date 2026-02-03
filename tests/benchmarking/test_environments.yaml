@@ -1,0 +1,254 @@
+# Known test environments for accuracy testing
+
+# Metasploitable 2
+metasploitable2:
+  name: "Metasploitable 2"
+  description: "Intentionally vulnerable Linux VM for security training"
+  target: "192.168.56.101"  # Update with your VM IP
+  expected_open_ports:
+    - 21    # FTP (vsftpd 2.3.4)
+    - 22    # SSH (OpenSSH 4.7p1)
+    - 23    # Telnet
+    - 25    # SMTP (Postfix)
+    - 53    # DNS (ISC BIND 9.4.2)
+    - 80    # HTTP (Apache 2.2.8)
+    - 111   # RPCbind
+    - 139   # NetBIOS
+    - 445   # SMB (Samba 3.0.20)
+    - 512   # rexec
+    - 513   # rlogin
+    - 514   # rsh
+    - 1099  # Java RMI
+    - 1524  # Bindshell
+    - 2049  # NFS
+    - 2121  # FTP (ProFTPD 1.3.1)
+    - 3306  # MySQL (5.0.51a)
+    - 5432  # PostgreSQL (8.3.0)
+    - 5900  # VNC
+    - 6000  # X11
+    - 6667  # IRC (UnrealIRCd)
+    - 8009  # AJP13
+    - 8180  # Apache Tomcat
+  
+  expected_services:
+    21: "ftp"
+    22: "ssh"
+    23: "telnet"
+    25: "smtp"
+    53: "domain"
+    80: "http"
+    139: "netbios-ssn"
+    445: "microsoft-ds"
+    3306: "mysql"
+    5432: "postgresql"
+
+# DVWA (Damn Vulnerable Web Application)
+dvwa:
+  name: "DVWA"
+  description: "Damn Vulnerable Web Application"
+  target: "192.168.56.102"  # Update with your VM IP
+  expected_open_ports:
+    - 80    # HTTP (Apache)
+    - 3306  # MySQL
+  
+  expected_services:
+    80: "http"
+    3306: "mysql"
+
+# VulnHub - Basic Linux
+vulnhub_basic:
+  name: "VulnHub Basic Linux"
+  description: "Basic vulnerable Linux server"
+  target: "192.168.56.103"
+  expected_open_ports:
+    - 22    # SSH
+    - 80    # HTTP
+    - 443   # HTTPS
+  
+  expected_services:
+    22: "ssh"
+    80: "http"
+    443: "https"
+
+# Local test server (for CI/CD)
+localhost:
+  name: "Localhost Test Server"
+  description: "Local machine for basic testing"
+  target: "127.0.0.1"
+  expected_open_ports:
+    - 22    # SSH (if running)
+    - 80    # HTTP (if running)
+    - 443   # HTTPS (if running)
+    - 5432  # PostgreSQL (if running)
+    - 6379  # Redis (if running)
+  
+  expected_services:
+    22: "ssh"
+    80: "http"
+    443: "https"
+    5432: "postgresql"
+    6379: "redis"
+
+# Nmap's official test server
+scanme_nmap:
+  name: "Scanme Nmap"
+  description: "Nmap's official test server"
+  target: "scanme.nmap.org"
+  expected_open_ports:
+    - 22    # SSH
+    - 80    # HTTP
+    - 9929  # nping-echo
+    - 31337 # Elite
+  
+  expected_services:
+    22: "ssh"
+    80: "http"
+
+# Cloud instance profiles for scalability testing
+cloud_instances:
+  # AWS EC2
+  aws_t2_micro:
+    provider: "AWS"
+    instance_type: "t2.micro"
+    vcpus: 1
+    memory_gb: 1
+    network: "Low to Moderate"
+    cost_per_hour: 0.0116
+  
+  aws_t2_small:
+    provider: "AWS"
+    instance_type: "t2.small"
+    vcpus: 1
+    memory_gb: 2
+    network: "Low to Moderate"
+    cost_per_hour: 0.023
+  
+  aws_c5_large:
+    provider: "AWS"
+    instance_type: "c5.large"
+    vcpus: 2
+    memory_gb: 4
+    network: "Up to 10 Gigabit"
+    cost_per_hour: 0.085
+  
+  aws_c5_24xlarge:
+    provider: "AWS"
+    instance_type: "c5.24xlarge"
+    vcpus: 96
+    memory_gb: 192
+    network: "25 Gigabit"
+    cost_per_hour: 4.08
+  
+  # Google Cloud
+  gcp_e2_micro:
+    provider: "GCP"
+    instance_type: "e2-micro"
+    vcpus: 2
+    memory_gb: 1
+    network: "Up to 1 Gigabit"
+    cost_per_hour: 0.0084
+  
+  gcp_n1_standard_1:
+    provider: "GCP"
+    instance_type: "n1-standard-1"
+    vcpus: 1
+    memory_gb: 3.75
+    network: "Up to 10 Gigabit"
+    cost_per_hour: 0.0475
+  
+  # Azure
+  azure_b1s:
+    provider: "Azure"
+    instance_type: "B1s"
+    vcpus: 1
+    memory_gb: 1
+    network: "Moderate"
+    cost_per_hour: 0.0104
+
+# Hardware profiles for vertical scaling tests
+hardware_profiles:
+  raspberry_pi:
+    name: "Raspberry Pi 4"
+    cpu_cores: 4
+    cpu_ghz: 1.5
+    memory_gb: 4
+    network_mbps: 1000
+    category: "embedded"
+  
+  laptop_standard:
+    name: "Standard Laptop"
+    cpu_cores: 4
+    cpu_ghz: 2.4
+    memory_gb: 8
+    network_mbps: 1000
+    category: "consumer"
+  
+  desktop_workstation:
+    name: "Desktop Workstation"
+    cpu_cores: 16
+    cpu_ghz: 3.6
+    memory_gb: 32
+    network_mbps: 1000
+    category: "professional"
+  
+  server_grade:
+    name: "Server Grade"
+    cpu_cores: 64
+    cpu_ghz: 2.5
+    memory_gb: 128
+    network_mbps: 10000
+    category: "enterprise"
+
+# Test network configurations
+test_networks:
+  small_network:
+    cidr: "192.168.1.0/24"
+    total_hosts: 254
+    description: "Small home/office network"
+  
+  medium_network:
+    cidr: "10.0.0.0/16"
+    total_hosts: 65534
+    description: "Medium corporate network"
+  
+  large_network:
+    cidr: "172.16.0.0/12"
+    total_hosts: 1048574
+    description: "Large enterprise network"
+  
+  internet_scale:
+    cidr: "0.0.0.0/0"
+    total_hosts: 4294967296
+    description: "Internet-scale (DO NOT ACTUALLY SCAN)"
+
+# Accuracy test thresholds
+accuracy_thresholds:
+  min_precision: 0.99      # 99% precision
+  min_recall: 0.99         # 99% recall
+  min_f1_score: 0.99       # 99% F1 score
+  min_accuracy: 0.99       # 99% overall accuracy
+  max_false_positive_rate: 0.01  # 1% false positive rate
+  max_false_negative_rate: 0.01  # 1% false negative rate
+
+# Performance budgets
+performance_budgets:
+  speed:
+    single_port_latency_ms: 10      # Max 10ms per port
+    100_ports_duration_s: 5         # Max 5s for 100 ports
+    1000_ports_duration_s: 30       # Max 30s for 1000 ports
+    full_range_duration_s: 300      # Max 5 minutes for full range
+  
+  throughput:
+    min_ports_per_second: 100       # Minimum 100 ports/sec
+    target_ports_per_second: 500    # Target 500 ports/sec
+  
+  resources:
+    max_memory_mb: 500              # Max 500 MB RAM
+    target_memory_mb: 250           # Target 250 MB RAM
+    max_cpu_percent: 90             # Max 90% CPU
+    target_cpu_percent: 70          # Target 70% CPU
+  
+  scalability:
+    max_targets: 10000              # Should handle 10k targets
+    max_concurrent_scans: 100       # Should handle 100 concurrent scans
+    linear_scaling_threshold: 0.8   # 80% efficiency for linear scaling

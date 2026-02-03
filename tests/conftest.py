@@ -10,11 +10,11 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 src_path = os.path.join(project_root, "src")
 sys.path.insert(0, src_path)
 
-# Also add the project root to the Python path to allow importing from core directory
+# Also add the project root to the Python path to allow importing from cybersec_cli.core directory
 sys.path.insert(0, project_root)
 
 # Now import modules after adding paths to sys.path
-from core.scan_cache import ScanCache  # noqa: E402
+from cybersec_cli.core.scan_cache import ScanCache  # noqa: E402
 from cybersec_cli.config import RateLimitConfig, ScanningConfig  # noqa: E402
 from cybersec_cli.tools.network.port_scanner import PortScanner  # noqa: E402
 

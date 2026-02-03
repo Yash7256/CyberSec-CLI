@@ -13,8 +13,8 @@ from typing import Dict
 import matplotlib.pyplot as plt
 import psutil
 
-from core.adaptive_scanner import AdaptiveScanConfig
-from core.scan_cache import ScanCache
+from cybersec_cli.core.adaptive_scanner import AdaptiveScanConfig
+from cybersec_cli.core.scan_cache import ScanCache
 from cybersec_cli.tools.network.port_scanner import PortScanner
 
 
