@@ -2,11 +2,11 @@ import asyncio
 import json
 import logging
 import os
-import re
 import signal
 import socket
 import sqlite3
 import subprocess
+import shlex
 
 # Fix the import path for core.port_priority
 import sys
@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-import dns.resolver
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -42,6 +41,7 @@ class OSFingerprintRequest(BaseModel):
 
 
 from src.cybersec_cli.utils.logger import log_forced_scan
+from src.cybersec_cli.core.validators import validate_target, validate_port_range
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -285,6 +285,7 @@ WS_CONCURRENT_LIMIT = int(os.getenv("WS_CONCURRENT_LIMIT", "2"))
 # In-memory state for rate limiting and concurrency (simple, per-process)
 _rate_counters: Dict[str, Dict] = {}
 _active_scans: Dict[str, int] = {}
+_last_scan_time: Dict[str, float] = {}
 
 # Persistence: simple SQLite DB for scan results
 REPORTS_DIR = os.path.join(os.path.dirname(BASE_DIR), "reports")
@@ -327,6 +328,141 @@ def ensure_allowlists():
 ensure_allowlists()
 
 
+ALLOWED_SCAN_FLAGS_WITH_VALUE = {
+    "-p",
+    "--ports",
+    "--scan-type",
+    "--timeout",
+    "--concurrent",
+    "--rate-limit",
+    "--format",
+}
+
+ALLOWED_SCAN_FLAGS_NO_VALUE = {
+    "--no-service-detection",
+    "--streaming",
+    "--verbose",
+    "-v",
+    "--no-banner",
+    "--require-reachable",
+    "--no-require-reachable",
+    "--force",
+    "--test",
+    "--os",
+    "--os-only",
+    "--adaptive",
+    "--no-adaptive",
+    "--enhanced-service-detection",
+    "--no-enhanced-service-detection",
+}
+
+
+def _parse_ports_arg(ports_str: str) -> List[int]:
+    ports: List[int] = []
+    for part in ports_str.split(","):
+        part = part.strip()
+        if not part:
+            raise ValueError("Empty port value")
+        if "-" in part:
+            start_str, end_str = part.split("-", 1)
+            start = int(start_str)
+            end = int(end_str)
+            if start < 1 or end > 65535 or start > end:
+                raise ValueError("Invalid port range")
+            range_len = end - start + 1
+            if len(ports) + range_len > 1000:
+                raise ValueError("Port range too large")
+            ports.extend(list(range(start, end + 1)))
+        else:
+            port = int(part)
+            if port < 1 or port > 65535:
+                raise ValueError("Invalid port value")
+            ports.append(port)
+        if len(ports) > 1000:
+            raise ValueError("Port range too large")
+
+    if not validate_port_range(ports):
+        raise ValueError("Invalid port list")
+    return ports
+
+
+def _parse_and_validate_scan_command(raw_command: str) -> List[str]:
+    tokens = shlex.split(raw_command)
+    if not tokens or tokens[0].lower() != "scan":
+        raise ValueError("Only 'scan' commands are allowed")
+
+    if len(tokens) < 2:
+        raise ValueError("Missing scan target")
+
+    target = tokens[1]
+    if target.startswith("-") or not validate_target(target):
+        raise ValueError("Invalid target")
+
+    safe_tokens = ["scan", target]
+    i = 2
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.startswith("--") and "=" in tok:
+            flag, val = tok.split("=", 1)
+            if flag not in ALLOWED_SCAN_FLAGS_WITH_VALUE:
+                raise ValueError(f"Unsupported option: {flag}")
+            _validate_scan_flag_value(flag, val)
+            safe_tokens.extend([flag, val])
+            i += 1
+            continue
+
+        if tok in ALLOWED_SCAN_FLAGS_NO_VALUE:
+            safe_tokens.append(tok)
+            i += 1
+            continue
+
+        if tok in ALLOWED_SCAN_FLAGS_WITH_VALUE:
+            if i + 1 >= len(tokens):
+                raise ValueError(f"Missing value for {tok}")
+            val = tokens[i + 1]
+            _validate_scan_flag_value(tok, val)
+            safe_tokens.extend([tok, val])
+            i += 2
+            continue
+
+        raise ValueError(f"Unsupported option: {tok}")
+
+    return safe_tokens
+
+
+def _validate_scan_flag_value(flag: str, value: str) -> None:
+    if flag in ("-p", "--ports"):
+        _parse_ports_arg(value)
+        return
+
+    if flag == "--scan-type":
+        allowed = {"tcp_connect", "tcp_syn", "udp", "fin", "null", "xmas"}
+        if value.lower() not in allowed:
+            raise ValueError("Invalid scan type")
+        return
+
+    if flag == "--timeout":
+        t = float(value)
+        if t <= 0 or t > 60:
+            raise ValueError("Invalid timeout")
+        return
+
+    if flag == "--concurrent":
+        c = int(value)
+        if c < 1 or c > 1000:
+            raise ValueError("Invalid concurrency")
+        return
+
+    if flag == "--rate-limit":
+        r = int(value)
+        if r < 0 or r > 1000:
+            raise ValueError("Invalid rate limit")
+        return
+
+    if flag == "--format":
+        if value.lower() not in {"table", "json", "csv", "list"}:
+            raise ValueError("Invalid format")
+        return
 def save_scan_result(target: str, ip: Optional[str], command: str, output: str) -> int:
     try:
         conn = sqlite3.connect(SCANS_DB)
@@ -503,8 +639,6 @@ class APIKeyAuthMiddleware(BaseHTTPMiddleware):
             "/",
             "/health/redis",
             "/api/status",
-            "/api/scan/stream",
-            "/api/stream/scan",
             "/metrics",
             "/static",
             "/docs",
@@ -1021,15 +1155,11 @@ async def stream_scan_results(
 
     async def event_generator():
         try:
+            if not validate_target(target):
+                raise ValueError("Invalid target")
+
             # Parse ports
-            port_list = []
-            if "-" in ports:
-                start, end = map(int, ports.split("-"))
-                port_list = list(range(start, end + 1))
-            elif "," in ports:
-                port_list = [int(p) for p in ports.split(",")]
-            else:
-                port_list = [int(ports)]
+            port_list = _parse_ports_arg(ports)
 
             # Group ports by priority
             priority_groups = get_scan_order(port_list)
@@ -1141,15 +1271,11 @@ async def stream_scan_results_new(
 
     async def event_generator():
         try:
+            if not validate_target(target):
+                raise ValueError("Invalid target")
+
             # Parse ports
-            port_list = []
-            if "-" in ports:
-                start, end = map(int, ports.split("-"))
-                port_list = list(range(start, end + 1))
-            elif "," in ports:
-                port_list = [int(p) for p in ports.split(",")]
-            else:
-                port_list = [int(ports)]
+            port_list = _parse_ports_arg(ports)
 
             # Group ports by priority
             priority_groups = get_scan_order(port_list)
@@ -1370,6 +1496,14 @@ if CELERY_AVAILABLE:
 
         # Get client IP for rate limiting
         request.client.host
+
+        if not validate_target(scan_request.target):
+            raise HTTPException(status_code=400, detail="Invalid target")
+
+        try:
+            _parse_ports_arg(scan_request.ports)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
         # Record scan start metrics
         if HAS_METRICS and metrics_collector:
@@ -1663,16 +1797,16 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # If this is a forced scan request coming from the client, write an audit entry
             try:
-                parts = command.strip().split()
+                raw_parts = shlex.split(command)
             except Exception:
-                parts = []
+                raw_parts = []
             # If this is a forced scan request coming from the client, write an audit entry
             try:
                 consent_flag = payload.get("consent", False)
             except Exception:
                 consent_flag = False
-            if force and len(parts) >= 2 and parts[0].lower() == "scan":
-                target = parts[1]
+            if force and len(raw_parts) >= 2 and raw_parts[0].lower() == "scan":
+                target = raw_parts[1]
                 resolved_ip = None
                 try:
                     resolved_ip = socket.gethostbyname(target)
@@ -1710,64 +1844,36 @@ async def websocket_endpoint(websocket: WebSocket):
             if not command:
                 continue
 
-                # Intercept 'scan' commands to perform validation
-            parts = command.strip().split()
-
-            # Skip validation for non-scan commands
-            if not parts or parts[0].lower() != "scan":
-                continue
-
-            if len(parts) < 2:
+            try:
+                safe_tokens = _parse_and_validate_scan_command(command)
+            except Exception as e:
                 await websocket.send_text(
                     json.dumps(
                         {
                             "type": "error",
-                            "message": "Please specify a target to scan. Example: scan example.com",
+                            "message": f"Invalid scan command: {str(e)}",
                         }
                     )
                 )
                 continue
 
+            parts = safe_tokens
+
+            # Skip validation for non-scan commands
+            if not parts or parts[0].lower() != "scan":
+                continue
+
             target = parts[1]
 
-            # Basic domain format validation
-            def is_valid_domain(domain):
-                try:
-                    # Check if it's a valid domain format
-                    if not re.match(
-                        r"^((?!-)[A-Za-z0-9-]{1,63}(?<!-)\.)+[A-Za-z]{2,}$", domain
-                    ):
-                        return False
-
-                    # Try to resolve the domain
-                    try:
-                        # Try both A and AAAA records
-                        dns.resolver.resolve(domain, "A")
-                        return True
-                    except (
-                        dns.resolver.NXDOMAIN,
-                        dns.resolver.NoAnswer,
-                        dns.resolver.NoNameservers,
-                    ):
-                        try:
-                            dns.resolver.resolve(domain, "AAAA")
-                            return True
-                        except (
-                            dns.resolver.NXDOMAIN,
-                            dns.resolver.NoAnswer,
-                            dns.resolver.NoNameservers,
-                        ):
-                            return False
-                except Exception:
-                    return False
-
-            # Validate the target
-            if not is_valid_domain(target):
+            # Ensure target resolves
+            try:
+                socket.gethostbyname(target)
+            except Exception:
                 await websocket.send_text(
                     json.dumps(
                         {
                             "type": "error",
-                            "message": f"Invalid or non-existent domain: {target}. Please check the domain and try again.",
+                            "message": f"Invalid or non-existent target: {target}. Please check the target and try again.",
                         }
                     )
                 )
@@ -1847,19 +1953,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                     )
                     continue
-                # Check concurrency limit (try Redis, fallback to in-memory)
-                conc_ok = await _record_scan_start(client_host)
-                if not conc_ok:
-                    await websocket.send_text(
-                        json.dumps(
-                            {
-                                "type": "rate_limit",
-                                "message": f"Too many concurrent scans ({WS_CONCURRENT_LIMIT}) for your connection. Try again later.",
-                            }
-                        )
-                    )
-                    continue
-            if len(parts) >= 2 and parts[0].lower() == "scan" and not force:
+            effective_force = force or ("--force" in parts)
+            if len(parts) >= 2 and parts[0].lower() == "scan" and not effective_force:
                 target = parts[1]
                 # Resolve hostname
                 try:
@@ -1909,116 +2004,125 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
             # Execute the command and stream output
-            # Execute the command and stream output. Use try/finally to ensure counters decremented.
+            scan_started = False
             try:
-                process = await asyncio.create_subprocess_shell(
-                    f"python -m cybersec_cli {command}",
+                # Concurrency limit (try Redis, fallback to in-memory)
+                conc_ok = await _record_scan_start(client_host)
+                if not conc_ok:
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "rate_limit",
+                                "message": f"Too many concurrent scans ({WS_CONCURRENT_LIMIT}) for your connection. Try again later.",
+                            }
+                        )
+                    )
+                    continue
+
+                scan_started = True
+                process = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-m",
+                    "cybersec_cli",
+                    *safe_tokens,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     cwd=os.getcwd(),
                 )
-            except Exception:
-                # Decrement concurrency if we failed to start
+
+                # Collect complete output
+                stdout_data = []
+                stderr_data = []
+
+                # Read stdout and stderr
+                while True:
+                    # Check if process has finished
+                    if process.returncode is not None:
+                        # Read any remaining output
+                        try:
+                            remaining_stdout = await process.stdout.read()
+                            if remaining_stdout:
+                                try:
+                                    stdout_data.append(
+                                        remaining_stdout.decode("utf-8", errors="replace")
+                                    )
+                                except UnicodeDecodeError:
+                                    # If we can't decode as UTF-8, try with error replacement
+                                    stdout_data.append(
+                                        remaining_stdout.decode("utf-8", errors="replace")
+                                    )
+                        except Exception as e:
+                            logger.error(f"Error reading remaining stdout: {e}")
+                        break
+
+                    # Read available output
+                    try:
+                        stdout = await process.stdout.read(4096)
+                        if stdout:
+                            try:
+                                stdout_data.append(stdout.decode("utf-8", errors="replace"))
+                            except UnicodeDecodeError:
+                                stdout_data.append(stdout.decode("utf-8", errors="replace"))
+                    except Exception as e:
+                        logger.error(f"Error reading stdout: {e}")
+                        break
+
+                    # Small delay to prevent busy waiting
+                    await asyncio.sleep(0.01)
+
+                # Read any remaining stderr
+                try:
+                    stderr = await process.stderr.read()
+                    if stderr:
+                        try:
+                            stderr_data.append(stderr.decode("utf-8", errors="replace"))
+                        except UnicodeDecodeError:
+                            stderr_data.append(stderr.decode("utf-8", errors="replace"))
+                except Exception as e:
+                    logger.error(f"Error reading stderr: {e}")
+
+                # Send complete output
+                full_output = "".join(stdout_data)
+
+                # Check if this looks like a port scan (contains the port scan header)
+                if "╭─ Cybersec CLI - Port Scan Results" in full_output:
+                    # Send as a single message for the port scan
+                    await websocket.send_text(full_output)
+                else:
+                    # Send line by line for regular output
+                    for line in full_output.splitlines():
+                        if line.strip():
+                            await websocket.send_text(f"[OUT] {line}")
+
+                # Send any errors
+                if stderr_data:
+                    await websocket.send_text(f"[ERR] {''.join(stderr_data)}")
+
+                # Send completion message
+                await websocket.send_text(
+                    f"[END] Command completed with return code {process.returncode}"
+                )
+
+                # Persist scan output if this was a scan command
                 try:
                     if len(parts) >= 2 and parts[0].lower() == "scan":
-                        _active_scans[client_host] = max(
-                            0, _active_scans.get(client_host, 1) - 1
-                        )
-                except Exception as dec_err:
-                    logger.warning(f"Error decrementing scan counter on failure: {dec_err}")
-                raise
-
-            # Collect complete output
-            stdout_data = []
-            stderr_data = []
-
-            # Read stdout and stderr
-            while True:
-                # Check if process has finished
-                if process.returncode is not None:
-                    # Read any remaining output
-                    try:
-                        remaining_stdout = await process.stdout.read()
-                        if remaining_stdout:
-                            try:
-                                stdout_data.append(
-                                    remaining_stdout.decode("utf-8", errors="replace")
-                                )
-                            except UnicodeDecodeError:
-                                # If we can't decode as UTF-8, try with error replacement
-                                stdout_data.append(
-                                    remaining_stdout.decode("utf-8", errors="replace")
-                                )
-                    except Exception as e:
-                        logger.error(f"Error reading remaining stdout: {e}")
-                    break
-
-                # Read available output
-                try:
-                    stdout = await process.stdout.read(4096)
-                    if stdout:
+                        # Try to determine ip for storage
                         try:
-                            stdout_data.append(stdout.decode("utf-8", errors="replace"))
-                        except UnicodeDecodeError:
-                            stdout_data.append(stdout.decode("utf-8", errors="replace"))
-                except Exception as e:
-                    logger.error(f"Error reading stdout: {e}")
-                    break
+                            stored_ip = socket.gethostbyname(parts[1])
+                        except Exception:
+                            stored_ip = None
+                        save_scan_result(parts[1], stored_ip, command, full_output)
+                except Exception:
+                    logger.exception("Failed to persist scan result")
 
-                # Small delay to prevent busy waiting
-                await asyncio.sleep(0.01)
-
-            # Read any remaining stderr
-            try:
-                stderr = await process.stderr.read()
-                if stderr:
+            finally:
+                if scan_started:
                     try:
-                        stderr_data.append(stderr.decode("utf-8", errors="replace"))
-                    except UnicodeDecodeError:
-                        stderr_data.append(stderr.decode("utf-8", errors="replace"))
-            except Exception as e:
-                logger.error(f"Error reading stderr: {e}")
-
-            # Send complete output
-            full_output = "".join(stdout_data)
-
-            # Check if this looks like a port scan (contains the port scan header)
-            if "╭─ Cybersec CLI - Port Scan Results" in full_output:
-                # Send as a single message for the port scan
-                await websocket.send_text(full_output)
-            else:
-                # Send line by line for regular output
-                for line in full_output.splitlines():
-                    if line.strip():
-                        await websocket.send_text(f"[OUT] {line}")
-
-            # Send any errors
-            if stderr_data:
-                await websocket.send_text(f"[ERR] {''.join(stderr_data)}")
-
-            # Send completion message
-            await websocket.send_text(
-                f"[END] Command completed with return code {process.returncode}"
-            )
-
-            # Persist scan output if this was a scan command
-            try:
-                if len(parts) >= 2 and parts[0].lower() == "scan":
-                    # Try to determine ip for storage
-                    try:
-                        stored_ip = socket.gethostbyname(parts[1])
-                    except Exception:
-                        stored_ip = None
-                    save_scan_result(parts[1], stored_ip, command, full_output)
-            except Exception:
-                logger.exception("Failed to persist scan result")
-
-            # finally decrement active scan counter for the client
-            try:
-                if len(parts) >= 2 and parts[0].lower() == "scan":
-                    await _record_scan_end(client_host)
-            except Exception as end_err:
-                logger.debug(f"Error recording scan end for {client_host}: {end_err}")
+                        await _record_scan_end(client_host)
+                    except Exception as end_err:
+                        logger.debug(
+                            f"Error recording scan end for {client_host}: {end_err}"
+                        )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -2073,6 +2177,9 @@ async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
         _last_scan_time[client_ip] = time.time()
     
     try:
+        if not validate_target(req_data.target):
+            raise HTTPException(status_code=400, detail="Invalid target")
+
         # Create PortScanner instance with OS detection enabled
         scanner = PortScanner(
             target=req_data.target,

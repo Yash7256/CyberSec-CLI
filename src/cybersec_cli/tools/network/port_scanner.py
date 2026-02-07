@@ -212,6 +212,7 @@ class PortScanner:
         banner_grabbing: bool = True,
         os_detection: bool = False,
         require_reachable: bool = False,
+        force_scan: bool = False,
         adaptive_scanning: Optional[bool] = None,
         enhanced_service_detection: Optional[bool] = None,
         logger=None,
@@ -228,10 +229,13 @@ class PortScanner:
             rate_limit: Maximum requests per second (0 for no limit)
             service_detection: Whether to perform service detection
             banner_grabbing: Whether to grab banners from open ports
+            force_scan: Whether to bypass reserved-domain checks
             adaptive_scanning: Whether to enable adaptive concurrency control (None to use config setting)
             enhanced_service_detection: Whether to enable enhanced service detection (None to use config setting)
         """
         self.logger = logger or setup_logger(__name__)
+
+        self.force_scan = force_scan
 
         # Validate target is not empty or placeholder
         if not target or not target.strip():
@@ -264,7 +268,7 @@ class PortScanner:
             or any(part in reserved_domains for part in domain_parts)  # Any part match
         )
 
-        if is_reserved and not getattr(self, "force_scan", False):
+        if is_reserved and not self.force_scan:
             reason = reserved_domains.get(target_lower, "reserved domain")
             raise ValueError(
                 f"Target '{target}' appears to be a {reason}.\n"
@@ -548,7 +552,7 @@ class PortScanner:
             
             def connection_lost(self, exc):
                 if not self.done_future.done():
-                    self.ordered_future.set_result(False)
+                    self.done_future.set_result(False)
 
         try:
             loop = asyncio.get_running_loop()
@@ -1187,6 +1191,25 @@ class PortScanner:
 
         return table
 
+    def _try_sync_syn_probe(self, port: int) -> Optional["PortResult"]:
+        """Attempt a SYN probe safely from sync code.
+
+        If an event loop is already running, return None and let callers
+        fall back to banner-based OS detection.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                return None
+        except RuntimeError:
+            # No running loop, safe to proceed
+            pass
+
+        try:
+            return asyncio.run(self._check_tcp_syn_port(port))
+        except Exception:
+            return None
+
     def _perform_os_detection(self) -> Dict[str, Any]:
         """
         Perform OS detection using passive fingerprinting (TTL and TCP Window Size).
@@ -1205,10 +1228,7 @@ class PortScanner:
                          # Run a quick SYN probe to this port to get TTL/Window
                          # Note: This requires root privileges (sudo). 
                          # If we are not root, this will fail/return None, and we fall back to banner analysis.
-                         async def probe():
-                             return await self._check_tcp_syn_port(result.port)
-                             
-                         probe_result = asyncio.run(probe())
+                         probe_result = self._try_sync_syn_probe(result.port)
                          if probe_result and probe_result.ttl:
                              result.ttl = probe_result.ttl
                              result.window_size = probe_result.window_size
@@ -1359,7 +1379,7 @@ async def scan_ports(
     os_detection: bool = False,
     output_format: str = "table",
     require_reachable: bool = False,
-    force: bool = False,  # Add force parameter for bypassing cache
+    force: bool = False,  # Add force parameter for bypassing cache and reserved-domain checks
 ) -> str:
     """Scan ports on a target and return results in the specified format.
 
@@ -1389,6 +1409,7 @@ async def scan_ports(
             banner_grabbing=banner_grabbing,
             os_detection=os_detection,
             require_reachable=effective_require,
+            force_scan=force,
         )
 
         await scanner.scan(force=force)  # Pass force parameter to scan method

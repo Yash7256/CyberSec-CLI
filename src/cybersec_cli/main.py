@@ -327,6 +327,7 @@ class CyberSecCLI:
                 service_detection=True,
                 banner_grabbing=True,
                 require_reachable=effective_require,
+                force_scan=force,
             )
 
             # Run the scan with timing

@@ -1,11 +1,12 @@
 """API authentication system for CyberSec CLI."""
 
 import hashlib
+import json
 import logging
 import os
 import secrets
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 # Import Redis client for storing API keys
@@ -83,9 +84,14 @@ class APIKeyAuth:
         hashed_key = self._hash_key(api_key)
 
         # Prepare key data
+        expires_at = datetime.utcnow()
+        if ttl:
+            expires_at = expires_at + timedelta(seconds=ttl)
+
         key_data = {
             "user_id": user_id,
             "created_at": datetime.utcnow().isoformat(),
+            "expires_at": expires_at.isoformat(),
             "scopes": scopes or [],
             "api_metadata": metadata or {},
         }
@@ -95,7 +101,9 @@ class APIKeyAuth:
 
         if self.redis_client:
             # Store hashed key in Redis
-            self.redis_client.set(f"api_key:{hashed_key}", str(key_data), ttl=ttl)
+            self.redis_client.set(
+                f"api_key:{hashed_key}", json.dumps(key_data), ttl=ttl
+            )
             logger.info(f"API key generated for user {user_id}")
         else:
             # Fallback to in-memory storage (not recommended for production)
@@ -129,14 +137,42 @@ class APIKeyAuth:
                     logger.warning(f"Invalid API key attempted: {hashed_key[:8]}...")
                     return None
 
-                # In a real implementation, you'd deserialize the stored data
-                # For now, we'll return a minimal APIKey object
+                if isinstance(key_data_str, (bytes, bytearray)):
+                    key_data_str = key_data_str.decode("utf-8", errors="replace")
+
+                try:
+                    key_data = json.loads(key_data_str)
+                except Exception:
+                    logger.error("Failed to parse stored API key data")
+                    return None
+
+                # Check expiry (Redis TTL should handle this, but verify defensively)
+                expires_at_str = key_data.get("expires_at")
+                if expires_at_str:
+                    try:
+                        exp_dt = datetime.fromisoformat(
+                            expires_at_str.replace("Z", "+00:00")
+                        )
+                        if datetime.utcnow() > exp_dt.replace(tzinfo=None):
+                            self.redis_client.delete(f"api_key:{hashed_key}")
+                            return None
+                    except Exception:
+                        # If parsing fails, deny access for safety
+                        return None
+
                 return APIKey(
                     key=api_key,
-                    user_id="user_from_redis",  # This would come from stored data
-                    created_at=datetime.utcnow(),
-                    scopes=[],
-                    metadata={},
+                    user_id=key_data.get("user_id", ""),
+                    created_at=datetime.fromisoformat(
+                        key_data.get("created_at", datetime.utcnow().isoformat())
+                    ),
+                    expires_at=(
+                        datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                        if expires_at_str
+                        else None
+                    ),
+                    scopes=key_data.get("scopes", []),
+                    metadata=key_data.get("api_metadata", {}),
                 )
             except Exception as e:
                 logger.error(f"Error verifying API key: {e}")

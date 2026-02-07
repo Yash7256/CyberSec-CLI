@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 .env.production.local
+.env.railway
 
 # Python
 __pycache__/
@@ -74,6 +75,11 @@ results/
 *.json
 *.csv
 *.xlsx
+
+# Secrets
+.secrets/
+cybersec_deploy_key
+cybersec_deploy_key.pub
 
 # Temporary files
 *.tmp

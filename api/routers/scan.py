@@ -1,8 +1,10 @@
-from fastapi import APIRouter, HTTPException, WebSocket
-from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException
 import subprocess
-import shlex
-import json
+
+try:
+    from cybersec_cli.core.validators import validate_target
+except ImportError:
+    from src.cybersec_cli.core.validators import validate_target
 
 router = APIRouter(
     prefix="/api/scan",
@@ -16,13 +18,14 @@ async def nmap_scan(target: str):
     Perform a basic Nmap scan on the target
     """
     try:
-        # Security note: In production, you should validate and sanitize the target input
-        command = f"nmap -sV {target}"
+        if not target or target.startswith("-") or not validate_target(target):
+            raise HTTPException(status_code=400, detail="Invalid target")
+
         result = subprocess.run(
-            shlex.split(command),
+            ["nmap", "-sV", target],
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=60,
         )
         
         if result.returncode != 0:

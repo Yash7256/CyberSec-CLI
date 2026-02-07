@@ -40,6 +40,7 @@ async def handle_scan(
             service_detection=True,
             banner_grabbing=True,
             require_reachable=effective_require,
+            force_scan=force,
         )
 
         # Run the scan

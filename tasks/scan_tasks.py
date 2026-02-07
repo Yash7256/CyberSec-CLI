@@ -266,7 +266,7 @@ def perform_scan_task(
                 if config["scan_type"].upper() == "UDP":
                     scan_type = ScanType.UDP
                 elif config["scan_type"].upper() == "SYN":
-                    scan_type = ScanType.SYN
+                    scan_type = ScanType.TCP_SYN
 
             timeout = config.get("timeout", 1.0)
             max_concurrent = config.get("max_concurrent", 50)
@@ -279,6 +279,7 @@ def perform_scan_task(
                 timeout=timeout,
                 max_concurrent=max_concurrent,
                 enhanced_service_detection=enhanced_service_detection,
+                force_scan=force_scan,
             )
 
             # Perform the scan

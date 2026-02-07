@@ -8,7 +8,6 @@ from typing import Optional
 
 import click
 from rich.console import Console
-from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 
 from cybersec_cli.tools.network import PortScanner, ScanType
 from cybersec_cli.utils.formatters import (
@@ -154,7 +153,7 @@ def scan_command(
     """
     # Create scanner instance
     # If user passed --force, do not enforce reachability even if requested
-    effective_require = require_reachable
+    effective_require = require_reachable and not force
 
     if test:
         if target and target != "scanme.nmap.org":
@@ -185,47 +184,12 @@ def scan_command(
             require_reachable=effective_require,
             adaptive_scanning=adaptive,
             enhanced_service_detection=enhanced_service_detection,
+            force_scan=force,
         )
 
-        # Set force_scan attribute if --force is used
-        if force:
-            scanner.force_scan = True
-
-        # Create progress bar
-        with Progress(
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            "[progress.percentage]{task.percentage:>3.0f}%",
-            TimeRemainingColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task(
-                f"[cyan]Scanning {len(scanner.ports)} ports on {target}...",
-                total=len(scanner.ports),
-            )
-
-            # Scan ports and update progress
-            async def scan_with_progress():
-                results = []
-
-                async def check_port(port):
-                    result = await scanner._check_port(port)
-                    progress.update(task, advance=1)
-                    return result
-
-                # If streaming is enabled, use the streaming scan method
-                if streaming:
-                    results = await scanner.scan(streaming=True)
-                else:
-                    # Original scanning approach
-                    tasks = [check_port(port) for port in scanner.ports]
-                    results = await asyncio.gather(*tasks)
-
-                return results
-
-            # Run the scan
-            results = asyncio.run(scan_with_progress())
-            scanner.results = sorted(results, key=lambda x: x.port)
+        # Run the scan (use core scan path to keep caching/adaptive/priority features)
+        results = asyncio.run(scanner.scan(streaming=streaming, force=force))
+        scanner.results = sorted(results, key=lambda x: x.port)
             
             # If OS detection was enabled, trigger it now (after scan results are populated)
             if os:
