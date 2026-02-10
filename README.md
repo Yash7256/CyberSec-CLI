@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/img/logo.png" alt="CyberSec CLI Logo" width="200"/>
+  <img src="logo.png" alt="CyberSec CLI Logo" width="200"/>
 </p>
 
 # CyberSec CLI
