@@ -5,12 +5,11 @@ Tests resilience through controlled failure injection.
 
 import asyncio
 import random
-import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -119,7 +118,7 @@ class ChaosBenchmark(BaseBenchmark):
                 # Randomly inject Redis failure
                 if random.random() < 0.3:  # 30% chance
                     try:
-                        print(f"    Injecting Redis failure (restart)...")
+                        print("    Injecting Redis failure (restart)...")
                         subprocess.run(
                             ["sudo", "systemctl", "restart", "redis"],
                             capture_output=True,
@@ -161,7 +160,7 @@ class ChaosBenchmark(BaseBenchmark):
         Returns:
             Dictionary with network disconnection test results
         """
-        print(f"Benchmarking network disconnection resilience...")
+        print("Benchmarking network disconnection resilience...")
         print(f"  {num_disconnects} disconnections × {disconnect_duration}s each")
 
         # Note: This requires tc (traffic control) and root access
@@ -174,7 +173,7 @@ class ChaosBenchmark(BaseBenchmark):
             print(f"\n  Disconnection {i+1}/{num_disconnects}:")
 
             # Simulate network disconnection
-            print(f"    Simulating network down...")
+            print("    Simulating network down...")
             try:
                 subprocess.run(
                     ["sudo", "tc", "qdisc", "add", "dev", interface, "root", "netem", "loss", "100%"],
@@ -202,7 +201,7 @@ class ChaosBenchmark(BaseBenchmark):
                 successful_scans += 1  # Handled gracefully
 
             # Restore network
-            print(f"    Restoring network...")
+            print("    Restoring network...")
             try:
                 subprocess.run(
                     ["sudo", "tc", "qdisc", "del", "dev", interface, "root"],
@@ -239,7 +238,7 @@ class ChaosBenchmark(BaseBenchmark):
         Returns:
             Dictionary with resource constraint test results
         """
-        print(f"Benchmarking resource constraints...")
+        print("Benchmarking resource constraints...")
         print(f"  Memory limit: {memory_limit_mb}MB, CPU limit: {cpu_limit_percent}%")
 
         # Note: This would typically use cgroups or Docker for real constraints
@@ -298,7 +297,7 @@ class ChaosBenchmark(BaseBenchmark):
         Returns:
             Dictionary with cascading failure test results
         """
-        print(f"Benchmarking cascading failure resilience...")
+        print("Benchmarking cascading failure resilience...")
 
         scenarios = [
             {"name": "baseline", "failures": []},

@@ -77,7 +77,7 @@ class FinalBossBenchmark(BaseBenchmark):
             scanner = PortScanner(target=target, ports=list(range(1, 100)), timeout=2.0)
             await scanner.scan()
             success = True
-            print(f"  SURVIVED! (Graceful rejection/No execution)")
+            print("  SURVIVED! (Graceful rejection/No execution)")
         except ValueError as e:
             success = True
             print(f"  SURVIVED VIA VALIDATION! ({e})")

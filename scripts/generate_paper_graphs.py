@@ -5,7 +5,6 @@ Reads benchmark JSON results and produces plots.
 
 import json
 import os
-import sys
 from pathlib import Path
 import matplotlib.pyplot as plt
 
@@ -89,15 +88,23 @@ def generate_comparison_graph():
         
         # Color Map
         colors = []
-        for l in labels:
-            if "cybersec" in l: colors.append('blue')
-            elif "T0" in l: colors.append('purple') # Slowest
-            elif "T1" in l: colors.append('red')
-            elif "T2" in l: colors.append('orange')
-            elif "T3" in l: colors.append('yellow')
-            elif "T4" in l: colors.append('green')
-            elif "T5" in l: colors.append('lime')
-            else: colors.append('gray')
+        for label in labels:
+            if "cybersec" in label:
+                colors.append('blue')
+            elif "T0" in label:
+                colors.append('purple')  # Slowest
+            elif "T1" in label:
+                colors.append('red')
+            elif "T2" in label:
+                colors.append('orange')
+            elif "T3" in label:
+                colors.append('yellow')
+            elif "T4" in label:
+                colors.append('green')
+            elif "T5" in label:
+                colors.append('lime')
+            else:
+                colors.append('gray')
 
         plt.bar(labels, durations, color=colors)
         plt.title("Scan Duration Comparison (1000 Ports)")

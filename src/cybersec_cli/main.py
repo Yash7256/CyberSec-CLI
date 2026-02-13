@@ -537,13 +537,13 @@ class CyberSecCLI:
                     "-" * 60,
                     f'🔬 [bold]Details:[/] {finding["details"]}',
                     "",
-                    f"⚠️  [bold]Risk Impact:[/]",
+                    "⚠️  [bold]Risk Impact:[/]",
                     finding.get(
                         "impact",
                         "Potential security vulnerability that could lead to unauthorized access or data exposure.",
                     ),
                     "",
-                    f"🛡️  [bold]Recommendations:[/]",
+                    "🛡️  [bold]Recommendations:[/]",
                     finding.get(
                         "recommendation", "No specific recommendations available."
                     ),

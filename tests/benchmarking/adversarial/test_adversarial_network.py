@@ -7,9 +7,8 @@ Generates data for Section 18 of the IEEE paper.
 
 import asyncio
 import sys
-import unittest
 from unittest.mock import MagicMock, patch, AsyncMock
-from typing import Dict, List, Any
+from typing import Dict
 from pathlib import Path
 
 # Add project root to path

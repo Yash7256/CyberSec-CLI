@@ -6,7 +6,7 @@ Tests port detection accuracy and false positive/negative rates.
 import asyncio
 import sys
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, Set
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -183,7 +183,7 @@ class AccuracyBenchmark(BaseBenchmark):
             true_positives, false_positives, false_negatives, true_negatives
         )
 
-        print(f"\n  Results:")
+        print("\n  Results:")
         print(f"    Detected open: {len(detected_open_ports)}")
         print(f"    Expected open: {len(expected_open_ports)}")
         print(f"    True Positives: {true_positives}")
@@ -227,7 +227,7 @@ class AccuracyBenchmark(BaseBenchmark):
                 6379: "redis",
             }
 
-        print(f"\nBenchmarking service identification accuracy...")
+        print("\nBenchmarking service identification accuracy...")
         print(f"  Expected services: {len(expected_services)}")
 
         detected_services = {}

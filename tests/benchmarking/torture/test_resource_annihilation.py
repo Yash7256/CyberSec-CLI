@@ -52,7 +52,7 @@ class ResourceAnnihilationBenchmark(BaseBenchmark):
 
         # 1. Memory Starvation via stress-ng (easier than systemd-run in this environment)
         async def memory_starvation_test():
-            print(f"  Allocating 1204MB of pressure...")
+            print("  Allocating 1204MB of pressure...")
             stress_proc = subprocess.Popen("stress-ng --vm 1 --vm-bytes 1G", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 # Give some time to allocate
@@ -67,14 +67,14 @@ class ResourceAnnihilationBenchmark(BaseBenchmark):
 
         # 2. CPU Starvation
         async def cpu_starvation_test():
-            print(f"  CPU eaters active. Running scan...")
+            print("  CPU eaters active. Running scan...")
             # Pin cores and load them
             stress_proc = subprocess.Popen("stress-ng --cpu 0 --cpu-load 95", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             try:
                 await asyncio.sleep(1)
                 scanner = PortScanner(target=target, ports=list(range(1, 500)), timeout=1.0)
                 res = await scanner.scan()
-                return f"Scan finished under CPU pressure."
+                return "Scan finished under CPU pressure."
             finally:
                 subprocess.run("pkill -9 stress-ng", shell=True)
 
@@ -84,7 +84,7 @@ class ResourceAnnihilationBenchmark(BaseBenchmark):
         async def fd_exhaustion_test():
             # Set soft limit
             soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-            print(f"  Setting FD soft limit to 64...")
+            print("  Setting FD soft limit to 64...")
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, hard))
             try:
                 scanner = PortScanner(target=target, ports=list(range(1, 100)), timeout=0.1)

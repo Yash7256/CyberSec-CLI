@@ -1,6 +1,5 @@
 
 import pytest
-from unittest.mock import MagicMock, patch
 from cybersec_cli.tools.network.port_scanner import PortScanner, PortResult, PortState
 
 @pytest.mark.asyncio

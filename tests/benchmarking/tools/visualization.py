@@ -6,13 +6,10 @@ Generates plots and charts for comprehensive analysis.
 import json
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from typing import Dict, List, Union
 import seaborn as sns
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
 
 

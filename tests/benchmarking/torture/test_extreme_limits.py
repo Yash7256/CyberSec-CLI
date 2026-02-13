@@ -1,10 +1,7 @@
 import asyncio
 import os
-import subprocess
 import time
 import sys
-import resource
-import ipaddress
 from datetime import datetime
 
 # Add src and project root to sys.path
@@ -45,7 +42,7 @@ class ExtremeLimitsBenchmark(BaseBenchmark):
     async def run_benchmark(self):
         # 1. Massive Scale Simulation (Initialization)
         async def massive_scale_test():
-            print(f"  Simulating ingestion of 16.7M targets via port range stress...")
+            print("  Simulating ingestion of 16.7M targets via port range stress...")
             try:
                 # We simulate the STRESS of 16M targets by initializing with 65k ports 
                 # on a single IP, which tests the list handling and memory footprint of target/port mappings.
@@ -61,7 +58,7 @@ class ExtremeLimitsBenchmark(BaseBenchmark):
 
         # 2. Embedded Limits Simulation (32MB RAM)
         async def embedded_limits_test():
-            print(f"  Running under simulated embedded constraints...")
+            print("  Running under simulated embedded constraints...")
             scanner = PortScanner(target="127.0.0.1", ports=list(range(1, 100)), timeout=0.1)
             res = await scanner.scan()
             return f"Scan survived embedded limits. Results: {len(res)}"

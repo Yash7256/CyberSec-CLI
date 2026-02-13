@@ -4,12 +4,11 @@ Tests tool robustness against malformed CLI arguments and inputs.
 """
 
 import asyncio
-import subprocess
 import sys
 import random
 import string
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -144,7 +143,7 @@ class FuzzingBenchmark(BaseBenchmark):
                 )
                 stdout, stderr = await process.communicate()
                 exit_code = process.returncode
-            except Exception as e:
+            except Exception:
                 exit_code = -1
             
             status = "HANDLED" if exit_code in [1, 2] else "CRASH" if exit_code != 0 else "ACCEPTED"

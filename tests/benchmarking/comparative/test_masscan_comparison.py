@@ -5,7 +5,6 @@ Tests performance against the fastest port scanner.
 
 import asyncio
 import json
-import re
 import subprocess
 import sys
 import time

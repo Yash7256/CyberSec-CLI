@@ -7,8 +7,6 @@ import socket
 import sqlite3
 import subprocess
 import shlex
-
-# Fix the import path for core.port_priority
 import sys
 import time
 import uuid
@@ -16,14 +14,11 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
-load_dotenv()
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-
-# Add imports for streaming support
-from fastapi.responses import FileResponse, Response, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.sql import text
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -31,19 +26,21 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from pydantic import BaseModel
+from src.cybersec_cli.utils.logger import log_forced_scan
+from src.cybersec_cli.core.validators import validate_target, validate_port_range
 
 
 class OSFingerprintRequest(BaseModel):
+    """Request model for OS fingerprinting operations."""
+
     target: str
     os_detection: bool = True
     enhanced_service_detection: bool = True
     service_detection: bool = True
 
 
-from src.cybersec_cli.utils.logger import log_forced_scan
-from src.cybersec_cli.core.validators import validate_target, validate_port_range
-
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
+# Load environment variables from .env file
+load_dotenv()
 
 # Import structured logging
 try:
@@ -72,7 +69,6 @@ except ImportError:
 # Import rate limiter
 try:
     from src.cybersec_cli.core.rate_limiter import SmartRateLimiter
-    from src.cybersec_cli.config import settings
 
     HAS_RATE_LIMITER = True
 except ImportError:
@@ -1914,7 +1910,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     # (This is informational; enforcement can be stricter if desired)
                     try:
                         with open(allow_path, "r", encoding="utf-8") as f:
-                            allow_lines = [l.strip() for l in f if l.strip()]
+                            allow_lines = [line.strip() for line in f if line.strip()]
                         if allow_lines and tgt not in allow_lines:
                             await websocket.send_text(
                                 json.dumps(

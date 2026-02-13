@@ -190,64 +190,59 @@ def scan_command(
         # Run the scan (use core scan path to keep caching/adaptive/priority features)
         results = asyncio.run(scanner.scan(streaming=streaming, force=force))
         scanner.results = sorted(results, key=lambda x: x.port)
-            
-            # If OS detection was enabled, trigger it now (after scan results are populated)
-            if os:
-                console.print("[cyan]Performing native OS fingerprinting...[/cyan]")
-                # This populates scanner.os_info (assuming implementation stores it)
-                # Based on recent changes, _perform_os_detection returns dict but doesn't auto-run in scan() unless configured
-                # We need to explicitly run it if results are ready
-                os_info = scanner._perform_os_detection()
-                scanner.os_info = os_info # Store it for formatter/access
 
-            # Perform post-scan enrichment
-            if not os_only: # Skip enrichment for os-only to be faster/cleaner
-                console.print("[cyan]Enriching results with live CVE data...[/cyan]")
-                async def perform_enrichment():
-                     for result in scanner.results:
-                        if result.state.name == "OPEN" and result.service and result.service != "unknown":
-                            try:
-                                live_cves = await enrich_service_with_live_data(result.service, result.version)
-                                if live_cves:
-                                    # ... (existing enrichment logic) ...
-                                    if result.port not in VULNERABILITY_DB:
-                                         base_info = get_vulnerability_info(result.port, result.service).copy()
-                                         VULNERABILITY_DB[result.port] = base_info
-                                    
-                                    current_entry = VULNERABILITY_DB[result.port]
-                                    existing_cves = set(current_entry.get("cves", []))
-                                    for cve in live_cves:
-                                        cve_id = cve.get("id")
-                                        if cve_id and cve_id not in existing_cves:
-                                            current_entry.setdefault("cves", []).append(cve_id)
-                            except Exception:
-                                pass 
-                
-                asyncio.run(perform_enrichment())
+        # If OS detection was enabled, trigger it now (after scan results are populated)
+        if os:
+            console.print("[cyan]Performing native OS fingerprinting...[/cyan]")
+            os_info = scanner._perform_os_detection()
+            scanner.os_info = os_info
 
+        # Perform post-scan enrichment
+        if not os_only:
+            console.print("[cyan]Enriching results with live CVE data...[/cyan]")
+
+            async def perform_enrichment():
+                for result in scanner.results:
+                    if result.state.name == "OPEN" and result.service and result.service != "unknown":
+                        try:
+                            live_cves = await enrich_service_with_live_data(result.service, result.version)
+                            if live_cves:
+                                if result.port not in VULNERABILITY_DB:
+                                    base_info = get_vulnerability_info(result.port, result.service).copy()
+                                    VULNERABILITY_DB[result.port] = base_info
+
+                                current_entry = VULNERABILITY_DB[result.port]
+                                existing_cves = set(current_entry.get("cves", []))
+                                for cve in live_cves:
+                                    cve_id = cve.get("id")
+                                    if cve_id and cve_id not in existing_cves:
+                                        current_entry.setdefault("cves", []).append(cve_id)
+                        except Exception:
+                            pass
+
+            asyncio.run(perform_enrichment())
 
         # Handle output based on --os-only flag
         if os_only:
-             # Print specialized OS-only output
-             from rich.panel import Panel
-             from rich.text import Text
-             
-             os_data = getattr(scanner, "os_info", {})
-             if not os_data:
-                 os_data = {"error": "OS detection failed or yielded no results."}
-                 
-             if "error" in os_data:
-                 console.print(Panel(f"[red]{os_data['error']}[/red]", title="OS Detection Result"))
-             else:
-                 details = (
-                     f"[bold]Target:[/bold] {target}\n"
-                     f"[bold]Detected OS:[/bold] [green]{os_data.get('os_name', 'Unknown')}[/green]\n"
-                     f"[bold]Accuracy:[/bold] {os_data.get('accuracy', 'N/A')}\n"
-                     f"[bold]Details:[/bold] {os_data.get('details', '')}\n"
-                 )
-                 console.print(Panel(details, title="🖥️  OS Fingerprinting Result", border_style="blue"))
-                 
-             return # Stop here for OS-only mode
+            # Print specialized OS-only output
+            from rich.panel import Panel
+
+            os_data = getattr(scanner, "os_info", {})
+            if not os_data:
+                os_data = {"error": "OS detection failed or yielded no results."}
+
+            if "error" in os_data:
+                console.print(Panel(f"[red]{os_data['error']}[/red]", title="OS Detection Result"))
+            else:
+                details = (
+                    f"[bold]Target:[/bold] {target}\n"
+                    f"[bold]Detected OS:[/bold] [green]{os_data.get('os_name', 'Unknown')}[/green]\n"
+                    f"[bold]Accuracy:[/bold] {os_data.get('accuracy', 'N/A')}\n"
+                    f"[bold]Details:[/bold] {os_data.get('details', '')}\n"
+                )
+                console.print(Panel(details, title="OS Fingerprinting Result", border_style="blue"))
+
+            return
 
         # ... rest of normal output logic ...
 

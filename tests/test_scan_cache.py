@@ -140,7 +140,7 @@ async def test_scan_with_caching():
         print(f"   Second scan completed in {second_scan_time:.2f}s")
         print(f"   Found {len(results2)} results")
 
-        print(f"\n4. Performance comparison:")
+        print("\n4. Performance comparison:")
         if first_scan_time > 0:
             speedup = first_scan_time / max(
                 second_scan_time, 0.001

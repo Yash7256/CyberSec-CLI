@@ -25,7 +25,7 @@ async def test_redis_health():
 
     # Initialize Redis client
     client = RedisClient()
-    print(f"✅ Redis client initialized")
+    print("✅ Redis client initialized")
 
     # Check if Redis is available
     is_available = client.is_redis_available()

@@ -8,8 +8,7 @@ Generates data for Section 19 of the IEEE paper.
 import asyncio
 import sys
 import time
-import os
-from typing import Dict, List
+from typing import Dict
 from pathlib import Path
 
 # Add project root to path
@@ -70,7 +69,7 @@ class CPUDiskTortureBenchmark(BaseBenchmark):
         print("\nTesting Resilience against Disk Full (Simulated)...")
         
         # We'll mock the logger's file handler or the write call
-        from unittest.mock import patch, Mock
+        from unittest.mock import patch
         
         success = False
         with patch('builtins.open', side_effect=OSError("No space left on device")):

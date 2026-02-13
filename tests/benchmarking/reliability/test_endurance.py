@@ -6,9 +6,8 @@ Tests long-running operations for memory leaks and performance degradation.
 import asyncio
 import sys
 import time
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
@@ -171,7 +170,7 @@ class EnduranceBenchmark(BaseBenchmark):
             "errors": errors[:10],  # First 10 errors
         }
 
-        print(f"\n  Results:")
+        print("\n  Results:")
         print(f"    Total scans: {results['total_scans']}")
         print(f"    Success rate: {results['success_rate']:.1%}")
         print(f"    Avg scan time: {results['avg_scan_time']:.3f}s")
@@ -262,7 +261,7 @@ class EnduranceBenchmark(BaseBenchmark):
         print("Endurance Testing Benchmark Suite")
         print("=" * 60 + "\n")
 
-        print(f"⚠ Note: Full endurance tests (24h, 48h, 7d) take significant time.")
+        print("⚠ Note: Full endurance tests (24h, 48h, 7d) take significant time.")
         print(f"  Running abbreviated test: {duration_hours}h")
         print()
 
@@ -316,7 +315,7 @@ async def main():
     print("\n" + "=" * 60)
     print("Endurance Testing Complete!")
     print("=" * 60)
-    print(f"\nFor full tests, run:")
+    print("\nFor full tests, run:")
     print(f"  24h test: python {__file__} --duration=24")
     print(f"  48h test: python {__file__} --duration=48")
     print(f"  7d test:  python {__file__} --duration=168")

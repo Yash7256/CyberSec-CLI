@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from matplotlib.figure import Figure
 
 
 # Set style

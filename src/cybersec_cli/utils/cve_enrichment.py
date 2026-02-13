@@ -5,7 +5,6 @@ Enriches scan results with CVE information for detected services.
 
 import json
 import logging
-import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -149,7 +148,8 @@ class CVESearchAPI:
                     for item in vulnerabilities:
                         cve_data = item.get("cve", {})
                         cve_id = cve_data.get("id")
-                        if not cve_id: continue
+                        if not cve_id:
+                            continue
                         
                         # Extract CVSS
                         cvss = 0.0
@@ -168,9 +168,12 @@ class CVESearchAPI:
                                 break
                         
                         severity = "LOW"
-                        if cvss >= 9.0: severity = "CRITICAL"
-                        elif cvss >= 7.0: severity = "HIGH"
-                        elif cvss >= 4.0: severity = "MEDIUM"
+                        if cvss >= 9.0:
+                            severity = "CRITICAL"
+                        elif cvss >= 7.0:
+                            severity = "HIGH"
+                        elif cvss >= 4.0:
+                            severity = "MEDIUM"
 
                         results.append({
                             "id": cve_id,

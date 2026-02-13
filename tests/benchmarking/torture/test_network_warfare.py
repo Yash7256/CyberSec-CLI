@@ -68,13 +68,13 @@ class NetworkWarfareBenchmark(BaseBenchmark):
                 res = await scanner.scan()
                 return f"Results found: {len(res)}"
             finally:
-                subprocess.run(f"sudo pkill -9 hping3", shell=True)
+                subprocess.run("sudo pkill -9 hping3", shell=True)
 
         await self.run_step("Active Attack Simulation (SYN Flood)", None, None, syn_flood_test)
 
         # 2. Combined Chaos (Netem)
         async def chaos_test():
-            print(f"  Chaos enabled. Running scan...")
+            print("  Chaos enabled. Running scan...")
             scanner = PortScanner(target=target, ports=list(range(1, 81)), timeout=2.0)
             res = await scanner.scan()
             return f"Results: {len(res)}"
@@ -85,7 +85,7 @@ class NetworkWarfareBenchmark(BaseBenchmark):
 
         # 3. Network Flapping
         async def flapping_test():
-            print(f"  Starting scan while network flaps...")
+            print("  Starting scan while network flaps...")
             
             async def flapper():
                 for _ in range(5):

@@ -218,13 +218,13 @@ def create_scan_banner(scanner: PortScanner) -> Panel:
     # Create banner content
     banner_text = Text()
     banner_text.append("Scan Summary\n", style="bold")
-    banner_text.append(f"🎯 Target: ", style="bold")
+    banner_text.append("🎯 Target: ", style="bold")
     banner_text.append(
         f"{scanner.target} ({scanner.ip if hasattr(scanner, 'ip') else 'N/A'})\n"
     )
-    banner_text.append(f"🔍 Scan Type: ", style="bold")
+    banner_text.append("🔍 Scan Type: ", style="bold")
     banner_text.append(f"{scanner.scan_type.name.replace('_', ' ').title()}\n")
-    banner_text.append(f"🕒 Timestamp: ", style="bold")
+    banner_text.append("🕒 Timestamp: ", style="bold")
     banner_text.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     banner_text.append("📊 Ports: ", style="bold")
     banner_text.append(f"Scanned {total_ports}, ")
@@ -344,7 +344,7 @@ def generate_security_findings(scanner: PortScanner) -> List[Panel]:
         finding_text = Text()
 
         # Header with severity indicator
-        finding_text.append(f"📌 ", style="bold")
+        finding_text.append("📌 ", style="bold")
         severity_style = vuln_info["severity"].value[1]
         finding_text.append(
             f"{vuln_info['description']}", style=severity_style + " bold"
@@ -353,7 +353,7 @@ def generate_security_findings(scanner: PortScanner) -> List[Panel]:
         # CVSS Score and Severity
         cvss_score = vuln_info.get("cvss_score", 0.0)
         if cvss_score > 0:
-            finding_text.append(f"\n\n🔢 ", style="bold")
+            finding_text.append("\n\n🔢 ", style="bold")
             finding_text.append("CVSS: ", style="bold")
             finding_text.append(f"{cvss_score:.1f}/10 ", style=severity_style + " bold")
             finding_text.append(f"({vuln_info['severity'].display_name})")

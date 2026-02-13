@@ -7,17 +7,16 @@ Generates data for Section 7 of the IEEE paper.
 import asyncio
 import sys
 import time
-import json
-from unittest.mock import MagicMock, AsyncMock, patch
+from unittest.mock import MagicMock
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 # Add src to path if needed (it usually is by project root addition, but to be safe)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from cybersec_cli.chatbot.ai_engine import AIEngine, AIResponse
+from cybersec_cli.chatbot.ai_engine import AIEngine
 from tests.benchmarking.framework.base_benchmark import BaseBenchmark
 
 class DelayedMockResponse:

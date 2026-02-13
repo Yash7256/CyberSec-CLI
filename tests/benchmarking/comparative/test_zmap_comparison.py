@@ -4,13 +4,11 @@ Tests performance, accuracy, and feature parity.
 """
 
 import asyncio
-import json
-import re
 import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))

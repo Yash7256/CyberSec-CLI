@@ -174,7 +174,7 @@ def revoke_token(token: str) -> bool:
         c.execute("UPDATE auth_tokens SET revoked = 1 WHERE token = ?", (token,))
         conn.commit()
         conn.close()
-        logger.info(f"Revoked token")
+        logger.info("Revoked token")
         return True
     except Exception as e:
         logger.exception(f"Failed to revoke token: {e}")
@@ -231,7 +231,7 @@ def delete_token(token: str) -> bool:
         c.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
         conn.commit()
         conn.close()
-        logger.info(f"Deleted token")
+        logger.info("Deleted token")
         return True
     except Exception as e:
         logger.exception(f"Failed to delete token: {e}")

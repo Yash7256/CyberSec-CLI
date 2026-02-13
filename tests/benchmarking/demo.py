@@ -27,9 +27,6 @@ async def main():
     print("1️⃣  FRAMEWORK VERIFICATION")
     print("-" * 70)
     try:
-        from tests.benchmarking.framework.base_benchmark import BaseBenchmark
-        from tests.benchmarking.framework.metrics_collector import MetricsCollector
-        from tests.benchmarking.framework.statistical_analysis import StatisticalAnalyzer
         
         print("✓ Framework components loaded successfully")
         results["framework"] = "PASS"
@@ -65,7 +62,7 @@ async def main():
         benchmark = ScalabilityBenchmark()
         print("Running horizontal scaling test (1, 10 targets)...")
         result = await benchmark.benchmark_horizontal_scaling([1, 10])
-        print(f"✓ Scalability test completed")
+        print("✓ Scalability test completed")
         results["scalability"] = "PASS"
     except Exception as e:
         print(f"✗ Scalability test error: {e}")
@@ -105,7 +102,7 @@ async def main():
         benchmark = StressBenchmark()
         print("Running memory stress test (100MB, 5s)...")
         result = await benchmark.benchmark_memory_stress(target_mb=100, duration=5)
-        print(f"✓ Memory stress test completed")
+        print("✓ Memory stress test completed")
         print(f"  Peak memory: {result.get('memory_peak_mb', 0):.1f}MB")
         results["stress"] = "PASS"
     except Exception as e:

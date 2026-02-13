@@ -5,7 +5,7 @@ Provides hypothesis testing, confidence intervals, and comparative analysis.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from scipy import stats

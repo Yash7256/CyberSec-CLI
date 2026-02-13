@@ -10,7 +10,7 @@ import psutil
 import os
 import time
 import json
-from typing import Dict, List, Any
+from typing import Dict
 from pathlib import Path
 
 # Add project root to path
@@ -34,7 +34,7 @@ class ExtremeScaleBenchmark(BaseBenchmark):
         Simulate 1,000,000 targets.
         Tests processing time for result ingestion and memory footprint.
         """
-        print(f"\nSimulating 1,000,000 targets (Extreme Scale)...")
+        print("\nSimulating 1,000,000 targets (Extreme Scale)...")
         initial_mem = self.process.memory_info().rss / 1024 / 1024
         start_time = time.time()
         

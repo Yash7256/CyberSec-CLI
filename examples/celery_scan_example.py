@@ -127,7 +127,7 @@ def main():
         print("❌ No task ID returned")
         return 1
 
-    print(f"✅ Scan queued successfully")
+    print("✅ Scan queued successfully")
     print(f"Task ID: {task_id}")
     print(f"Message: {response.get('message', 'No message')}")
     print()

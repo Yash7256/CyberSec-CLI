@@ -4,7 +4,6 @@ Creates detailed reports with statistical analysis and visualizations.
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Union

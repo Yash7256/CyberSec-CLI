@@ -12,14 +12,14 @@ import os
 import time
 import gc
 import json
-from typing import Dict, List
+from typing import Dict
 from pathlib import Path
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from cybersec_cli.tools.network.port_scanner import PortScanner, PortResult, PortState
+from cybersec_cli.tools.network.port_scanner import PortResult, PortState
 from tests.benchmarking.framework.base_benchmark import BaseBenchmark
 
 class MemoryTortureBenchmark(BaseBenchmark):

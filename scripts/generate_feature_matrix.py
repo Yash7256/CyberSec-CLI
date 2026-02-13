@@ -5,7 +5,6 @@ against Nmap, Masscan, and RustScan.
 """
 
 import json
-import statistics
 from pathlib import Path
 
 def load_json(filepath):
@@ -22,7 +21,7 @@ def main():
     base_path = Path("tests/benchmarking/results")
     
     nmap_results = load_json(base_path / "comparative/nmap_comparison_results.json")
-    adaptive_results = load_json(base_path / "adaptive/adaptive_concurrency_results.json")
+    load_json(base_path / "adaptive/adaptive_concurrency_results.json")  # Load for potential future use
     adaptive_instability_results = load_json(base_path / "adaptive/adaptive_instability_results.json")
     ai_results = load_json(base_path / "ai/ai_analysis_results.json")
     cpu_results = load_json(base_path / "resource/cpu_profiling_results.json")
@@ -68,7 +67,6 @@ def main():
     # AI capability
     cybersec_ai = "Yes"
     if ai_results:
-        latency = 0
         lat_res = ai_results.get("latency", {})
         if lat_res:
             # Get avg overhead
@@ -134,13 +132,13 @@ def main():
     md += "| :--- | :--- | :--- | :--- | :--- |\n"
     
     # Rows
-    md += f"| **Architecture** | Hybrid (AsyncIO + Threads) | Block-based | Sync/Asyn Packet Injection | Async |\n"
+    md += "| **Architecture** | Hybrid (AsyncIO + Threads) | Block-based | Sync/Asyn Packet Injection | Async |\n"
     md += f"| **Scanning Speed** | **{cybersec_speed}** (Adaptive) | {competitors['Nmap']['Speed']} | {competitors['Masscan']['Speed']} | {competitors['RustScan']['Speed']} |\n"
     md += f"| **Accuracy (F1)** | **{cybersec_accuracy}** | {competitors['Nmap']['Accuracy']} | {competitors['Masscan']['Accuracy']} | {competitors['RustScan']['Accuracy']} |\n"
     md += f"| **Adaptive Logic** | **{cybersec_adaptive}** (ML-driven) | {competitors['Nmap']['Adaptive']} | {competitors['Masscan']['Adaptive']} | {competitors['RustScan']['Adaptive']} |\n"
     md += f"| **AI Integration** | **{cybersec_ai}** (GPT/LLaMA) | {competitors['Nmap']['AI Analysis']} | {competitors['Masscan']['AI Analysis']} | {competitors['RustScan']['AI Analysis']} |\n"
     md += f"| **Resource Eff.** | **{cybersec_resources}** | {competitors['Nmap']['Resource']} | {competitors['Masscan']['Resource']} | {competitors['RustScan']['Resource']} |\n"
-    md += f"| **Ease of Use** | High (Interactive CLI) | Medium (Complex Flags) | Medium | Medium |\n"
+    md += "| **Ease of Use** | High (Interactive CLI) | Medium (Complex Flags) | Medium | Medium |\n"
 
     print(md)
     

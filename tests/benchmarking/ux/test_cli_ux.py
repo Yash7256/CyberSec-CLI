@@ -7,7 +7,7 @@ Generates data for Section 10 of the IEEE paper.
 import sys
 import subprocess
 import asyncio
-from typing import Dict, List, Any
+from typing import Dict, List
 from pathlib import Path
 
 # Add project root to path

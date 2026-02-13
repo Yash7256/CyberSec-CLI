@@ -71,7 +71,7 @@ def process_command(cmd: Command) -> bool:
             print(f"\n[*] Starting scan of: {target}")
             # Simulate scanning
             print(f"[+] Checking if {target} is online...")
-            print(f"[+] Scanning common ports...")
+            print("[+] Scanning common ports...")
             print(f"[!] Scan completed for {target}")
 
     else:

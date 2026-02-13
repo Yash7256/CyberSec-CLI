@@ -45,7 +45,7 @@ class ChaosByzantineBenchmark(BaseBenchmark):
 
         # 1. Random Component Killing (Redis)
         async def component_killer_test():
-            print(f"  Starting Redis killer...")
+            print("  Starting Redis killer...")
             async def killer():
                 for _ in range(3):
                     await asyncio.sleep(1)
@@ -65,7 +65,7 @@ class ChaosByzantineBenchmark(BaseBenchmark):
 
         # 2. Cache Corruption
         async def cache_corruption_test():
-            print(f"  Corrupting Redis cache mid-scan...")
+            print("  Corrupting Redis cache mid-scan...")
             async def corrupter():
                 await asyncio.sleep(1)
                 print("  [Byzantine] FLUSHALL ASYNC...")

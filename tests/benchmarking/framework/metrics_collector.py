@@ -6,7 +6,7 @@ Provides utilities for collecting system metrics during benchmark runs.
 import asyncio
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import psutil

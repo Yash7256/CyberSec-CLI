@@ -35,7 +35,7 @@ def modify_config_file(filepath: str, settings: Dict[str, str]):
 
     # Filter out existing lines that match the keys we want to set
     new_lines = [
-        line for line in lines if not line.strip().split(" ")[0] in keys_to_set
+        line for line in lines if line.strip().split(" ")[0] not in keys_to_set
     ]
 
     # Add the new settings to the end

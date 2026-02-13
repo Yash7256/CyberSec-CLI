@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 import logging
 from src.cybersec_cli.ai.groq_client import GroqClient
 
@@ -80,7 +80,7 @@ async def chat_endpoint(request: ChatRequest):
             choice = response_data["choices"][0]
             message = choice["message"]
             return ChatResponse(role=message["role"], content=message["content"])
-        except (KeyError, IndexError) as e:
+        except (KeyError, IndexError):
             logger.error(f"Unexpected response format from Groq: {response_data}")
             raise HTTPException(status_code=502, detail="Invalid response from AI provider")
             

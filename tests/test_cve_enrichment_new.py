@@ -1,5 +1,4 @@
 import pytest
-import json
 from unittest.mock import patch, AsyncMock, MagicMock
 from cybersec_cli.utils.cve_enrichment import enrich_scan_result, CVESearchAPI
 

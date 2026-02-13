@@ -6,16 +6,15 @@ Generates data for Section 21 of the IEEE paper.
 
 import asyncio
 import sys
-import os
-from typing import Dict, List, Any
+from typing import Dict
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
-from cybersec_cli.tools.network.port_scanner import PortScanner, PortResult, PortState
+from cybersec_cli.tools.network.port_scanner import PortScanner
 from tests.benchmarking.framework.base_benchmark import BaseBenchmark
 
 class FaultInjectionBenchmark(BaseBenchmark):

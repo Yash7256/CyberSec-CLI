@@ -93,7 +93,7 @@ async def async_scan_with_websocket(target, ports="1-1000"):
     import websockets
 
     # WebSocket connection requires token if configured
-    ws_url = f"ws://your-domain.com/ws/command?token=your-ws-token"
+    ws_url = "ws://your-domain.com/ws/command?token=your-ws-token"
 
     command_payload = {
         "command": f"scan {target} --ports {ports}",

@@ -4,7 +4,6 @@ Tests performance against the modern Rust-based port scanner.
 """
 
 import asyncio
-import json
 import subprocess
 import sys
 import time

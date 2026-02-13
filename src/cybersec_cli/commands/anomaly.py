@@ -396,7 +396,7 @@ def register_commands(cli):
                 # Initial delay to establish baseline
                 if verbose:
                     console.print(
-                        f"[blue]Establishing baseline (first 10 seconds)...[/]"
+                        "[blue]Establishing baseline (first 10 seconds)...[/]"
                     )
 
                 progress.start_task(task)
