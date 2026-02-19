@@ -113,18 +113,18 @@ class SecurityHardener:
         """Configure UFW firewall with secure defaults."""
         try:
             cmds = [
-                "ufw --force reset",
-                "ufw default deny incoming",
-                "ufw default allow outgoing",
-                "ufw allow 2222/tcp",  # SSH
-                "ufw allow 80/tcp",  # HTTP
-                "ufw allow 443/tcp",  # HTTPS
-                "ufw limit 2222/tcp",  # SSH brute force protection
-                "ufw --force enable",
+                ["ufw", "--force", "reset"],
+                ["ufw", "default", "deny", "incoming"],
+                ["ufw", "default", "allow", "outgoing"],
+                ["ufw", "allow", "2222/tcp"],  # SSH
+                ["ufw", "allow", "80/tcp"],  # HTTP
+                ["ufw", "allow", "443/tcp"],  # HTTPS
+                ["ufw", "limit", "2222/tcp"],  # SSH brute force protection
+                ["ufw", "--force", "enable"],
             ]
 
             for cmd in cmds:
-                subprocess.run(cmd, shell=True, check=True, capture_output=True)
+                subprocess.run(cmd, check=True, capture_output=True)
 
             return True
 
@@ -147,6 +147,9 @@ class SecurityHardener:
 
         except subprocess.CalledProcessError as e:
             console.print(f"[red]Error installing security tools: {str(e)}[/red]")
+            return False
+        except FileNotFoundError as e:
+            console.print(f"[red]Error: apt-get not found. This command requires a Debian/Ubuntu-based system.[/red]")
             return False
 
 

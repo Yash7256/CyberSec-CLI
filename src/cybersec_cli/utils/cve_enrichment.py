@@ -13,6 +13,12 @@ try:
     HAS_HTTPX = True
 except ImportError:
     HAS_HTTPX = False
+    # Log warning once at module load time
+    import sys
+    logging.warning(
+        "httpx is not installed. Live CVE enrichment from NVD API will be disabled. "
+        "Install httpx to enable live CVE lookups: pip install httpx"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +113,10 @@ class CVESearchAPI:
     async def fetch_cves(service: str, version: Optional[str] = None) -> List[Dict]:
         """Fetch CVEs from NVD 2.0 API."""
         if not HAS_HTTPX:
-            logger.warning("httpx not installed; cannot fetch live CVEs")
+            # Only log once per session to avoid spam
+            if not hasattr(CVESearchAPI, "_httpx_warning_logged"):
+                logger.warning("httpx not installed; cannot fetch live CVEs. Install with: pip install httpx")
+                CVESearchAPI._httpx_warning_logged = True
             return []
 
         # Try specific search first, then fallback to just service

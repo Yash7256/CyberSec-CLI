@@ -3,7 +3,7 @@ import pytest
 import web.main as main
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_redis_helpers_fallback_when_none():
     # ensure _redis is None and helpers return False or no-op
     orig = main._redis
@@ -40,7 +40,7 @@ class DummyRedis:
         return True
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_redis_helpers_with_dummy():
     orig = main._redis
     dummy = DummyRedis()
@@ -70,7 +70,7 @@ async def test_redis_helpers_with_dummy():
         main._redis = orig
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_check_and_record_rate_limit_in_memory():
     """Test _check_and_record_rate_limit fallback to in-memory when Redis is None."""
     orig_redis = main._redis
@@ -90,26 +90,26 @@ async def test_check_and_record_rate_limit_in_memory():
         main._rate_counters = orig_counters
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_record_scan_start_end_in_memory():
     """Test _record_scan_start and _record_scan_end fallback to in-memory when Redis is None."""
     orig_redis = main._redis
     main._redis = None
-    orig_active = main._active_scans.copy()
-    main._active_scans.clear()
+    orig_active = main.scan_concurrency._active_scans.copy()
+    main.scan_concurrency._active_scans.clear()
     try:
         # First few should pass
         for i in range(main.WS_CONCURRENT_LIMIT):
-            ok = await main._record_scan_start("test-client-2")
+            ok = await main.scan_concurrency.record_scan_start("test-client-2")
             assert ok is True
         # Next should fail
-        ok = await main._record_scan_start("test-client-2")
+        ok = await main.scan_concurrency.record_scan_start("test-client-2")
         assert ok is False
         # Decrement one
-        await main._record_scan_end("test-client-2")
+        await main.scan_concurrency.record_scan_end("test-client-2")
         # now we can start again
-        ok = await main._record_scan_start("test-client-2")
+        ok = await main.scan_concurrency.record_scan_start("test-client-2")
         assert ok is True
     finally:
         main._redis = orig_redis
-        main._active_scans = orig_active
+        main.scan_concurrency._active_scans = orig_active

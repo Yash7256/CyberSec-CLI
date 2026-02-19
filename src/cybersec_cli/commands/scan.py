@@ -4,10 +4,14 @@ Handles port scanning operations.
 """
 
 import asyncio
+import csv
+import io
+import os
 from typing import Optional
 
 import click
 from rich.console import Console
+from rich.panel import Panel
 
 from cybersec_cli.tools.network import PortScanner, ScanType
 from cybersec_cli.utils.formatters import (
@@ -15,6 +19,7 @@ from cybersec_cli.utils.formatters import (
     get_vulnerability_info,
     VULNERABILITY_DB
 )
+from cybersec_cli.core.validators import validate_target
 # Import live enrichment
 try:
     from cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
@@ -165,6 +170,10 @@ def scan_command(
     elif not target:
         raise click.UsageError("No target specified. Use --help for usage information.")
 
+    # Validate target - reject private/reserved IP ranges
+    if not validate_target(target, allow_private=False):
+        raise click.UsageError("Scanning private IP ranges is not permitted")
+
     # Enable OS detection if --os-only is specified
     if os_only:
         os = True
@@ -187,21 +196,21 @@ def scan_command(
             force_scan=force,
         )
 
-        # Run the scan (use core scan path to keep caching/adaptive/priority features)
-        results = asyncio.run(scanner.scan(streaming=streaming, force=force))
-        scanner.results = sorted(results, key=lambda x: x.port)
+        async def run_scan_and_enrich():
+            """Run scan and enrichment in a single async context."""
+            # Run the scan (use core scan path to keep caching/adaptive/priority features)
+            results = await scanner.scan(streaming=streaming, force=force)
+            scanner.results = sorted(results, key=lambda x: x.port)
 
-        # If OS detection was enabled, trigger it now (after scan results are populated)
-        if os:
-            console.print("[cyan]Performing native OS fingerprinting...[/cyan]")
-            os_info = scanner._perform_os_detection()
-            scanner.os_info = os_info
+            # If OS detection was enabled, trigger it now (after scan results are populated)
+            if os:
+                console.print("[cyan]Performing native OS fingerprinting...[/cyan]")
+                os_info = scanner._perform_os_detection()
+                scanner.os_info = os_info
 
-        # Perform post-scan enrichment
-        if not os_only:
-            console.print("[cyan]Enriching results with live CVE data...[/cyan]")
-
-            async def perform_enrichment():
+            # Perform post-scan enrichment
+            if not os_only:
+                console.print("[cyan]Enriching results with live CVE data...[/cyan]")
                 for result in scanner.results:
                     if result.state.name == "OPEN" and result.service and result.service != "unknown":
                         try:
@@ -219,14 +228,15 @@ def scan_command(
                                         current_entry.setdefault("cves", []).append(cve_id)
                         except Exception:
                             pass
+            
+            return scanner
 
-            asyncio.run(perform_enrichment())
+        # Run the combined scan and enrichment
+        scanner = asyncio.run(run_scan_and_enrich())
 
         # Handle output based on --os-only flag
         if os_only:
             # Print specialized OS-only output
-            from rich.panel import Panel
-
             os_data = getattr(scanner, "os_info", {})
             if not os_data:
                 os_data = {"error": "OS detection failed or yielded no results."}
@@ -243,9 +253,6 @@ def scan_command(
                 console.print(Panel(details, title="OS Fingerprinting Result", border_style="blue"))
 
             return
-
-        # ... rest of normal output logic ...
-
 
         # Format and display results using the enhanced formatter
         if format == "table":
@@ -275,6 +282,39 @@ def scan_command(
                 with open(output, "w") as f:
                     f.write(format_scan_results(scanner, format_type="list"))
                 console.print(f"\n[green]Results saved to {output}[/green]")
+        elif format == "csv":
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer)
+            writer.writerow(
+                [
+                    "port",
+                    "state",
+                    "service",
+                    "version",
+                    "banner",
+                    "protocol",
+                    "confidence",
+                ]
+            )
+            for result in scanner.results:
+                writer.writerow(
+                    [
+                        result.port,
+                        result.state.name if result.state else "",
+                        result.service or "",
+                        result.version or "",
+                        result.banner or "",
+                        result.protocol or "",
+                        f"{result.confidence:.2f}" if result.confidence else "",
+                    ]
+                )
+            csv_output = csv_buffer.getvalue()
+            console.print(csv_output)
+
+            if output:
+                with open(output, "w", newline="") as f:
+                    f.write(csv_output)
+                console.print(f"\n[green]Results saved to {output}[/green]")
 
         else:  # json format
             # For JSON, use the scanner's built-in JSON method
@@ -285,8 +325,6 @@ def scan_command(
                 with open(output, "w") as f:
                     f.write(json_output)
                 console.print(f"\n[green]Results saved to {output}[/green]")
-
-        # File saving is now handled in the format-specific blocks above
 
         # Show summary
         open_ports = len([r for r in scanner.results if r.state.name == "OPEN"])

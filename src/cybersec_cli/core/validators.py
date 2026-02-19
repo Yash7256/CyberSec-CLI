@@ -20,13 +20,14 @@ logger = (
 )
 
 # Blocklist of potentially dangerous targets
+# Private IP ranges are NOT blocked by default - use --allow-private flag to enable
 BLOCKLIST = [
     "localhost",
     "127.0.0.1",
     "::1",  # IPv6 localhost
     "0.0.0.0",
     "255.255.255.255",
-    # Common internal hostnames
+    # Common internal hostnames that could cause issues
     "internal",
     "intranet",
     "corp",
@@ -37,23 +38,50 @@ BLOCKLIST = [
     "gateway",
     "firewall",
     "printer",
-    # Common internal IP ranges that should be blocked unless explicitly allowed
+]
+
+# Whitelist for explicitly allowed IPs/hostnames (comma-separated)
+WHITELIST = os.getenv("PRIVATE_IP_WHITELIST", "").split(",")
+
+# Additional blocklist for when BLOCK_PRIVATE_IPS is enabled
+PRIVATE_IP_PREFIXES = [
     "10.",
-    "172.",
+    "172.16.",
+    "172.17.",
+    "172.18.",
+    "172.19.",
+    "172.20.",
+    "172.21.",
+    "172.22.",
+    "172.23.",
+    "172.24.",
+    "172.25.",
+    "172.26.",
+    "172.27.",
+    "172.28.",
+    "172.29.",
+    "172.30.",
+    "172.31.",
     "192.168.",
     "169.254.",  # Link-local
 ]
 
-# Whitelist for allowed private IP ranges (if needed for internal testing)
-WHITELIST = os.getenv("PRIVATE_IP_WHITELIST", "").split(",")
+# Private IP ranges that are always blocked regardless of setting
+ALWAYS_BLOCKED = [
+    "127.0.0.1",
+    "::1",
+    "0.0.0.0",
+    "255.255.255.255",
+]
 
 
-def validate_target(target: str) -> bool:
+def validate_target(target: str, allow_private: bool = False) -> bool:
     """
     Validate a target string to ensure it's safe to scan.
 
     Args:
         target: Target hostname or IP address
+        allow_private: If True, allow scanning of private IP ranges (10.x, 172.x, 192.168.x)
 
     Returns:
         True if target is valid and safe, False otherwise
@@ -67,28 +95,58 @@ def validate_target(target: str) -> bool:
     if not target:
         return False
 
-    # Check for potentially dangerous patterns
+    # Check for potentially dangerous patterns (always blocked)
     target_lower = target.lower()
 
-    # Check against blocklist
-    for blocked in BLOCKLIST:
-        if blocked in target_lower:
-            # Check if it's in the whitelist
-            if target in WHITELIST:
-                continue  # Allow if whitelisted
+    # Check against always-blocked list (no overrides)
+    for blocked in ALWAYS_BLOCKED:
+        if target_lower == blocked.lower():
             return False
 
-    # Check if it's a private IP that's not whitelisted
-    try:
-        ip = ipaddress.ip_address(target)
-        if ip.is_private and str(ip) not in WHITELIST:
+    # Check against blocklist hostnames
+    for blocked in BLOCKLIST:
+        if blocked in target_lower:
+            if target in WHITELIST:
+                continue
             return False
-        if ip.is_loopback and str(ip) not in WHITELIST:
+
+    # Strict IPv4 validation for numeric dot patterns
+    if re.fullmatch(r"[0-9.]+", target):
+        parts = target.split(".")
+        if len(parts) != 4:
             return False
-        if ip.is_link_local and str(ip) not in WHITELIST:
+        for part in parts:
+            if not part.isdigit():
+                return False
+            if len(part) > 1 and part.startswith("0"):
+                return False
+            value = int(part)
+            if value > 255:
+                return False
+        try:
+            ip = ipaddress.ip_address(target)
+        except ValueError:
             return False
         if ip.is_multicast:
             return False
+        if not allow_private and (ip.is_private or ip.is_loopback or ip.is_link_local):
+            return False
+        return True
+
+    # Check if it's a (non-IPv4) IP (e.g., IPv6)
+    try:
+        ip = ipaddress.ip_address(target)
+
+        # Always block multicast
+        if ip.is_multicast:
+            return False
+
+        # Always block private/loopback/link-local ranges unless explicitly allowed
+        if not allow_private:
+            if ip.is_private or ip.is_loopback or ip.is_link_local:
+                return False
+
+        return True
     except ValueError:
         # Not an IP address, continue with hostname validation
         pass
@@ -97,18 +155,20 @@ def validate_target(target: str) -> bool:
     if not _is_valid_hostname(target):
         return False
 
-    # Try to resolve the hostname to check if it's not pointing to a private IP
+    # Try to resolve the hostname to check if it points to a blocked IP
     try:
         resolved_ip = socket.gethostbyname(target)
         ip_obj = ipaddress.ip_address(resolved_ip)
 
-        # Check if resolved IP is private and not whitelisted
-        if ip_obj.is_private and str(ip_obj) not in WHITELIST:
+        # Check if resolved IP is in always-blocked list
+        if resolved_ip in ALWAYS_BLOCKED and resolved_ip not in WHITELIST:
             return False
-        if ip_obj.is_loopback and str(ip_obj) not in WHITELIST:
-            return False
-        if ip_obj.is_link_local and str(ip_obj) not in WHITELIST:
-            return False
+
+        # Check resolved IP against private IP rules
+        if not allow_private:
+            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
+                return False
+
     except socket.gaierror:
         # Hostname couldn't be resolved - might be invalid but not necessarily dangerous
         pass
@@ -129,12 +189,20 @@ def _is_valid_hostname(hostname: str) -> bool:
     if len(hostname) > 255 or len(hostname) == 0:
         return False
 
-    if hostname[-1] == ".":
-        hostname = hostname[:-1]  # Strip trailing dot if present
+    if hostname.endswith("."):
+        return False
+
+    labels = hostname.split(".")
+    if any(not label for label in labels):
+        return False
+
+    tld = labels[-1]
+    if len(tld) < 2 or not tld.isalpha():
+        return False
 
     allowed = re.compile(r"(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
 
-    return all(allowed.match(x) for x in hostname.split("."))
+    return all(allowed.match(x) for x in labels)
 
 
 def validate_port_range(ports: List[int]) -> bool:
@@ -157,7 +225,7 @@ def validate_port_range(ports: List[int]) -> bool:
     for port in ports:
         if not isinstance(port, int):
             return False
-        if port < 1 or port > 65535:
+        if port < 1 or port > 65535:  # Port 0 is invalid
             return False
         if port in seen:  # No duplicates
             return False

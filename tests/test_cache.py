@@ -45,14 +45,14 @@ class TestCacheKeyGeneration:
 class TestCacheHitMissLogic:
     """Test cache hit/miss logic."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_miss(self, mock_redis_client):
         """Test cache miss behavior."""
         cache = ScanCache()
         cache._initialized = True  # Bypass initialization
 
         # Patch the global redis_client
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             mock_redis_client.get.return_value = None
 
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
@@ -61,7 +61,7 @@ class TestCacheHitMissLogic:
             assert result is None
             mock_redis_client.get.assert_called_once_with(cache_key)
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_hit(self, mock_redis_client):
         """Test cache hit behavior."""
         cache = ScanCache()
@@ -75,7 +75,7 @@ class TestCacheHitMissLogic:
         }
         serialized_result = json.dumps(expected_result)
 
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             mock_redis_client.get.return_value = serialized_result.encode()
 
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
@@ -85,7 +85,7 @@ class TestCacheHitMissLogic:
             assert result["ports"] == expected_result["ports"]
             mock_redis_client.get.assert_called_once_with(cache_key)
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_store(self, mock_redis_client):
         """Test storing scan results in cache."""
         cache = ScanCache()
@@ -93,7 +93,7 @@ class TestCacheHitMissLogic:
 
         scan_result = {"host": "192.168.1.1", "ports": [{"port": 22, "state": "open"}]}
 
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
             success = await cache.store_cache(
                 cache_key, scan_result, target="192.168.1.1"
@@ -104,7 +104,41 @@ class TestCacheHitMissLogic:
                 mock_redis_client.set.called
             )  # Check that set was called at least once
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
+    async def test_cache_store_and_retrieve(self, mock_redis_client):
+        """Test storing and retrieving cached results."""
+        cache = ScanCache()
+        cache._initialized = True  # Bypass initialization
+
+        storage = {}
+
+        def _fake_set(key, value, ttl=None):
+            storage[key] = value
+            return True
+
+        def _fake_get(key):
+            return storage.get(key)
+
+        mock_redis_client.set.side_effect = _fake_set
+        mock_redis_client.get.side_effect = _fake_get
+
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
+            # Arrange
+            cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
+            expected_data = {
+                "host": "192.168.1.1",
+                "ports": [{"port": 22, "state": "open"}],
+            }
+
+            # Act
+            await cache.store_cache(cache_key, expected_data, target="192.168.1.1")
+            result = await cache.check_cache(cache_key)
+
+            # Assert
+            assert result["host"] == expected_data["host"]
+            assert result["ports"] == expected_data["ports"]
+
+    @pytest.mark.anyio
     async def test_cache_store_with_compression(self, mock_redis_client):
         """Test that large stored results are compressed."""
         cache = ScanCache()
@@ -113,7 +147,7 @@ class TestCacheHitMissLogic:
         # Create a large result to trigger compression
         large_result = {"data": "x" * 2000}  # Larger than 1KB threshold
 
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
             success = await cache.store_cache(
                 cache_key, large_result, target="192.168.1.1"
@@ -131,7 +165,7 @@ class TestCacheHitMissLogic:
 class TestTTLExpiration:
     """Test TTL expiration functionality."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_ttl_set_correctly(self, mock_redis_client):
         """Test that TTL is set correctly when storing results."""
         cache = ScanCache()
@@ -140,7 +174,7 @@ class TestTTLExpiration:
         scan_result = {"host": "192.168.1.1", "ports": [{"port": 22, "state": "open"}]}
         expected_ttl = 3600  # Default TTL
 
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
             await cache.store_cache(
                 cache_key, scan_result, ttl=expected_ttl, target="192.168.1.1"
@@ -157,7 +191,7 @@ class TestTTLExpiration:
                 )
                 assert ttl_value == expected_ttl
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_ttl_custom(self, mock_redis_client):
         """Test that custom TTL can be set."""
         cache = ScanCache()
@@ -166,7 +200,7 @@ class TestTTLExpiration:
         scan_result = {"host": "192.168.1.1", "ports": [{"port": 22, "state": "open"}]}
         custom_ttl = 7200
 
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
             await cache.store_cache(
                 cache_key, scan_result, ttl=custom_ttl, target="192.168.1.1"
@@ -209,7 +243,7 @@ class TestCacheStatistics:
 class TestCacheInvalidate:
     """Test cache invalidation functionality."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_invalidate_specific_key(self, mock_redis_client):
         """Test invalidating a specific cache key."""
         cache = ScanCache()
@@ -218,7 +252,7 @@ class TestCacheInvalidate:
         # Mock the Redis delete method to return 1 (indicating successful deletion)
         mock_redis_client.delete.return_value = 1
 
-        with patch("core.scan_cache.redis_client", mock_redis_client):
+        with patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
             cache_key = cache.get_cache_key("192.168.1.1", [22, 80])
             result = await cache.invalidate_cache(cache_key)
 

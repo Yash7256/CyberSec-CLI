@@ -8,7 +8,7 @@ from cybersec_cli.core.validators import validate_port_range, validate_target
 class TestEndToEndScanWorkflow:
     """Test end-to-end scan workflow integration."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_complete_scan_workflow(self, mock_scanner):
         """Test the complete scan workflow from input validation to result caching."""
         target = "scanme.nmap.org"  # Using a safe target for testing
@@ -33,7 +33,7 @@ class TestEndToEndScanWorkflow:
         assert isinstance(target_valid, bool)
         assert isinstance(port_range_valid, bool)
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_scan_workflow_with_cache_hit(self, mock_scanner):
         """Test scan workflow when result is already cached."""
 
@@ -45,7 +45,7 @@ class TestEndToEndScanWorkflow:
         assert mock_scanner.scan_cache is not None
         assert hasattr(mock_scanner.scan_cache, "check_cache")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_scan_workflow_rate_limited(self, mock_scanner):
         """Test scan workflow when rate limited."""
 
@@ -61,7 +61,7 @@ class TestEndToEndScanWorkflow:
 class TestCachingIntegration:
     """Test integration between scanner and cache."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_store_and_retrieve_integration(self, mock_cache):
         """Test that scan results are properly stored and retrieved from cache."""
         target = "example.com"  # noqa: F841
@@ -72,7 +72,7 @@ class TestCachingIntegration:
         assert hasattr(mock_cache, "store_cache")
         assert hasattr(mock_cache, "check_cache")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_key_consistency_across_components(self, mock_cache):
         """Test that cache key generation is consistent across different components."""
         target = "192.168.1.1"
@@ -84,7 +84,7 @@ class TestCachingIntegration:
         assert cache_key.startswith("scan_cache:")
         assert len(cache_key) > 10  # Should be a reasonable length
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_cache_expiration_integration(self, mock_cache):
         """Test cache expiration behavior in the scanning context."""
         # Just verify that expiration-related methods exist
@@ -150,7 +150,7 @@ class TestValidationIntegration:
 class TestComponentInteraction:
     """Test how different components interact with each other."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_scan_with_all_features_enabled(
         self, mock_scanner, mock_cache, mock_rate_limiter
     ):
@@ -165,14 +165,14 @@ class TestComponentInteraction:
         assert hasattr(mock_cache, "store_cache")
         assert hasattr(mock_rate_limiter, "check_client_limit")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_error_propagation_across_components(self, mock_scanner):
         """Test how errors propagate between different components."""
         # Just test that the scanner has error handling capabilities
         assert hasattr(mock_scanner, "timeout")
         assert hasattr(mock_scanner, "_check_port")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_concurrent_scan_integration(self, mock_scanner):
         """Test multiple concurrent scans and how they interact with shared resources."""
         # Test concurrent scanning capabilities

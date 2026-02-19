@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..utils.logger import setup_logger
 from .ai_engine import AIEngine
+from .command_parser import CommandParser
 from .conversation import Conversation
 
 logger = setup_logger(__name__)
@@ -80,6 +81,7 @@ class ContextManager:
         self.conversations: Dict[str, Conversation] = {}
         self.tools: Dict[str, dict] = {}
         self.ai_engine = AIEngine()
+        self.command_parser = CommandParser()
         self._setup_data_dir()
 
     def _setup_data_dir(self) -> None:
@@ -191,11 +193,6 @@ class ContextManager:
             result = await tool["function"](**parameters)
             execution_time = (datetime.utcnow() - start_time).total_seconds()
 
-            # Update session context
-            if "update_context" in tool:
-                context_update = tool["update_context"](result)
-                session.context.update(context_update)
-
             return ToolResult(
                 success=True,
                 output=result,
@@ -215,7 +212,7 @@ class ContextManager:
 
     async def process_message(self, message: str, session_id: str) -> str:
         """Process a user message and return a response."""
-        await self.create_session(session_id)
+        session = await self.create_session(session_id)
         conversation = await self.get_conversation(session_id)
 
         if not conversation:
@@ -223,6 +220,29 @@ class ContextManager:
 
         # Add user message to conversation
         conversation.add_message("user", message)
+
+        # Parse the command and wire it into session context for downstream handling
+        parsed_command = self.command_parser.parse(message)
+        session.context["last_parsed_command"] = parsed_command.to_dict()
+
+        # Short-circuit simple control commands
+        if parsed_command.action == "clear":
+            response_text = "Screen cleared."
+            conversation.add_message("assistant", response_text)
+            await self.save_session(session_id)
+            return response_text
+        if parsed_command.action == "exit":
+            response_text = "Goodbye."
+            conversation.add_message("assistant", response_text)
+            await self.save_session(session_id)
+            return response_text
+
+        # Provide parsed command context to the AI when actionable
+        if parsed_command.action not in {"query", "unknown"}:
+            conversation.add_message(
+                "system",
+                f"Parsed command: {json.dumps(parsed_command.to_dict())}",
+            )
 
         try:
             # Get AI response

@@ -40,7 +40,7 @@ def get_scan_order(port_range: List[int]) -> List[List[int]]:
         ordered as [critical, high, medium, low]
     """
     # Convert to set for faster lookups
-    set(port_range)
+    port_range = set(port_range)
 
     # Initialize result lists for each priority tier
     critical_ports = []
@@ -82,11 +82,3 @@ def get_priority_for_port(port: int) -> str:
     else:
         return "low"
 
-
-# Example usage:
-# ports = [21, 22, 23, 80, 443, 3306, 8080, 8443, 25, 110, 143, 993, 995, 1000, 2000, 3000]
-# priority_groups = get_scan_order(ports)
-# print("Critical:", priority_groups[0])
-# print("High:", priority_groups[1])
-# print("Medium:", priority_groups[2])
-# print("Low:", priority_groups[3])

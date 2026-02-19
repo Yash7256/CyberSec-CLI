@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import asyncio
+from fastapi import HTTPException
+
+import web.main as main
 
 from cybersec_cli.core.rate_limiter import SmartRateLimiter
 
@@ -9,7 +13,7 @@ class TestClientLimits:
     """Test client-based rate limiting."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -55,7 +59,7 @@ class TestTargetLimits:
     """Test target-based rate limiting."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -96,7 +100,7 @@ class TestPortRangeLimits:
     """Test port range limiting functionality."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -139,7 +143,7 @@ class TestGlobalConcurrentLimits:
     """Test global concurrent scan limiting."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -188,7 +192,7 @@ class TestExponentialBackoff:
     """Test exponential backoff functionality."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -232,16 +236,20 @@ class TestExponentialBackoff:
 
         with patch.object(rate_limiter.redis, "get", return_value="2"), patch.object(
             rate_limiter.redis, "setex"
-        ):
+        ) as mock_setex:
             rate_limiter.apply_cooldown(client_id)
             # Should call setex with the appropriate cooldown period
+            mock_setex.assert_called_once()
+            # Verify cooldown period is 3600 (3rd violation)
+            call_args = mock_setex.call_args
+            assert call_args[0][1] == 3600
 
 
 class TestRateLimitMetrics:
     """Test rate limit metrics and statistics."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -289,7 +297,7 @@ class TestRateLimitReset:
     """Test rate limit reset functionality."""
 
     @pytest.fixture
-    def rate_limiter(self, mock_config):
+    def rate_limiter(self):
         """Create a SmartRateLimiter instance for testing."""
         redis_client = MagicMock()
         config = {
@@ -307,10 +315,54 @@ class TestRateLimitReset:
         """Test resetting limits for a specific client."""
         client_id = "client1"
 
-        with patch.object(rate_limiter.redis, "delete") as mock_delete:
+        with patch.object(rate_limiter.redis, "delete") as mock_delete, patch.object(
+            rate_limiter.redis, "get", return_value=None
+        ), patch.object(rate_limiter.redis, "exists", return_value=0):
             rate_limiter.reset_client_limits(client_id)
 
-            # Should delete the relevant keys
-            assert (
-                mock_delete.call_count >= 3
-            )  # At least client, violation, and cooldown keys
+            # Should delete the relevant keys - verify specific keys are deleted
+            assert mock_delete.call_count >= 3
+            # Verify the client key pattern is included
+            called_keys = [call[0][0] for call in mock_delete.call_args_list]
+            key_patterns = [str(k) for k in called_keys]
+            assert any("client:client1" in k or "violation" in k or "cooldown" in k for k in key_patterns)
+            assert rate_limiter.get_violation_count(client_id) == 0
+            assert rate_limiter.is_on_cooldown(client_id) is False
+
+
+class TestApiRateLimiting:
+    """Test API rate limiting behavior."""
+
+    def test_rate_limit_triggers_http_429(self, monkeypatch):
+        class DummyLimiter:
+            def is_on_cooldown(self, client_id):
+                return False
+
+            def check_client_limit(self, client_id):
+                return False
+
+            def record_violation(self, client_id):
+                return None
+
+            def apply_cooldown(self, client_id):
+                return None
+
+        monkeypatch.setattr(main, "HAS_RATE_LIMITER", True)
+        monkeypatch.setattr(main, "rate_limiter", DummyLimiter())
+
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/scans",
+            "headers": [],
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+        }
+        request = main.Request(scope)
+
+        try:
+            asyncio.run(main.rate_limit_dependency(request))
+            assert False, "Expected rate limiting to raise HTTPException"
+        except HTTPException as exc:
+            assert exc.status_code == 429
+            assert "rate limit" in str(exc.detail).lower()

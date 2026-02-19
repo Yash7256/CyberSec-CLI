@@ -6,9 +6,11 @@ Migration script to migrate data from SQLite to PostgreSQL.
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sqlite3
 import sys
+import uuid
 from datetime import datetime
 from typing import Any, Dict, List
 
@@ -22,6 +24,8 @@ try:
 except ImportError:
     print("Error: PostgreSQL client not available")
     sys.exit(1)
+
+logger = logging.getLogger(__name__)
 
 
 def get_sqlite_scans(sqlite_db_path: str) -> List[Dict[str, Any]]:
@@ -122,40 +126,100 @@ async def migrate_scans(
         return 0
 
     migrated_count = 0
+    batch_size = 500
+    scan_batch = []
+    result_batch = []
 
-    print(f"Migrating {len(sqlite_scans)} scans...")
+    print(f"Migrating {len(sqlite_scans)} scans in batches of {batch_size}...")
 
     for i, scan in enumerate(sqlite_scans):
         try:
             if not dry_run:
-                # Create scan record in PostgreSQL
-                scan_id = await postgres_client.create_scan(
-                    target=scan["target"],
-                    config={"command": scan["command"], "ip": scan["ip"]},
-                )
-
                 # Parse output to get results
                 results = parse_scan_output(scan["output"])
+                
+                # Parse timestamp with error handling
+                raw_ts = scan.get("timestamp", "")
+                try:
+                    completed_at = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    logger.warning(f"Bad timestamp {raw_ts!r}, using UTC now")
+                    completed_at = datetime.utcnow()
 
-                # Save results if any
-                if results:
-                    await postgres_client.save_scan_results(scan_id, results)
-
-                # Update scan status to completed
-                await postgres_client.update_scan_status(
-                    scan_id,
-                    "completed",
-                    datetime.fromisoformat(scan["timestamp"].replace("Z", "+00:00")),
+                scan_id = str(uuid.uuid4())
+                scan_batch.append(
+                    (
+                        scan_id,
+                        scan["target"],
+                        json.dumps({"command": scan["command"], "ip": scan["ip"]}),
+                        "completed",
+                        completed_at,
+                    )
                 )
 
-            migrated_count += 1
-            print(f"Progress: {i+1}/{len(sqlite_scans)} scans migrated")
+                for result in results or []:
+                    result_batch.append(
+                        (
+                            str(uuid.uuid4()),
+                            scan_id,
+                            result.get("port"),
+                            result.get("state"),
+                            result.get("service"),
+                            result.get("version"),
+                            result.get("banner"),
+                            result.get("risk"),
+                            json.dumps(result.get("metadata", {})),
+                        )
+                    )
+
+                # Process batch when it reaches batch_size
+                if len(scan_batch) >= batch_size:
+                    await _process_batch(postgres_client, scan_batch, result_batch)
+                    migrated_count += len(scan_batch)
+                    print(f"Progress: {i+1}/{len(sqlite_scans)} scans migrated")
+                    scan_batch.clear()
+                    result_batch.clear()
 
         except Exception as e:
             print(f"Error migrating scan {scan['id']}: {e}")
             # Continue with other scans
 
+    # Process remaining items in batch
+    if scan_batch and not dry_run:
+        await _process_batch(postgres_client, scan_batch, result_batch)
+        migrated_count += len(scan_batch)
+
     return migrated_count
+
+
+async def _process_batch(postgres_client, scan_batch, result_batch):
+    """Process a batch of scans with transaction rollback on failure."""
+    try:
+        if not postgres_client.enabled or not postgres_client.pool:
+            raise RuntimeError("PostgreSQL pool not initialized")
+
+        async with postgres_client.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.executemany(
+                    """
+                    INSERT INTO scans (id, target, config, status, completed_at)
+                    VALUES ($1, $2, $3, $4, $5)
+                    """,
+                    scan_batch,
+                )
+                if result_batch:
+                    await conn.executemany(
+                        """
+                        INSERT INTO scan_results
+                        (id, scan_id, port, state, service, version, banner, risk_level, metadata)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        """,
+                        result_batch,
+                    )
+    except Exception as e:
+        print(f"Error processing batch: {e}")
+        # Rollback is handled by individual scan error handling above
+        raise
 
 
 async def main():

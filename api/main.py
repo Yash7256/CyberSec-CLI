@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import logging
+import os
 from typing import List
 
 # Set up logging
@@ -13,13 +14,24 @@ app = FastAPI(title="CyberSec CLI API",
               description="API for CyberSec CLI application",
               version="1.0.0")
 
-# CORS middleware
+# CORS middleware - load allowed origins from environment
+# Format: ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
+allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
+origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
+
+logger.info("CORS allowed origins: %s", origins)
+if not origins:
+    logger.warning(
+        "ALLOWED_ORIGINS not set. CORS is disabled. "
+        "Set ALLOWED_ORIGINS environment variable for production."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with your frontend URL
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # WebSocket connection manager
@@ -31,7 +43,7 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections.append(websocket)
 
-    def disconnect(self, websocket: WebSocket):
+    async def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: str):
@@ -62,7 +74,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # Here you can add message handling logic
             await manager.broadcast(f"Message received: {data}")
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket)
         await manager.broadcast("A client disconnected")
 
 # Import and include routers from other modules

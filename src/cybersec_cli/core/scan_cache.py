@@ -41,6 +41,18 @@ class ScanCache:
         self.stats = {"hits": 0, "misses": 0, "stored": 0}
         self._initialized = True  # Redis client is already initialized
 
+    def _require_redis(self) -> bool:
+        """
+        Check if Redis client is available.
+        
+        Returns:
+            True if Redis is available, False otherwise
+        """
+        if redis_client is None:
+            logger.warning("Redis client not available")
+            return False
+        return True
+
     async def initialize(self):
         """Initialize the cache system."""
         # Redis client is already initialized during import
@@ -117,6 +129,10 @@ class ScanCache:
         if not self._initialized:
             await self.initialize()
 
+        if not self._require_redis():
+            self.stats["misses"] += 1
+            return None
+
         try:
             cached_data = redis_client.get(cache_key)
 
@@ -131,8 +147,6 @@ class ScanCache:
                 except Exception:
                     # If decompression fails, try as plain string
                     cached_data = cached_data.decode()
-            elif isinstance(cached_data, (bytes, bytearray)):
-                cached_data = cached_data.decode()
 
             # Parse the JSON data
             result = json.loads(cached_data)
@@ -176,6 +190,9 @@ class ScanCache:
         """
         if not self._initialized:
             await self.initialize()
+
+        if not self._require_redis():
+            return False
 
         try:
             # Add metadata to the results
@@ -246,8 +263,14 @@ class ScanCache:
         if not self._initialized:
             await self.initialize()
 
+        if not self._require_redis():
+            return False
+
         try:
-            result = redis_client.delete(cache_key)
+            client = redis_client
+            if client is None:
+                return False
+            result = client.delete(cache_key)
             # RedisClient.delete returns number of deleted keys, so > 0 means success
             return result > 0
         except Exception as e:
@@ -263,6 +286,9 @@ class ScanCache:
         """
         if not self._initialized:
             await self.initialize()
+
+        if not self._require_redis():
+            return False
 
         try:
             # We use redis_client to delete keys with scan_cache prefix

@@ -71,13 +71,40 @@ class AnomalyMonitor:
         self.running = True
 
         # Set up signal handler for graceful shutdown
-        signal.signal(signal.SIGINT, self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(
+                signal.SIGINT,
+                lambda: self._handle_signal(signal.SIGINT, None)
+            )
+            loop.add_signal_handler(
+                signal.SIGTERM,
+                lambda: self._handle_signal(signal.SIGTERM, None)
+            )
+        except RuntimeError:
+            signal.signal(signal.SIGINT, self._handle_signal)
+            signal.signal(signal.SIGTERM, self._handle_signal)
 
     def _handle_signal(self, signum, frame):
         """Handle termination signals gracefully."""
         self.running = False
         console.print("\n[red]Shutting down gracefully...[/red]")
+
+    async def setup_async_signal_handlers(self):
+        """Set up async-safe signal handlers for use in async context."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.add_signal_handler(
+                signal.SIGINT,
+                lambda: self._handle_signal(signal.SIGINT, None)
+            )
+            loop.add_signal_handler(
+                signal.SIGTERM,
+                lambda: self._handle_signal(signal.SIGTERM, None)
+            )
+        except RuntimeError:
+            # Not in async context, fall back to sync handlers
+            pass
 
     def analyze_network_traffic(self) -> List[Anomaly]:
         """Analyze network traffic for anomalies using real system metrics."""
@@ -89,7 +116,7 @@ class AnomalyMonitor:
 
     def analyze_logs(self) -> List[Anomaly]:
         """Analyze logs for anomalies."""
-        return self.log_analyzer.analyze_logs()
+        return self.log_detector.analyze_logs()
 
     def generate_report(self, format: str = "text") -> str:
         """Generate a report of detected anomalies."""
@@ -262,90 +289,6 @@ def display_anomalies(anomalies: List[Anomaly], max_display: int = 20) -> None:
             console.print(f"  • {alert.description} ([red]Score: {alert.score:.1f}[/])")
         if len(high_risk) > 3:
             console.print(f"  ... and {len(high_risk) - 3} more high-risk alerts")
-
-
-def create_ui_layout() -> Layout:
-    """Create the TUI layout for real-time monitoring."""
-    layout = Layout()
-
-    # Split into header, main content, and footer
-    layout.split(
-        Layout(name="header", size=3),
-        Layout(name="main", ratio=1),
-        Layout(name="footer", size=3),
-    )
-
-    # Split main into metrics and anomalies
-    layout["main"].split(
-        Layout(name="metrics", size=10),
-        Layout(name="anomalies", ratio=2),
-        direction="vertical",
-    )
-
-    return layout
-
-
-async def update_ui(
-    progress: Progress,
-    monitor: AnomalyMonitor,
-    layout: Layout,
-    duration: float,
-    start_time: float,
-) -> bool:
-    """Update the UI with current metrics and anomalies."""
-    try:
-        # Calculate progress
-        elapsed = time.time() - start_time
-        progress.update(progress.tasks[0], completed=min(elapsed, duration))
-
-        # Update metrics panel
-        metrics_text = Text()
-        metrics_text.append(f"Runtime: {timedelta(seconds=int(elapsed))} | ")
-        metrics_text.append(f"Anomalies: {len(monitor.anomalies)} | ")
-        metrics_text.append(
-            f"High Risk: {len([a for a in monitor.anomalies if a.score >= 8.0])}"
-        )
-
-        # Update layout
-        layout["header"].update(
-            Panel(
-                "[bold blue]CyberSec Anomaly Detection",
-                subtitle=f"Monitoring {monitor.interface or 'all interfaces'}",
-            )
-        )
-
-        layout["metrics"].update(
-            Panel(metrics_text, title="[bold]Metrics", border_style="blue")
-        )
-
-        # Show recent anomalies
-        if monitor.anomalies:
-            recent_anomalies = sorted(
-                monitor.anomalies, key=lambda x: x.timestamp, reverse=True
-            )[:5]
-            anomaly_text = Text()
-            for anomaly in recent_anomalies:
-                anomaly_text.append(
-                    f"[{anomaly.anomaly_type}] {anomaly.description[:60]}...\n",
-                    style="red" if anomaly.score >= 8.0 else "yellow",
-                )
-            layout["anomalies"].update(
-                Panel(
-                    anomaly_text or "No recent anomalies",
-                    title="[bold]Recent Anomalies",
-                    border_style=(
-                        "red"
-                        if any(a.score >= 8.0 for a in recent_anomalies)
-                        else "yellow"
-                    ),
-                )
-            )
-
-        return elapsed < duration and monitor.running
-
-    except Exception as e:
-        logger.error(f"UI update error: {e}")
-        return False
 
 
 def register_commands(cli):

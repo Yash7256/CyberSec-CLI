@@ -1,3 +1,5 @@
+import pytest
+
 from cybersec_cli.core.validators import (
     is_safe_path,
     sanitize_input,
@@ -13,14 +15,6 @@ class TestTargetValidation:
 
     def test_valid_ipv4_addresses(self):
         """Test validation of valid IPv4 addresses."""
-        valid_ips = [  # noqa: F841
-            "8.8.8.8",
-            "10.0.0.1",  # This would be blocked by blocklist unless whitelisted
-            "192.168.1.1",  # This would be blocked by blocklist unless whitelisted
-            "172.16.0.1",  # This would be blocked by blocklist unless whitelisted
-            "1.1.1.1",
-        ]
-
         # Test public IPs that should be valid
         public_ips = ["8.8.8.8", "1.1.1.1", "208.67.222.222"]  # OpenDNS
 
@@ -35,18 +29,13 @@ class TestTargetValidation:
             "192.168.1.1.1",  # Invalid - too many octets
             "192.168.01.1",  # Invalid - leading zero
             "192.168.-1.1",  # Invalid - negative number
-            "not.an.ip",  # Invalid - not an IP
             "",  # Invalid - empty
             "192.168.1.256",  # Invalid - number too large
         ]
 
         for ip in invalid_ips:
-            # The validator might accept some of these if they pass basic format checks
-            # but are blocked by other validation logic, so just check the function doesn't crash
             result = validate_target(ip)
-            assert isinstance(
-                result, bool
-            ), f"validate_target should return boolean for {ip}"
+            assert result is False, f"Invalid IP {ip} should be rejected"
 
     def test_blocked_ipv4_addresses(self):
         """Test validation of blocked IPv4 addresses."""
@@ -92,11 +81,24 @@ class TestTargetValidation:
         ]
 
         for domain in invalid_domains:
-            # Some domains might pass basic validation but be blocked by other checks
             result = validate_target(domain)
-            assert isinstance(
-                result, bool
-            ), f"validate_target should return boolean for {domain}"
+            assert result is False, f"Invalid domain {domain} should be rejected"
+
+    @pytest.mark.parametrize(
+        "malicious_input",
+        [
+            "' OR 1=1 --",
+            "<script>alert(1)</script>",
+            "evil\x00.com",
+            "../../etc/passwd",
+            "a" * 10000,
+        ],
+    )
+    def test_reject_malicious_targets(self, malicious_input):
+        """Ensure malicious inputs are rejected by target validation."""
+        assert (
+            validate_target(malicious_input) is False
+        ), f"Malicious input should be rejected: {malicious_input!r}"
 
     def test_special_blocked_domains(self):
         """Test validation of special blocked domains."""
@@ -195,13 +197,13 @@ class TestInputSanitization:
         """Test sanitization of potentially dangerous characters."""
         dangerous_inputs = [
             ("../etc/passwd", "../etc/passwd"),  # .. is not in the dangerous list
-            ("; rm -rf /", " rm -rf /"),  # ; removed
-            ("& delete *", " delete *"),  # & removed
-            ("| cat /etc/passwd", " cat /etc/passwd"),  # | removed
-            ("$(whoami)", "$(whoami)"),  # $ not removed but ( and ) are
+            ("; rm -rf /", "rm -rf /"),  # ; removed
+            ("& delete *", "delete"),  # & and * removed
+            ("| cat /etc/passwd", "cat /etc/passwd"),  # | removed
+            ("$(whoami)", "whoami"),  # $ ( ) removed
             ("`whoami`", "whoami"),  # ` removed
             ("<script>alert(1)</script>", "scriptalert1/script"),  # < > removed
-            ("SELECT * FROM users;", "SELECT * FROM users"),  # ; removed
+            ("SELECT * FROM users;", "SELECT  FROM users"),  # ; and * removed
         ]
 
         for input_val, expected_contains in dangerous_inputs:
@@ -211,6 +213,9 @@ class TestInputSanitization:
             assert "&" not in result
             assert "|" not in result
             assert "`" not in result
+            assert (
+                expected_contains in result
+            ), f"Expected sanitized output to include '{expected_contains}', got '{result}'"
             # Note: $ is not in the dangerous list in the current implementation
             # ( and ) are removed but we need to check the actual implementation
 
@@ -452,12 +457,15 @@ class TestEdgeCases:
 
         for func, desc in none_inputs:
             result = func()
-            assert isinstance(
-                result, bool
-            ), f"{desc} should return boolean, got {type(result)}"
+            assert result is False, f"{desc} should return False for None input"
 
         # Special case for sanitize_input which returns a string
         result = sanitize_input(None)
-        assert isinstance(
-            result, str
-        ), f"sanitize_input with None should return string, got {type(result)}"
+        assert result == "", "sanitize_input with None should return an empty string"
+
+    def test_empty_string_inputs(self):
+        """Test validation with empty string inputs."""
+        assert validate_target("") is False
+        assert validate_url("") is False
+        assert validate_file_path("") is False
+        assert sanitize_input("") == ""

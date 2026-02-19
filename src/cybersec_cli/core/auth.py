@@ -35,6 +35,16 @@ API_KEY_PREFIX = os.getenv("API_KEY_PREFIX", "cs_")
 API_KEY_LENGTH = int(os.getenv("API_KEY_LENGTH", "32"))
 DEFAULT_KEY_TTL = int(os.getenv("API_KEY_TTL", "2592000"))  # 30 days in seconds
 
+# Salt for API key hashing — generated once per process if env var is absent
+_API_KEY_SALT = os.getenv("API_KEY_SALT")
+if not _API_KEY_SALT:
+    logger.warning(
+        "API_KEY_SALT environment variable not set. Using a random salt. "
+        "This means existing API keys will become invalid on restart. "
+        "Set API_KEY_SALT to a secure random string for production use."
+    )
+    _API_KEY_SALT = secrets.token_hex(32)
+
 
 @dataclass
 class APIKey:
@@ -228,9 +238,8 @@ class APIKeyAuth:
         Returns:
             Hashed key string
         """
-        # Use SHA-256 with salt for secure hashing
-        salt = os.getenv("API_KEY_SALT", "cybersec_default_salt")
-        return hashlib.sha256(f"{api_key}{salt}".encode()).hexdigest()
+        # Use SHA-256 with module-level salt for consistent hashing
+        return hashlib.sha256(f"{api_key}{_API_KEY_SALT}".encode()).hexdigest()
 
     def validate_key_scopes(self, api_key: str, required_scopes: list) -> bool:
         """

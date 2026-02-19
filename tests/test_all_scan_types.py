@@ -7,10 +7,14 @@ import asyncio
 import os
 import sys
 
+import pytest
+
 from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
 
 # Add the src directory to the path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+pytestmark = pytest.mark.anyio
 
 
 async def test_tcp_connect_scan():
@@ -27,7 +31,7 @@ async def test_tcp_connect_scan():
         )
 
         print(f"Scanning TCP ports on {scanner.target}...")
-        results = await scanner.scan()
+        results = await asyncio.wait_for(scanner.scan(), timeout=5.0)
 
         for result in results:
             print(f"Port {result.port}/tcp: {result.state.value}")
@@ -56,7 +60,7 @@ async def test_udp_scan():
         )
 
         print(f"Scanning UDP port 53 on {scanner.target}...")
-        results = await scanner.scan()
+        results = await asyncio.wait_for(scanner.scan(), timeout=5.0)
 
         for result in results:
             print(f"Port {result.port}/udp: {result.state.value}")
@@ -74,6 +78,8 @@ async def test_udp_scan():
 async def test_syn_scan():
     """Test TCP SYN scanning functionality"""
     print("\nTesting TCP SYN scanning functionality...")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        pytest.skip("SYN scan requires root privileges for raw sockets")
 
     try:
         scanner = PortScanner(
@@ -85,7 +91,7 @@ async def test_syn_scan():
         )
 
         print(f"Scanning TCP ports with SYN scan on {scanner.target}...")
-        results = await scanner.scan()
+        results = await asyncio.wait_for(scanner.scan(), timeout=5.0)
 
         for result in results:
             print(f"Port {result.port}/tcp: {result.state.value}")
@@ -104,6 +110,8 @@ async def test_syn_scan():
 async def test_fin_scan():
     """Test FIN scanning functionality"""
     print("\nTesting FIN scanning functionality...")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        pytest.skip("FIN scan requires root privileges for raw sockets")
 
     try:
         scanner = PortScanner(
@@ -115,7 +123,7 @@ async def test_fin_scan():
         )
 
         print(f"Scanning TCP ports with FIN scan on {scanner.target}...")
-        results = await scanner.scan()
+        results = await asyncio.wait_for(scanner.scan(), timeout=5.0)
 
         for result in results:
             print(f"Port {result.port}/tcp: {result.state.value}")
@@ -134,6 +142,8 @@ async def test_fin_scan():
 async def test_null_scan():
     """Test NULL scanning functionality"""
     print("\nTesting NULL scanning functionality...")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        pytest.skip("NULL scan requires root privileges for raw sockets")
 
     try:
         scanner = PortScanner(
@@ -164,6 +174,8 @@ async def test_null_scan():
 async def test_xmas_scan():
     """Test XMAS scanning functionality"""
     print("\nTesting XMAS scanning functionality...")
+    if hasattr(os, "geteuid") and os.geteuid() != 0:
+        pytest.skip("XMAS scan requires root privileges for raw sockets")
 
     try:
         scanner = PortScanner(

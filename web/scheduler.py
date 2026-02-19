@@ -54,20 +54,28 @@ def init_scheduler_db():
 
 def add_scheduled_scan(target: str, cron_expression: str) -> int:
     """Add a new scheduled scan. Returns the scan ID."""
+    # Validate target before storing to prevent command injection
+    if not target or not isinstance(target, str):
+        logger.warning(f"Invalid target for scheduled scan: {target!r}")
+        return -1
+    # Basic safety check: reject targets with shell metacharacters
+    import re
+    if not re.match(r'^[A-Za-z0-9._\-:]+$', target):
+        logger.warning(f"Rejected unsafe target for scheduled scan: {target!r}")
+        return -1
     try:
-        conn = sqlite3.connect(SCHEDULER_DB)
-        c = conn.cursor()
-        now = datetime.utcnow().isoformat() + "Z"
-        c.execute(
-            """
-        INSERT INTO scheduled_scans (target, cron_expression, created_at)
-        VALUES (?, ?, ?)
-        """,
-            (target, cron_expression, now),
-        )
-        conn.commit()
-        scan_id = c.lastrowid
-        conn.close()
+        with sqlite3.connect(SCHEDULER_DB) as conn:
+            c = conn.cursor()
+            now = datetime.utcnow().isoformat() + "Z"
+            c.execute(
+                """
+            INSERT INTO scheduled_scans (target, cron_expression, created_at)
+            VALUES (?, ?, ?)
+            """,
+                (target, cron_expression, now),
+            )
+            conn.commit()
+            scan_id = c.lastrowid
 
         # Add job to scheduler if running
         if _scheduler and HAS_SCHEDULER:
@@ -82,16 +90,15 @@ def add_scheduled_scan(target: str, cron_expression: str) -> int:
 def list_scheduled_scans() -> List[Dict]:
     """List all scheduled scans."""
     try:
-        conn = sqlite3.connect(SCHEDULER_DB)
-        c = conn.cursor()
-        c.execute(
+        with sqlite3.connect(SCHEDULER_DB) as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+            SELECT id, target, cron_expression, enabled, created_at, last_run, next_run
+            FROM scheduled_scans ORDER BY id DESC
             """
-        SELECT id, target, cron_expression, enabled, created_at, last_run, next_run
-        FROM scheduled_scans ORDER BY id DESC
-        """
-        )
-        rows = c.fetchall()
-        conn.close()
+            )
+            rows = c.fetchall()
         return [
             {
                 "id": r[0],
@@ -112,11 +119,10 @@ def list_scheduled_scans() -> List[Dict]:
 def delete_scheduled_scan(scan_id: int) -> bool:
     """Delete a scheduled scan by ID."""
     try:
-        conn = sqlite3.connect(SCHEDULER_DB)
-        c = conn.cursor()
-        c.execute("DELETE FROM scheduled_scans WHERE id = ?", (scan_id,))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(SCHEDULER_DB) as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM scheduled_scans WHERE id = ?", (scan_id,))
+            conn.commit()
 
         # Remove job from scheduler if running
         if _scheduler and HAS_SCHEDULER:
@@ -135,13 +141,12 @@ def delete_scheduled_scan(scan_id: int) -> bool:
 def toggle_scheduled_scan(scan_id: int, enabled: bool) -> bool:
     """Enable or disable a scheduled scan."""
     try:
-        conn = sqlite3.connect(SCHEDULER_DB)
-        c = conn.cursor()
-        c.execute(
-            "UPDATE scheduled_scans SET enabled = ? WHERE id = ?", (enabled, scan_id)
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(SCHEDULER_DB) as conn:
+            c = conn.cursor()
+            c.execute(
+                "UPDATE scheduled_scans SET enabled = ? WHERE id = ?", (enabled, scan_id)
+            )
+            conn.commit()
 
         # Update job in scheduler if running
         if _scheduler and HAS_SCHEDULER:
@@ -169,9 +174,10 @@ def _add_job_to_scheduler(scan_id: int, target: str, cron_expression: str):
     async def _run_scan():
         try:
             logger.info(f"Running scheduled scan for {target} (scan_id={scan_id})")
-            cmd = f"python -m cybersec_cli scan {target}"
-            process = await asyncio.create_subprocess_shell(
-                cmd,
+            # Use create_subprocess_exec with explicit args to prevent command injection
+            import sys
+            process = await asyncio.create_subprocess_exec(
+                sys.executable, "-m", "cybersec_cli", "scan", target,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=str(Path(__file__).parent.parent),
@@ -179,14 +185,13 @@ def _add_job_to_scheduler(scan_id: int, target: str, cron_expression: str):
             stdout, stderr = await process.communicate()
 
             # Update last_run
-            conn = sqlite3.connect(SCHEDULER_DB)
-            c = conn.cursor()
-            now = datetime.utcnow().isoformat() + "Z"
-            c.execute(
-                "UPDATE scheduled_scans SET last_run = ? WHERE id = ?", (now, scan_id)
-            )
-            conn.commit()
-            conn.close()
+            with sqlite3.connect(SCHEDULER_DB) as conn:
+                c = conn.cursor()
+                now = datetime.utcnow().isoformat() + "Z"
+                c.execute(
+                    "UPDATE scheduled_scans SET last_run = ? WHERE id = ?", (now, scan_id)
+                )
+                conn.commit()
 
             if process.returncode == 0:
                 logger.info(f"Scheduled scan {scan_id} completed successfully")

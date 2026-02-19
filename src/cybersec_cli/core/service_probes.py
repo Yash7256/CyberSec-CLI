@@ -6,6 +6,7 @@ This module implements active probing for common services to improve service det
 
 import asyncio
 import logging
+import os
 import socket
 import ssl
 from typing import Any, Dict, Optional
@@ -398,10 +399,22 @@ def get_ssl_info(ip: str, port: int, timeout: float = 5.0) -> Optional[Dict[str,
         Dictionary with SSL information or None if not SSL/TLS
     """
     try:
-        # Create SSL context
+        # Create SSL context with proper verification
         context = ssl.create_default_context()
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
+        context.check_hostname = True
+        context.verify_mode = ssl.CERT_REQUIRED
+
+        # Allow a custom CA bundle via environment (never disable verification)
+        verify_setting = os.environ.get("SSL_CA_BUNDLE", True)
+        if isinstance(verify_setting, str):
+            custom_ca = verify_setting.strip()
+            if custom_ca:
+                if os.path.exists(custom_ca):
+                    context.load_verify_locations(custom_ca)
+                else:
+                    logger.warning(
+                        "SSL_CA_BUNDLE path not found; using default CA bundle"
+                    )
 
         # Create socket and wrap with SSL
         sock = socket.create_connection((ip, port), timeout=timeout)

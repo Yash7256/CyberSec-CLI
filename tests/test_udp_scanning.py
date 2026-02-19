@@ -7,10 +7,14 @@ import asyncio
 import os
 import sys
 
+import pytest
+
 from cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
 
 # Add the src directory to the path so we can import the modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+pytestmark = pytest.mark.anyio
 
 
 async def test_udp_scanning():

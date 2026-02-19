@@ -8,8 +8,12 @@ import os
 import sys
 import time
 
+import pytest
+
 # Add the project root to the path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+pytestmark = pytest.mark.anyio
 
 
 async def test_scan_cache():

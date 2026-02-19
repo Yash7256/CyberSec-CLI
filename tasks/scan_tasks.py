@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from celery import Task
 
@@ -16,7 +16,21 @@ from tasks.celery_app import celery_app
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-# Import the Celery app
+# Event loop management to avoid repeated asyncio.run() calls
+_event_loop = None
+
+def get_event_loop():
+    """Get or create a reusable event loop for Celery tasks."""
+    global _event_loop
+    if _event_loop is None or _event_loop.is_closed():
+        _event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_event_loop)
+    return _event_loop
+
+def run_async(coro):
+    """Run a coroutine in the shared event loop."""
+    loop = get_event_loop()
+    return loop.run_until_complete(coro)
 
 # Import structured logging
 try:
@@ -76,15 +90,89 @@ try:
 except ImportError:
     HAS_METRICS = False
     metrics_collector = None
+    import time
+
+    def _timer_now() -> float:
+        """Return a monotonic timestamp from asyncio or thread context."""
+        try:
+            return asyncio.get_running_loop().time()
+        except RuntimeError:
+            return time.monotonic()
 
     def start_timer():
-        return 0
+        """Start a timer - returns current time."""
+        return _timer_now()
 
-    def stop_timer(x):
-        return 0
+    def stop_timer(start_time):
+        """Stop timer and return duration. Returns 0 if start_time is 0."""
+        if start_time == 0:
+            return 0
+        return _timer_now() - start_time
 
 
 logger = get_logger("celery") if HAS_STRUCTURED_LOGGING else logging.getLogger(__name__)
+
+
+def _safe_start_timer() -> float:
+    timer_fn = start_timer
+    assert callable(timer_fn)
+    return timer_fn()
+
+
+def _safe_stop_timer(start_time: float) -> float:
+    timer_fn = stop_timer
+    assert callable(timer_fn)
+    return timer_fn(start_time)
+
+
+def _parse_ports_spec(ports: str) -> List[int]:
+    """Parse a ports string into a list of validated port integers."""
+    port_list: List[int] = []
+    if not ports:
+        return port_list
+
+    if "-" in ports:
+        raw_start, raw_end = ports.split("-", 1)
+        try:
+            start = int(raw_start)
+            if not (1 <= start <= 65535):
+                raise ValueError(f"Port out of range: {start}")
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid port value skipped: {raw_start!r}")
+            return []
+        try:
+            end = int(raw_end)
+            if not (1 <= end <= 65535):
+                raise ValueError(f"Port out of range: {end}")
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid port value skipped: {raw_end!r}")
+            return []
+        if start > end:
+            logger.warning(f"Invalid port range: {start}-{end}")
+            return []
+        return list(range(start, end + 1))
+
+    if "," in ports:
+        for raw_port in ports.split(","):
+            raw_port = raw_port.strip()
+            try:
+                port = int(raw_port)
+                if not (1 <= port <= 65535):
+                    raise ValueError(f"Port out of range: {port}")
+            except (ValueError, TypeError):
+                logger.warning(f"Invalid port value skipped: {raw_port!r}")
+                continue
+            port_list.append(port)
+        return port_list
+
+    try:
+        port = int(ports)
+        if not (1 <= port <= 65535):
+            raise ValueError(f"Port out of range: {port}")
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid port value skipped: {ports!r}")
+        return []
+    return [port]
 
 
 class ScanTask(Task):
@@ -97,8 +185,7 @@ class ScanTask(Task):
         self.config = None
 
 
-@celery_app.task(bind=True, base=ScanTask, max_retries=3, autoretry_for=(Exception,))
-def perform_scan_task(
+async def _perform_scan_task_async(
     self,
     scan_id: str,
     target: str,
@@ -131,25 +218,21 @@ def perform_scan_task(
 
     logger.info(f"Starting scan task {scan_id} for target {target}")
 
+    # Initialize scan_start_time before try block to ensure it's always defined
+    scan_start_time = 0
+
     try:
         # Record scan start for metrics
-        scan_start_time = start_timer() if HAS_METRICS else 0
+        scan_start_time = _safe_start_timer() if HAS_METRICS else 0
 
         # Check cache first if caching is enabled
         force_scan = config.get("force", False) if config else False
         if HAS_SCAN_CACHE and scan_cache and not force_scan:
-            # Parse ports to list for cache key
-            port_list = []
-            if "-" in ports:
-                start, end = map(int, ports.split("-"))
-                port_list = list(range(start, end + 1))
-            elif "," in ports:
-                port_list = [int(p) for p in ports.split(",")]
-            else:
-                port_list = [int(ports)]
+            # Parse ports to list for cache key with error handling
+            port_list = _parse_ports_spec(ports)
 
             cache_key = scan_cache.get_cache_key(target, sorted(port_list))
-            cached_result = asyncio.run(scan_cache.check_cache(cache_key))
+            cached_result = await scan_cache.check_cache(cache_key)
 
             if cached_result:
                 logger.info(f"Returning cached results for {target}")
@@ -169,7 +252,7 @@ def perform_scan_task(
 
                 # Record metrics for cached scan
                 if HAS_METRICS:
-                    scan_duration = stop_timer(scan_start_time)
+                    scan_duration = _safe_stop_timer(scan_start_time)
                     metrics_collector.increment_cache_hit()
                     metrics_collector.observe_scan_duration(scan_duration)
                     metrics_collector.observe_ports_scanned(len(port_list))
@@ -204,15 +287,8 @@ def perform_scan_task(
             state="PROGRESS", meta={"status": "Starting scan...", "progress": 0}
         )
 
-        # Parse ports
-        port_list = []
-        if "-" in ports:
-            start, end = map(int, ports.split("-"))
-            port_list = list(range(start, end + 1))
-        elif "," in ports:
-            port_list = [int(p) for p in ports.split(",")]
-        else:
-            port_list = [int(ports)]
+        # Parse ports with error handling
+        port_list = _parse_ports_spec(ports)
 
         # Record cache miss if applicable
         if HAS_METRICS and HAS_SCAN_CACHE and scan_cache and not force_scan:
@@ -338,7 +414,7 @@ def perform_scan_task(
 
         # Record scan completion metrics
         if HAS_METRICS:
-            scan_duration = stop_timer(scan_start_time)
+            scan_duration = _safe_stop_timer(scan_start_time)
             record_scan(
                 scan_start_time,
                 status="completed",
@@ -363,7 +439,7 @@ def perform_scan_task(
         if HAS_SCAN_CACHE and scan_cache and not force_scan:
             cache_key = scan_cache.get_cache_key(target, sorted(port_list))
             cache_data = {"results": all_results}
-            asyncio.run(scan_cache.store_cache(cache_key, cache_data, target=target))
+            await scan_cache.store_cache(cache_key, cache_data, target=target)
 
         # Save results to database if available
         if HAS_DB_MODULES:
@@ -382,7 +458,7 @@ def perform_scan_task(
         logger.error(f"Scan task {scan_id} failed: {exc}")
         # Record error metrics
         if HAS_METRICS:
-            scan_duration = stop_timer(scan_start_time)
+            scan_duration = _safe_stop_timer(scan_start_time)
             metrics_collector.increment_scan_error(
                 error_type=str(type(exc).__name__), target_type="unknown"
             )
@@ -390,3 +466,14 @@ def perform_scan_task(
             metrics_collector.increment_scan(status="error", user_type="unknown")
         # Retry on failure (up to max_retries times)
         raise self.retry(exc=exc, countdown=60, max_retries=3)
+
+
+@celery_app.task(bind=True, base=ScanTask, max_retries=3)
+def perform_scan_task(
+    self,
+    scan_id: str,
+    target: str,
+    ports: str = "1-1000",
+    config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    return run_async(_perform_scan_task_async(self, scan_id, target, ports, config))

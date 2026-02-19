@@ -1,5 +1,6 @@
 """Output formatters for Cybersec CLI."""
 
+import logging
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -12,6 +13,7 @@ from rich.text import Text
 
 from cybersec_cli.tools.network import PortResult, PortScanner, PortState
 
+logger = logging.getLogger(__name__)
 
 class Severity(Enum):
     """Severity levels for security findings."""
@@ -25,6 +27,15 @@ class Severity(Enum):
     def __init__(self, display_name: str, style: str):
         self.display_name = display_name
         self.style = style
+
+
+def _get_severity_style(severity: Severity, default: str = "blue") -> str:
+    """Safely extract a style string from the Severity tuple."""
+    value = severity.value
+    if len(value) >= 2:
+        return value[1]
+    logger.warning("Unexpected severity tuple length: %s", len(value))
+    return default
 
 
 # Common vulnerabilities by port and service with detailed information
@@ -135,26 +146,17 @@ VULNERABILITY_DB = {
 }
 
 
-def get_vulnerability_info(port: int, service: Optional[str] = None) -> Dict[str, Any]:
-    """Get vulnerability information for a given port and service.
+def get_vulnerability_info(port: int) -> Dict[str, Any]:
+    """Get vulnerability information for a given port.
 
     Args:
         port: Port number
-        service: Service name (optional)
-
     Returns:
         Dictionary with vulnerability information
     """
     # First try exact port match
     if port in VULNERABILITY_DB:
         return VULNERABILITY_DB[port]
-
-    # Try to match by service name if provided
-    if service:
-        service = service.lower()
-        for port_num, info in VULNERABILITY_DB.items():
-            if isinstance(port_num, int) and info.get("service", "").lower() == service:
-                return info
 
     # Default to generic info
     return VULNERABILITY_DB["default"]
@@ -277,7 +279,7 @@ def format_scan_results_table(scanner: PortScanner) -> Table:
             continue
 
         # Get vulnerability info for risk assessment
-        vuln_info = get_vulnerability_info(result.port, result.service)
+        vuln_info = get_vulnerability_info(result.port)
 
         # Format port and state
         port = str(result.port)
@@ -330,7 +332,7 @@ def generate_security_findings(scanner: PortScanner) -> List[Panel]:
             continue
 
         # Get vulnerability info
-        vuln_info = get_vulnerability_info(result.port, result.service)
+        vuln_info = get_vulnerability_info(result.port)
 
         # Skip if it's just an info finding and we have no additional details
         if (
@@ -345,7 +347,7 @@ def generate_security_findings(scanner: PortScanner) -> List[Panel]:
 
         # Header with severity indicator
         finding_text.append("📌 ", style="bold")
-        severity_style = vuln_info["severity"].value[1]
+        severity_style = _get_severity_style(vuln_info["severity"])
         finding_text.append(
             f"{vuln_info['description']}", style=severity_style + " bold"
         )
@@ -396,7 +398,7 @@ def generate_security_findings(scanner: PortScanner) -> List[Panel]:
         finding_text.append(f"\n{vuln_info['recommendation']}")
 
         # Create panel with appropriate border color based on severity
-        border_style = vuln_info["severity"].value[1]
+        border_style = _get_severity_style(vuln_info["severity"])
 
         findings.append(
             Panel(
@@ -435,7 +437,7 @@ def format_scan_results_list(results: List[PortResult]) -> str:
 
     for result in sorted(open_ports, key=lambda x: x.port):
         # Get vulnerability info
-        vuln_info = get_vulnerability_info(result.port, result.service)
+        vuln_info = get_vulnerability_info(result.port)
 
         # Format port and service
         port_info = f"Port {result.port}/tcp"

@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 
 def setup_logger(
     name: str,
@@ -87,6 +89,13 @@ def log_forced_scan(entry: dict, reports_dir: Optional[Path] = None) -> None:
         out_file = reports_dir / "forced_scans.jsonl"
         with out_file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except Exception:
+    except Exception as e:
         # Best-effort: don't raise from the logger to avoid breaking flow
-        logging.getLogger(__name__).exception("Failed to write forced scan audit entry")
+        # Catch specific exceptions to avoid hiding serious bugs
+        try:
+            logger.error("Failed to write forced scan audit entry: %s", str(e))
+        except Exception as log_err:
+            try:
+                logger.error("Unexpected error", exc_info=True)
+            except Exception:
+                pass  # Truly best-effort

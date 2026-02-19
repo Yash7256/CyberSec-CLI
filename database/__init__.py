@@ -10,12 +10,12 @@ from typing import Any, Dict, List, Optional
 
 # Try to import PostgreSQL client
 try:
-    from .postgres_client import postgres_client
+    from .postgres_client import get_postgres_client
 
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
-    postgres_client = None
+    get_postgres_client = None
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def get_database_type() -> str:
         Database type string
     """
     database_url = os.getenv("DATABASE_URL")
-    if database_url and HAS_POSTGRES and postgres_client:
+    if database_url and HAS_POSTGRES and get_postgres_client:
         return DatabaseType.POSTGRESQL
     return DatabaseType.SQLITE
 
@@ -46,13 +46,14 @@ class DatabaseInterface:
     def __init__(self):
         self.db_type = get_database_type()
         self.initialized = False
+        self._pg_client = None
 
     async def initialize(self):
         """Initialize the database connection."""
         if self.db_type == DatabaseType.POSTGRESQL and HAS_POSTGRES:
-            result = await postgres_client.initialize()
-            self.initialized = result
-            if result:
+            self._pg_client = await get_postgres_client()
+            self.initialized = self._pg_client.enabled
+            if self.initialized:
                 logger.info("Using PostgreSQL database")
             else:
                 logger.warning(
@@ -86,7 +87,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            return await postgres_client.create_scan(target, user_id, config)
+            pg_client = self._pg_client or await get_postgres_client()
+            return await pg_client.create_scan(target, user_id, config)
         else:
             # Fallback to SQLite implementation
             # For compatibility, we'll create a dummy scan record
@@ -113,7 +115,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            await postgres_client.update_scan_status(scan_id, status, completed_at)
+            pg_client = self._pg_client or await get_postgres_client()
+            await pg_client.update_scan_status(scan_id, status, completed_at)
         else:
             # SQLite doesn't have this concept in the current implementation
             logger.debug(f"SQLite fallback: update_scan_status not implemented for scan {scan_id}")
@@ -131,7 +134,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            await postgres_client.save_scan_results(scan_id, results)
+            pg_client = self._pg_client or await get_postgres_client()
+            await pg_client.save_scan_results(scan_id, results)
         else:
             # Fallback to SQLite implementation
             # In the current implementation, results are saved as a single JSON blob
@@ -153,7 +157,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            return await postgres_client.get_scan(scan_id)
+            pg_client = self._pg_client or await get_postgres_client()
+            return await pg_client.get_scan(scan_id)
         else:
             # Fallback to SQLite implementation
             from web.main import get_scan_output
@@ -182,7 +187,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            return await postgres_client.list_user_scans(user_id, limit, offset)
+            pg_client = self._pg_client or await get_postgres_client()
+            return await pg_client.list_user_scans(user_id, limit, offset)
         else:
             # Fallback to SQLite implementation
             from web.main import list_scans
@@ -216,7 +222,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            return await postgres_client.get_scan_results(scan_id)
+            pg_client = self._pg_client or await get_postgres_client()
+            return await pg_client.get_scan_results(scan_id)
         else:
             # SQLite doesn't have separate results table
             # Return empty list for now
@@ -237,7 +244,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            return await postgres_client.delete_scan(scan_id)
+            pg_client = self._pg_client or await get_postgres_client()
+            return await pg_client.delete_scan(scan_id)
         else:
             # SQLite implementation would go here
             return False
@@ -249,7 +257,8 @@ class DatabaseInterface:
             and HAS_POSTGRES
             and self.initialized
         ):
-            await postgres_client.close()
+            pg_client = self._pg_client or await get_postgres_client()
+            await pg_client.close()
 
 
 # Create global database interface instance

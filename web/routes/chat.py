@@ -2,16 +2,20 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
 import logging
-from src.cybersec_cli.ai.groq_client import GroqClient
+from src.cybersec_cli.chatbot.ai_engine import AIEngine
 
 # Configure logger
 logger = logging.getLogger("api.chat")
 
 router = APIRouter(prefix="/api", tags=["AI Chat"])
 
-# Initialize client globally (simple approach) 
+# Initialize AI engine globally (simple approach)
 # Ideally this would be dependency injected or initialized on startup
-groq_client = GroqClient()
+try:
+    ai_engine = AIEngine()
+except Exception as e:
+    logger.critical(f"ChatService init failed: {e}", exc_info=True)
+    raise RuntimeError("Cannot start: ChatService unavailable") from e
 
 class ChatMessage(BaseModel):
     role: str
@@ -31,13 +35,6 @@ async def chat_endpoint(request: ChatRequest):
     Send a message to the Groq AI chatbot.
     """
     try:
-        # Check if API key is configured
-        if not groq_client.api_key:
-            raise HTTPException(
-                status_code=503, 
-                detail="Groq API key is not configured. Please set the GROQ_API_KEY environment variable."
-            )
-            
         # Convert Pydantic models to dicts
         messages = [m.dict() for m in request.messages]
         
@@ -72,17 +69,9 @@ async def chat_endpoint(request: ChatRequest):
             # Insert after the main system prompt
             messages.insert(1, context_msg)
             
-        # Call Groq API
-        response_data = await groq_client.chat_completion(messages)
-        
-        # Extract message content
-        try:
-            choice = response_data["choices"][0]
-            message = choice["message"]
-            return ChatResponse(role=message["role"], content=message["content"])
-        except (KeyError, IndexError):
-            logger.error(f"Unexpected response format from Groq: {response_data}")
-            raise HTTPException(status_code=502, detail="Invalid response from AI provider")
+        # Call AI engine (OpenAI if configured; otherwise fallback)
+        response = await ai_engine.generate_response(messages)
+        return ChatResponse(role="assistant", content=response.content)
             
     except HTTPException:
         raise

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Cybersec CLI - Main entry point for the cybersecurity assistant.
 """
@@ -330,12 +331,8 @@ class CyberSecCLI:
                 force_scan=force,
             )
 
-            # Run the scan with timing
-            import time
-
-            start_time = time.time()
+            # Run the scan
             results = await scanner.scan()
-            time.time() - start_time
 
             # Process and display results
             if not results:
@@ -529,7 +526,7 @@ class CyberSecCLI:
                     compliance_str = "\n    ".join(compliance_val)
                 else:
                     compliance_str = str(compliance_val)
-                tech_details.add_row("� [bold]Compliance:[/]", compliance_str)
+                tech_details.add_row("[bold]Compliance:[/]", compliance_str)
 
                 # Format the content with technical details
                 finding_content = [
@@ -537,7 +534,7 @@ class CyberSecCLI:
                     "-" * 60,
                     f'🔬 [bold]Details:[/] {finding["details"]}',
                     "",
-                    "⚠️  [bold]Risk Impact:[/]",
+                    "\N{WARNING SIGN}  [bold]Risk Impact:[/]",
                     finding.get(
                         "impact",
                         "Potential security vulnerability that could lead to unauthorized access or data exposure.",
@@ -667,8 +664,4 @@ def cli(ctx: click.Context, verbose: int, debug: bool):
 register_commands(cli)
 
 if __name__ == "__main__":
-    # If no arguments, run in interactive mode
-    if len(sys.argv) == 1:
-        run_cybersec_cli()
-    else:
-        cli()
+    cli()

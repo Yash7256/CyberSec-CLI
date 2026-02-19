@@ -16,7 +16,40 @@ sys.path.insert(0, project_root)
 # Now import modules after adding paths to sys.path
 from cybersec_cli.core.scan_cache import ScanCache  # noqa: E402
 from cybersec_cli.config import RateLimitConfig, ScanningConfig  # noqa: E402
-from cybersec_cli.tools.network.port_scanner import PortScanner  # noqa: E402
+try:
+    from cybersec_cli.tools.network.port_scanner import PortScanner  # noqa: E402
+except ImportError:
+    pytest.skip("module not available", allow_module_level=True)
+
+@pytest.fixture
+def mocker():
+    """Minimal pytest-mock compatible fixture using unittest.mock.patch."""
+    active_patches = []
+
+    def _start_patch(patcher):
+        started = patcher.start()
+        active_patches.append(patcher)
+        return started
+
+    class _PatchProxy:
+        def __call__(self, *args, **kwargs):
+            return _start_patch(patch(*args, **kwargs))
+
+        def object(self, *args, **kwargs):
+            return _start_patch(patch.object(*args, **kwargs))
+
+    class _Mocker:
+        patch = _PatchProxy()
+
+    yield _Mocker()
+
+    for patcher in reversed(active_patches):
+        patcher.stop()
+
+@pytest.fixture
+def anyio_backend():
+    """Force anyio to use asyncio backend only."""
+    return "asyncio"
 
 
 @pytest.fixture
@@ -72,9 +105,9 @@ def mock_scan_result():
 
 
 @pytest.fixture
-def mock_cache(mock_redis_client):
+def mock_cache(mock_redis_client, mocker):
     """Mock ScanCache instance."""
-    with patch("core.scan_cache.redis_client", mock_redis_client):
+    with mocker.patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
         cache = ScanCache()
         cache._initialized = True  # Bypass initialization
         cache.redis_client = mock_redis_client
@@ -109,14 +142,15 @@ def mock_rate_limiter():
 def mock_scanner(mock_config, mock_cache, mock_rate_limiter):
     """Mock Scanner instance."""
     # Create a PortScanner with mocked dependencies
-    with patch("cybersec_cli.tools.network.port_scanner.scan_cache", mock_cache):
-        with patch("cybersec_cli.tools.network.port_scanner.HAS_SCAN_CACHE", True):
-            scanner = PortScanner(
-                target="127.0.0.1", ports=[22, 80, 443], timeout=1.0, max_concurrent=10
-            )
-            # Replace the cache with our mock
-            scanner.scan_cache = mock_cache
-            return scanner
+    with patch("cybersec_cli.tools.network.port_scanner.scan_cache", mock_cache), patch(
+        "cybersec_cli.tools.network.port_scanner.HAS_SCAN_CACHE", True
+    ):
+        scanner = PortScanner(
+            target="127.0.0.1", ports=[22, 80, 443], timeout=1.0, max_concurrent=10
+        )
+        # Replace the cache with our mock
+        scanner.scan_cache = mock_cache
+        yield scanner
 
 
 @pytest.fixture

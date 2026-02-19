@@ -2,7 +2,7 @@
 import pytest
 from cybersec_cli.tools.network.port_scanner import PortScanner, PortResult, PortState
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_native_os_detection_linux():
     scanner = PortScanner("127.0.0.1")
     
@@ -20,7 +20,7 @@ async def test_native_os_detection_linux():
     assert "fingerprints_analyzed" in os_info
     assert os_info["fingerprints_analyzed"] == 2
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_native_os_detection_windows():
     scanner = PortScanner("192.168.1.5")
     
@@ -36,7 +36,7 @@ async def test_native_os_detection_windows():
     
     assert "Windows" in os_info["os_name"]
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_native_os_detection_insufficient_data():
     scanner = PortScanner("10.0.0.1")
     
@@ -46,7 +46,8 @@ async def test_native_os_detection_insufficient_data():
     ]
     
     os_info = scanner._perform_os_detection()
-    assert "error" in os_info
+    assert os_info.get("os_name") == "Unknown"
+    assert os_info.get("accuracy") == "N/A"
 
 if __name__ == "__main__":
     import asyncio

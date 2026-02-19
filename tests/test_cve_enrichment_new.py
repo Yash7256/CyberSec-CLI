@@ -2,18 +2,26 @@ import pytest
 from unittest.mock import patch, AsyncMock, MagicMock
 from cybersec_cli.utils.cve_enrichment import enrich_scan_result, CVESearchAPI
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_cve_search_api_fetch():
     """Test fetching CVEs from external API (mocked)."""
     # Mock the response object
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "results": [
+        "vulnerabilities": [
             {
-                "id": "CVE-2023-TEST",
-                "cvss": 9.8,
-                "summary": "Test vulnerability"
+                "cve": {
+                    "id": "CVE-2023-TEST",
+                    "metrics": {
+                        "cvssMetricV31": [
+                            {"cvssData": {"baseScore": 9.8}}
+                        ]
+                    },
+                    "descriptions": [
+                        {"lang": "en", "value": "Test vulnerability"}
+                    ],
+                }
             }
         ]
     }
@@ -32,7 +40,7 @@ async def test_cve_search_api_fetch():
         assert results[0]["id"] == "CVE-2023-TEST"
         assert results[0]["severity"] == "CRITICAL"
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_enrich_scan_result_integration():
     """Test full enrichment flow with mocked API."""
     scan_output = """

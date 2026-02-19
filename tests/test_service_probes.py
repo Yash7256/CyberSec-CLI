@@ -182,7 +182,7 @@ class TestServiceProbes(unittest.TestCase):
         self.assertIsNone(result["service"])
         self.assertEqual(result["confidence"], 0.0)
 
-    @patch("core.service_probes.send_probe")
+    @patch("cybersec_cli.core.service_probes.send_probe")
     def test_identify_service_fallback(self, mock_send_probe):
         """Test service identification falling back to port mapping."""
         # Mock all probes to return no response

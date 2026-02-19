@@ -7,7 +7,7 @@
     <title>CyberSec-CLI Web</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
+    <style nonce="{{CSP_NONCE}}">
         * {
             margin: 0;
             padding: 0;
@@ -185,6 +185,11 @@
             height: 150px;
             margin-right: 1.5rem;
             object-fit: contain;
+        }
+
+        .logo-image--header {
+            height: 48px;
+            width: auto;
         }
 
         .logo-text {
@@ -542,6 +547,12 @@
             font-size: 0.9rem;
             color: var(--text-secondary);
             margin-bottom: 0.5rem;
+        }
+
+        .scan-progress-percent {
+            float: right;
+            color: var(--text-secondary);
+            font-weight: 600;
         }
 
         .progress-bar-container {
@@ -990,8 +1001,8 @@
         }
     </style>
     <!-- Markdown Parser -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <style>
+    <script nonce="{{CSP_NONCE}}" src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style nonce="{{CSP_NONCE}}">
         /* ... existing styles ... */
 
         /* Bottom Icons */
@@ -1032,6 +1043,15 @@
             pointer-events: none;
             transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
             min-width: 140px;
+        }
+
+        .filter-popover-title {
+            padding: 0.25rem 0.5rem 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
         }
 
         .filter-popover.active {
@@ -1076,6 +1096,12 @@
             z-index: 1000;
             transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             border: none;
+        }
+
+        .chat-icon {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
         }
 
         .chat-widget-btn:hover {
@@ -1312,7 +1338,7 @@
     <!-- Top Navigation Bar -->
     <header class="top-nav">
         <div class="logo">
-            <img src="/static/img/logo.png" alt="CyberSec Logo" class="logo-image" style="height: 48px; width: auto;">
+            <img src="/static/img/logo.png" alt="CyberSec Logo" class="logo-image logo-image--header">
         </div>
 
         <nav>
@@ -1357,11 +1383,10 @@
                         <div id="scanProgress" class="scan-progress hidden">
                             <div class="progress-text">
                                 <span id="statusText"></span>
-                                <span id="scanProgressPercent"
-                                    style="float:right;color:var(--text-secondary);font-weight:600">0%</span>
+                                <span id="scanProgressPercent" class="scan-progress-percent">0%</span>
                             </div>
                             <div class="progress-bar-container">
-                                <div id="scanProgressBar" class="progress-bar" style="width:0%"></div>
+                                <div id="scanProgressBar" class="progress-bar"></div>
                             </div>
                         </div>
                         <div id="allPorts" class="all-ports"></div>
@@ -1374,8 +1399,7 @@
 
                     <!-- Filter Popover menu -->
                     <div id="filterPopover" class="filter-popover">
-                        <div
-                            style="padding: 0.25rem 0.5rem 0.5rem; font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600;">
+                        <div class="filter-popover-title">
                             Risk Level
                         </div>
                         <button class="filter-btn active" data-filter="all">All Ports</button>
@@ -1411,8 +1435,7 @@
 
                 <!-- Chat Widget Button (Bottom Right) -->
                 <button id="chatDataBtn" class="chat-widget-btn" onclick="toggleChat()">
-                    <svg viewBox="0 0 640 512" xmlns="http://www.w3.org/2000/svg"
-                        style="width: 24px; height: 24px; fill: currentColor;">
+                    <svg viewBox="0 0 640 512" xmlns="http://www.w3.org/2000/svg" class="chat-icon">
                         <path
                             d="M320 0c17.7 0 32 14.3 32 32v64h128c35.3 0 64 28.7 64 64v224c0 35.3-28.7 64-64 64H160c-35.3 0-64-28.7-64-64V160c0-35.3 28.7-64 64-64h128V32c0-17.7 14.3-32 32-32zM208 240c-17.7 0-32 14.3-32 32s14.3 32 32 32h32c17.7 0 32-14.3 32-32s-14.3-32-32-32h-32zm224 32c0-17.7-14.3-32-32-32h-32c-17.7 0-32 14.3-32 32s14.3 32 32 32h32c17.7 0 32-14.3 32-32z" />
                     </svg>
@@ -1534,8 +1557,7 @@
             
             <!-- Chat Widget Button (Bottom Right) -->
             <button id="osChatWidgetBtn" class="chat-widget-btn" onclick="toggleOsChat()">
-                <svg viewBox="0 0 640 512" xmlns="http://www.w3.org/2000/svg"
-                    style="width: 24px; height: 24px; fill: currentColor;">
+                <svg viewBox="0 0 640 512" xmlns="http://www.w3.org/2000/svg" class="chat-icon">
                     <path
                         d="M320 0c17.7 0 32 14.3 32 32v64h128c35.3 0 64 28.7 64 64v224c0 35.3-28.7 64-64 64H160c-35.3 0-64-28.7-64-64V160c0-35.3 28.7-64 64-64h128V32c0-17.7 14.3-32 32-32zM208 240c-17.7 0-32 14.3-32 32s14.3 32 32 32h32c17.7 0 32-14.3 32-32s-14.3-32-32-32h-32zm224 32c0-17.7-14.3-32-32-32h-32c-17.7 0-32 14.3-32 32s14.3 32 32 32h32c17.7 0 32-14.3 32-32z" />
                 </svg>
@@ -1581,7 +1603,7 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{CSP_NONCE}}">
         // Initialize stream handler
         class StreamHandler {
             constructor() {
@@ -2326,7 +2348,7 @@
     <!-- Chat Window (Toggle button is now inside results-window) -->
 
 
-    <script>
+    <script nonce="{{CSP_NONCE}}">
         // Chatbot Logic
         const chatWindow = document.getElementById('chatWindow');
         const chatMessages = document.getElementById('chatMessages');

@@ -305,6 +305,11 @@ class NetworkAnomalyDetector(AnomalyDetector):
 
                     # Update or create connection
                     if is_new:
+                        # Determine protocol from port if available
+                        conn_protocol = Protocol.UNKNOWN
+                        if conn.raddr and len(conn.raddr) > 1:
+                            conn_protocol = self._get_protocol(conn.raddr[1])
+                        
                         self.connections[key] = NetworkConnection(
                             fd=conn.fd,
                             family=conn.family,
@@ -314,6 +319,7 @@ class NetworkAnomalyDetector(AnomalyDetector):
                             status=conn.status,
                             pid=conn.pid,
                             first_seen=current_time,
+                            protocol=conn_protocol,
                         )
 
                         # Track port activity
@@ -508,7 +514,6 @@ class NetworkAnomalyDetector(AnomalyDetector):
     def _detect_connection_anomalies(self) -> List[Anomaly]:
         """Detect anomalies in connection patterns with advanced analysis."""
         anomalies = []
-        time.time()
 
         # Group connections by remote address and local port
         connections_by_host = defaultdict(
@@ -862,14 +867,13 @@ if __name__ == "__main__":
     print("Testing Network Anomaly Detection...")
     net_detector = NetworkAnomalyDetector()
 
-    # Simulate normal traffic
+    # Simulate normal traffic - analyze_traffic() takes no parameters, 
+    # it reads metrics internally via psutil
     for _ in range(10):
-        normal_packets = random.randint(80, 120)
-        normal_conns = random.randint(5, 15)
-        net_detector.analyze_traffic(normal_packets, normal_conns)
+        net_detector.analyze_traffic()
 
-    # Test with anomaly (sudden spike in traffic)
-    anomalies = net_detector.analyze_traffic(500, 100)
+    # Test with anomaly detection
+    anomalies = net_detector.analyze_traffic()
     if anomalies:
         for anomaly in anomalies:
             print(f"[!] {anomaly.description} (Score: {anomaly.score:.2f})")
@@ -882,10 +886,14 @@ if __name__ == "__main__":
     for _ in range(10):
         normal_errors = random.randint(0, 5)
         normal_logins = random.randint(0, 2)
-        log_detector.analyze_logs(normal_errors, normal_logins)
+        log_detector.analyze_logs(
+            error_count=normal_errors, failed_login_count=normal_logins
+        )
 
     # Test with anomaly (sudden spike in failed logins)
-    anomalies = log_detector.analyze_logs(3, 15)  # 15 failed logins is unusual
+    anomalies = log_detector.analyze_logs(
+        error_count=3, failed_login_count=15
+    )  # 15 failed logins is unusual
     if anomalies:
         for anomaly in anomalies:
             print(f"[!] {anomaly.description} (Score: {anomaly.score:.2f})")

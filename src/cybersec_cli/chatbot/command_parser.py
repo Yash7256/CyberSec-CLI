@@ -63,8 +63,8 @@ class CommandParser:
         ],
         # Password security
         "check_password": [
-            r"(?:check|analyze|test|is)\s+(?:password\s+)?(?:'|\")(?P<password>.+?)(?:'|\")(?:\s+secure)?",
-            r"how\s+strong\s+is\s+(?:password\s+)?(?:'|\")(?P<password>.+?)(?:'|\")",
+            r"(?:check|analyze|test|is)\s+(?:password\s+)?(?P<quote>['\"])(?P<password>[^'\"]{1,256})(?P=quote)(?:\s+secure)?",
+            r"how\s+strong\s+is\s+(?:password\s+)?(?P<quote>['\"])(?P<password>[^'\"]{1,256})(?P=quote)",
         ],
         # Hash operations
         "hash_identify": [
@@ -94,6 +94,20 @@ class CommandParser:
         "analyze": "scan_ports",
         "test": "scan_ports",
         "check": "scan_ports",
+    }
+
+    # Help text for each command
+    COMMAND_HELP = {
+        "scan_ports": "Scan ports on a target. Usage: scan <target> or scan ports 80,443 on <target>",
+        "scan_network": "Scan the local network to discover devices. Usage: scan network",
+        "ssl_check": "Check SSL certificate validity. Usage: ssl check <domain>",
+        "analyze_headers": "Analyze HTTP security headers. Usage: analyze headers for <url>",
+        "check_password": "Check password strength. Usage: check password '<password>'",
+        "hash_identify": "Identify hash type. Usage: identify hash '<hash>'",
+        "hash_generate": "Generate hash from text. Usage: generate <algorithm> hash for '<text>'",
+        "help": "Get help. Usage: help or help <command>",
+        "clear": "Clear the screen. Usage: clear",
+        "exit": "Exit the application. Usage: exit or quit",
     }
 
     def __init__(self):
@@ -195,7 +209,8 @@ class CommandParser:
         if command_name:
             # Return help for specific command
             if command_name in self.COMMAND_PATTERNS:
-                return f"Help for '{command_name}': Not implemented yet"
+                help_text = self.COMMAND_HELP.get(command_name, "No help available for this command")
+                return f"Help for '{command_name}': {help_text}"
             else:
                 return f"Unknown command: {command_name}"
 

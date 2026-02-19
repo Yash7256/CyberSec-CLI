@@ -12,25 +12,37 @@ from prometheus_client import (
     generate_latest,
 )
 
+# Dedicated registry to ensure consistent metric export
+REGISTRY = CollectorRegistry()
+
 # Counter metrics
 SCANS_TOTAL = Counter(
-    "scans_total", "Total number of scans performed", labelnames=["status", "user_type"]
+    "scans_total",
+    "Total number of scans performed",
+    labelnames=["status", "user_type"],
+    registry=REGISTRY,
 )
 
 SCAN_ERRORS_TOTAL = Counter(
     "scan_errors_total",
     "Total number of scan errors",
     labelnames=["error_type", "target_type"],
+    registry=REGISTRY,
 )
 
-CACHE_HITS_TOTAL = Counter("cache_hits_total", "Total number of cache hits")
+CACHE_HITS_TOTAL = Counter(
+    "cache_hits_total", "Total number of cache hits", registry=REGISTRY
+)
 
-CACHE_MISSES_TOTAL = Counter("cache_misses_total", "Total number of cache misses")
+CACHE_MISSES_TOTAL = Counter(
+    "cache_misses_total", "Total number of cache misses", registry=REGISTRY
+)
 
 RATE_LIMIT_VIOLATIONS_TOTAL = Counter(
     "rate_limit_violations_total",
     "Total number of rate limit violations",
     labelnames=["violation_type"],
+    registry=REGISTRY,
 )
 
 # Histogram metrics
@@ -38,39 +50,49 @@ SCAN_DURATION_SECONDS = Histogram(
     "scan_duration_seconds",
     "Scan duration in seconds",
     buckets=[1, 5, 10, 30, 60, 120, 300],
+    registry=REGISTRY,
 )
 
 PORTS_SCANNED_COUNT = Histogram(
     "ports_scanned_count",
     "Number of ports scanned per scan",
     buckets=[10, 50, 100, 500, 1000],
+    registry=REGISTRY,
 )
 
 OPEN_PORTS_FOUND_COUNT = Histogram(
     "open_ports_found_count",
     "Number of open ports found per scan",
     buckets=[1, 5, 10, 20, 50, 100],
+    registry=REGISTRY,
 )
 
 SERVICE_DETECTION_DURATION_SECONDS = Histogram(
     "service_detection_duration_seconds",
     "Service detection duration in seconds",
     buckets=[0.1, 0.5, 1, 2, 5, 10],
+    registry=REGISTRY,
 )
 
 # Gauge metrics
-ACTIVE_SCANS_CURRENT = Gauge("active_scans_current", "Current number of active scans")
+ACTIVE_SCANS_CURRENT = Gauge(
+    "active_scans_current", "Current number of active scans", registry=REGISTRY
+)
 
 CELERY_QUEUE_LENGTH = Gauge(
-    "celery_queue_length", "Current length of Celery task queue"
+    "celery_queue_length", "Current length of Celery task queue", registry=REGISTRY
 )
 
 REDIS_CONNECTION_POOL_SIZE = Gauge(
-    "redis_connection_pool_size", "Current size of Redis connection pool"
+    "redis_connection_pool_size",
+    "Current size of Redis connection pool",
+    registry=REGISTRY,
 )
 
 DATABASE_CONNECTIONS_ACTIVE = Gauge(
-    "database_connections_active", "Number of active database connections"
+    "database_connections_active",
+    "Number of active database connections",
+    registry=REGISTRY,
 )
 
 
@@ -80,7 +102,7 @@ class MetricsCollector:
     """
 
     def __init__(self):
-        self.registry = CollectorRegistry()
+        self.registry = REGISTRY
 
     def increment_scan(self, status: str = "completed", user_type: str = "anonymous"):
         """Increment scan counter"""
@@ -218,16 +240,3 @@ def record_scan(
     # Record open ports found
     if open_ports_count > 0:
         metrics_collector.observe_open_ports_found(open_ports_count)
-
-
-def record_cache_operation(is_hit: bool):
-    """Record a cache operation"""
-    if is_hit:
-        metrics_collector.increment_cache_hit()
-    else:
-        metrics_collector.increment_cache_miss()
-
-
-def record_rate_limit_violation(violation_type: str):
-    """Record a rate limit violation"""
-    metrics_collector.increment_rate_limit_violation(violation_type=violation_type)

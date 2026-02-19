@@ -7,8 +7,12 @@ import asyncio
 import os
 import sys
 
+import pytest
+
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+pytestmark = pytest.mark.anyio
 
 try:
     from cybersec_cli.core.redis_client import RedisClient

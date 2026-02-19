@@ -3,6 +3,7 @@ PostgreSQL client for CyberSec-CLI.
 This module provides an async PostgreSQL client with connection pooling.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -14,20 +15,15 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
+_instance: Optional["PostgresClient"] = None
+_lock = asyncio.Lock()
+
 
 class PostgresClient:
     """Async PostgreSQL client with connection pooling."""
 
-    _instance = None
-    _initialized = False
-
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(PostgresClient, cls).__new__(cls)
-        return cls._instance
-
     def __init__(self):
-        if self._initialized:
+        if hasattr(self, '_initialized') and self._initialized:
             return
 
         self.pool = None
@@ -36,12 +32,12 @@ class PostgresClient:
 
     async def initialize(self):
         """Initialize the PostgreSQL connection pool."""
-        try:
-            database_url = os.getenv("DATABASE_URL")
-            if not database_url:
-                logger.warning("DATABASE_URL not set, PostgreSQL disabled")
-                return False
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            logger.warning("DATABASE_URL not set, PostgreSQL disabled")
+            return False
 
+        try:
             # Create connection pool
             self.pool = await asyncpg.create_pool(
                 database_url,
@@ -61,8 +57,16 @@ class PostgresClient:
 
         except Exception as e:
             logger.error(f"Failed to initialize PostgreSQL connection pool: {e}")
+            # Clean up pool on failure
+            if hasattr(self, "pool") and self.pool:
+                await self.pool.close()
+                self.pool = None
             self.enabled = False
-            return False
+            raise
+
+    async def connect(self) -> bool:
+        """Alias for initialize to support singleton setup."""
+        return await self.initialize()
 
     async def create_scan(
         self,
@@ -354,7 +358,13 @@ class PostgresClient:
                     scan_id,
                 )
                 # Due to CASCADE delete, scan results are automatically deleted
-                return result == "DELETE 1"
+                # asyncpg returns a command tag like "DELETE <n>"
+                try:
+                    deleted_count = int(str(result).split()[-1])
+                except (ValueError, IndexError, AttributeError):
+                    logger.warning(f"Unexpected delete result tag: {result!r}")
+                    return False
+                return deleted_count > 0
         except Exception as e:
             logger.error(f"Failed to delete scan: {e}")
             raise
@@ -366,5 +376,12 @@ class PostgresClient:
             logger.info("PostgreSQL connection pool closed")
 
 
-# Create a global instance
-postgres_client = PostgresClient()
+async def get_postgres_client() -> "PostgresClient":
+    """Get a singleton PostgresClient instance with async-safe initialization."""
+    global _instance
+    if _instance is None:
+        async with _lock:
+            if _instance is None:
+                _instance = PostgresClient()
+                await _instance.connect()
+    return _instance

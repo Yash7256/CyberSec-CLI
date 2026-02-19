@@ -37,6 +37,11 @@ class RedisClient:
     _instance = None
     _initialized = False
 
+    # Maximum size for in-memory cache (default 1000 entries)
+    MAX_CACHE_SIZE = int(os.getenv("REDIS_CACHE_MAX_SIZE", "1000"))
+    # Maximum value size in bytes (default 1MB)
+    MAX_VALUE_SIZE = int(os.getenv("REDIS_CACHE_MAX_VALUE_SIZE", "1048576"))
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(RedisClient, cls).__new__(cls)
@@ -52,6 +57,8 @@ class RedisClient:
         self._cleanup_counter = 0
         self._cleanup_threshold = 100  # Clean up expired entries every N operations
         self.enabled = os.getenv("ENABLE_REDIS", "true").lower() == "true"
+        self._cache_hits = 0
+        self._cache_misses = 0
 
         if self.enabled and REDIS_AVAILABLE:
             try:
@@ -152,8 +159,25 @@ class RedisClient:
         return self._in_memory_get(key)
 
     def _in_memory_set(self, key: str, value: str, ttl: int = 3600) -> bool:
-        """In-memory implementation of set with TTL support."""
+        """In-memory implementation of set with TTL support and size limits."""
         self._maybe_cleanup()
+        
+        # Check value size limit
+        if len(value) > self.MAX_VALUE_SIZE:
+            logger.warning(f"Value for key {key} exceeds max size ({len(value)} > {self.MAX_VALUE_SIZE})")
+            return False
+        
+        # Check cache size limit - evict oldest if at capacity
+        if len(self.in_memory_cache) >= self.MAX_CACHE_SIZE:
+            # Remove oldest expired entry, or oldest entry if none expired
+            if self.in_memory_cache:
+                oldest_key = min(
+                    self.in_memory_cache.keys(),
+                    key=lambda k: self.in_memory_cache[k][1] or float('inf')
+                )
+                del self.in_memory_cache[oldest_key]
+                logger.debug(f"Evicted oldest cache entry to make room")
+        
         exp_time = time.time() + ttl if ttl > 0 else None
         self.in_memory_cache[key] = (value, exp_time)
         return True
@@ -280,6 +304,21 @@ class RedisClient:
             return True
         except Exception:
             return False
+
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get statistics about the in-memory cache."""
+        return {
+            "entries": len(self.in_memory_cache),
+            "max_entries": self.MAX_CACHE_SIZE,
+            "max_value_size": self.MAX_VALUE_SIZE,
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate": (
+                self._cache_hits / (self._cache_hits + self._cache_misses)
+                if (self._cache_hits + self._cache_misses) > 0
+                else 0.0
+            ),
+        }
 
 
 # Create a global instance

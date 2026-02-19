@@ -23,23 +23,22 @@ def init_tokens_db():
     """Initialize the tokens database."""
     # Create the secure directory for tokens database
     TOKENS_DB.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(TOKENS_DB)
-    c = conn.cursor()
-    c.execute(
+    with sqlite3.connect(TOKENS_DB) as conn:
+        c = conn.cursor()
+        c.execute(
+            """
+        CREATE TABLE IF NOT EXISTS auth_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            token TEXT UNIQUE NOT NULL,
+            name TEXT,
+            created_at TEXT,
+            expires_at TEXT,
+            last_used TEXT,
+            revoked BOOLEAN DEFAULT 0
+        )
         """
-    CREATE TABLE IF NOT EXISTS auth_tokens (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        token TEXT UNIQUE NOT NULL,
-        name TEXT,
-        created_at TEXT,
-        expires_at TEXT,
-        last_used TEXT,
-        revoked BOOLEAN DEFAULT 0
-    )
-    """
-    )
-    conn.commit()
-    conn.close()
+        )
+        conn.commit()
 
 
 def create_token(
@@ -64,41 +63,38 @@ def create_token(
                 datetime.utcnow() + timedelta(days=expires_in_days)
             ).isoformat() + "Z"
 
-            conn = sqlite3.connect(TOKENS_DB)
-            c = conn.cursor()
+            with sqlite3.connect(TOKENS_DB) as conn:
+                c = conn.cursor()
 
-            # Check if token already exists (unlikely but possible)
-            c.execute("SELECT COUNT(*) FROM auth_tokens WHERE token = ?", (token,))
-            count = c.fetchone()[0]
+                # Check if token already exists (unlikely but possible)
+                c.execute("SELECT COUNT(*) FROM auth_tokens WHERE token = ?", (token,))
+                count = c.fetchone()[0]
 
-            if count > 0:
-                # Token collision, try again (if we have attempts left)
-                if attempt < max_attempts - 1:
-                    conn.close()
-                    continue
-                else:
-                    # Too many collisions, give up
-                    conn.close()
-                    logger.warning(
-                        f"Too many token collisions after {max_attempts} attempts"
-                    )
-                    return None
+                if count > 0:
+                    # Token collision, try again (if we have attempts left)
+                    if attempt < max_attempts - 1:
+                        continue
+                    else:
+                        # Too many collisions, give up
+                        logger.warning(
+                            f"Too many token collisions after {max_attempts} attempts"
+                        )
+                        return None
 
-            # Insert the new token
-            c.execute(
-                """
-            INSERT INTO auth_tokens (token, name, created_at, expires_at)
-            VALUES (?, ?, ?, ?)
-            """,
-                (
-                    token,
-                    name or f'Token-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}',
-                    now,
-                    expires_at,
-                ),
-            )
-            conn.commit()
-            conn.close()
+                # Insert the new token
+                c.execute(
+                    """
+                INSERT INTO auth_tokens (token, name, created_at, expires_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                    (
+                        token,
+                        name or f'Token-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}',
+                        now,
+                        expires_at,
+                    ),
+                )
+                conn.commit()
 
             logger.info(f"Created new auth token: {name}")
             return token
@@ -128,37 +124,33 @@ def validate_token(token: str) -> bool:
     Updates last_used timestamp on valid tokens.
     """
     try:
-        conn = sqlite3.connect(TOKENS_DB)
-        c = conn.cursor()
-        c.execute(
-            """
-        SELECT id, expires_at, revoked FROM auth_tokens WHERE token = ?
-        """,
-            (token,),
-        )
-        row = c.fetchone()
+        with sqlite3.connect(TOKENS_DB) as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+            SELECT id, expires_at, revoked FROM auth_tokens WHERE token = ?
+            """,
+                (token,),
+            )
+            row = c.fetchone()
 
-        if not row:
-            conn.close()
-            return False
-
-        token_id, expires_at, revoked = row
-
-        if revoked:
-            conn.close()
-            return False
-
-        if expires_at:
-            exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            if datetime.utcnow() > exp_dt.replace(tzinfo=None):
-                conn.close()
+            if not row:
                 return False
 
-        # Update last_used
-        now = datetime.utcnow().isoformat() + "Z"
-        c.execute("UPDATE auth_tokens SET last_used = ? WHERE id = ?", (now, token_id))
-        conn.commit()
-        conn.close()
+            token_id, expires_at, revoked = row
+
+            if revoked:
+                return False
+
+            if expires_at:
+                exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if datetime.utcnow() > exp_dt.replace(tzinfo=None):
+                    return False
+
+            # Update last_used
+            now = datetime.utcnow().isoformat() + "Z"
+            c.execute("UPDATE auth_tokens SET last_used = ? WHERE id = ?", (now, token_id))
+            conn.commit()
 
         return True
     except Exception as e:
@@ -169,11 +161,10 @@ def validate_token(token: str) -> bool:
 def revoke_token(token: str) -> bool:
     """Revoke a token, making it invalid."""
     try:
-        conn = sqlite3.connect(TOKENS_DB)
-        c = conn.cursor()
-        c.execute("UPDATE auth_tokens SET revoked = 1 WHERE token = ?", (token,))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(TOKENS_DB) as conn:
+            c = conn.cursor()
+            c.execute("UPDATE auth_tokens SET revoked = 1 WHERE token = ?", (token,))
+            conn.commit()
         logger.info("Revoked token")
         return True
     except Exception as e:
@@ -191,16 +182,15 @@ def list_tokens(include_secrets: bool = False) -> List[Dict]:
         List of token records
     """
     try:
-        conn = sqlite3.connect(TOKENS_DB)
-        c = conn.cursor()
-        c.execute(
+        with sqlite3.connect(TOKENS_DB) as conn:
+            c = conn.cursor()
+            c.execute(
+                """
+            SELECT id, token, name, created_at, expires_at, last_used, revoked
+            FROM auth_tokens ORDER BY created_at DESC
             """
-        SELECT id, token, name, created_at, expires_at, last_used, revoked
-        FROM auth_tokens ORDER BY created_at DESC
-        """
-        )
-        rows = c.fetchall()
-        conn.close()
+            )
+            rows = c.fetchall()
 
         tokens = []
         for r in rows:
@@ -226,11 +216,10 @@ def list_tokens(include_secrets: bool = False) -> List[Dict]:
 def delete_token(token: str) -> bool:
     """Delete a token record entirely."""
     try:
-        conn = sqlite3.connect(TOKENS_DB)
-        c = conn.cursor()
-        c.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(TOKENS_DB) as conn:
+            c = conn.cursor()
+            c.execute("DELETE FROM auth_tokens WHERE token = ?", (token,))
+            conn.commit()
         logger.info("Deleted token")
         return True
     except Exception as e:

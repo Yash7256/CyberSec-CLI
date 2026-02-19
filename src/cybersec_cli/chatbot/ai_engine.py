@@ -18,6 +18,7 @@ except ImportError:
 from pydantic import BaseModel, Field
 
 from cybersec_cli.config import settings
+from .command_parser import CommandParser
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +78,12 @@ class AIEngine:
     ) -> AIResponse:
         """Generate a response from the AI model or fallback to rule-based analysis."""
         if self.use_api:
-            return await self._generate_api_response(
+            api_response = await self._generate_api_response(
                 messages, tools, temperature, max_tokens
             )
+            if api_response is None:
+                return self._generate_fallback_response(messages)
+            return api_response
         else:
             return self._generate_fallback_response(messages)
 
@@ -89,7 +93,7 @@ class AIEngine:
         tools: Optional[List[Dict]] = None,
         temperature: float = None,
         max_tokens: int = None,
-    ) -> AIResponse:
+    ) -> Optional[AIResponse]:
         """Generate response using OpenAI API."""
         if not self.api_key:
             raise ValueError("API key is required")
@@ -103,6 +107,13 @@ class AIEngine:
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
+        }
+        safe_headers = {
+            k: v
+            for k, v in headers.items()
+            if "key" not in k.lower()
+            and "auth" not in k.lower()
+            and "secret" not in k.lower()
         }
 
         payload = {
@@ -122,7 +133,12 @@ class AIEngine:
                 response.raise_for_status()
                 data = await response.json()
 
-                choice = data["choices"][0]["message"]
+                # Validate response structure
+                if not data or not data.get("choices"):
+                    logger.error("Empty or invalid response from AI API")
+                    return None
+
+                choice = data["choices"][0].get("message", {})
                 return AIResponse(
                     content=choice.get("content", ""),
                     tool_calls=choice.get("tool_calls", []),
@@ -131,7 +147,9 @@ class AIEngine:
                 )
 
         except Exception as e:
-            logger.error(f"Error generating AI response: {str(e)}")
+            # Log without exposing sensitive details
+            logger.error("Error generating AI response (details hidden for security)")
+            logger.debug("AI request headers (scrubbed): %s", safe_headers)
             logger.info("Falling back to rule-based analysis")
             return self._generate_fallback_response(messages)
 
@@ -405,6 +423,13 @@ class AIEngine:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
         }
+        safe_headers = {
+            k: v
+            for k, v in headers.items()
+            if "key" not in k.lower()
+            and "auth" not in k.lower()
+            and "secret" not in k.lower()
+        }
 
         payload = {
             "model": self.model,
@@ -440,6 +465,7 @@ class AIEngine:
 
         except Exception as e:
             logger.error(f"Error streaming AI response: {str(e)}")
+            logger.debug("AI request headers (scrubbed): %s", safe_headers)
             logger.info("Falling back to non-streaming response")
             response = await self.generate_response(
                 messages, tools, temperature, max_tokens
@@ -447,7 +473,7 @@ class AIEngine:
             for char in response.content:
                 yield char
 
-    async def parse_command_intent(self, message: str) -> Dict:
-        """Parse natural language into command intent."""
-        # This will be implemented to extract commands and parameters
-        # from natural language input
+    def parse_command_intent(self, message: str) -> Dict:
+        """Parse natural language into a structured command intent."""
+        parser = CommandParser()
+        return parser.parse(message).to_dict()

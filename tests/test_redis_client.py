@@ -4,114 +4,96 @@ Tests for the Redis client implementation.
 
 import os
 import sys
-import unittest
+
+import pytest
 
 # Add the project root to the path so we can import our modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-try:
-    from cybersec_cli.core.redis_client import RedisClient
-
-    REDIS_AVAILABLE = True
-except ImportError:
-    REDIS_AVAILABLE = False
-    RedisClient = None
+from cybersec_cli.core import redis_client as redis_module
+from cybersec_cli.core.redis_client import RedisClient
 
 
-class TestRedisClient(unittest.TestCase):
-
-    @unittest.skipIf(not REDIS_AVAILABLE, "Redis not available")
-    def test_singleton_instance(self):
-        """Test that RedisClient is a singleton."""
-        client1 = RedisClient()
-        client2 = RedisClient()
-        self.assertIs(client1, client2)
-
-    @unittest.skipIf(not REDIS_AVAILABLE, "Redis not available")
-    def test_set_and_get(self):
-        """Test setting and getting values."""
-        client = RedisClient()
-        key = "test_key"
-        value = "test_value"
-
-        # Set a value
-        result = client.set(key, value, ttl=60)
-        self.assertTrue(result)
-
-        # Get the value
-        retrieved = client.get(key)
-        # Redis returns bytes, so compare as bytes or decode both
-        self.assertEqual(
-            retrieved, value.encode() if isinstance(retrieved, bytes) else retrieved
-        )
-
-        # Clean up
-        client.delete(key)
-
-    @unittest.skipIf(not REDIS_AVAILABLE, "Redis not available")
-    def test_delete(self):
-        """Test deleting values."""
-        client = RedisClient()
-        key = "test_key_to_delete"
-        value = "test_value"
-
-        # Set a value
-        client.set(key, value, ttl=60)
-
-        # Delete the value
-        result = client.delete(key)
-        self.assertTrue(result)
-
-        # Verify it's deleted
-        retrieved = client.get(key)
-        self.assertIsNone(retrieved)
-
-    @unittest.skipIf(not REDIS_AVAILABLE, "Redis not available")
-    def test_exists(self):
-        """Test checking if keys exist."""
-        client = RedisClient()
-        key = "test_key_exists"
-        value = "test_value"
-
-        # Key should not exist initially
-        self.assertFalse(client.exists(key))
-
-        # Set a value
-        client.set(key, value, ttl=60)
-
-        # Key should now exist
-        self.assertTrue(client.exists(key))
-
-        # Clean up
-        client.delete(key)
-
-    @unittest.skipIf(not REDIS_AVAILABLE, "Redis not available")
-    def test_increment(self):
-        """Test incrementing values."""
-        client = RedisClient()
-        key = "test_counter"
-
-        # Increment from 0
-        result = client.increment(key)
-        self.assertEqual(result, 1)
-
-        # Increment again
-        result = client.increment(key)
-        self.assertEqual(result, 2)
-
-        # Increment by specific amount
-        result = client.increment(key, 5)
-        self.assertEqual(result, 7)
-
-        # Clean up
-        client.delete(key)
-
-    @unittest.skipIf(not REDIS_AVAILABLE, "Redis not available")
-    def test_in_memory_fallback(self):
-        """Test in-memory fallback when Redis is disabled."""
-        # This test would require mocking Redis failure,
-        # which is complex. We'll rely on manual testing for this scenario.
+@pytest.fixture
+def mock_redis(mocker):
+    async_redis = mocker.patch("redis.asyncio.Redis", autospec=True, create=True)
+    mocker.patch("redis.ConnectionPool", autospec=True)
+    sync_redis = mocker.patch("redis.Redis", autospec=True)
+    sync_instance = sync_redis.return_value
+    sync_instance.ping.return_value = True
+    mocker.patch.object(redis_module, "REDIS_AVAILABLE", True)
+    return sync_instance
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture
+def redis_client_instance(mock_redis):
+    redis_module.RedisClient._instance = None
+    redis_module.RedisClient._initialized = False
+    return RedisClient()
+
+
+def test_singleton_instance(redis_client_instance):
+    """Test that RedisClient is a singleton."""
+    client2 = RedisClient()
+    assert redis_client_instance is client2
+
+
+def test_set_and_get(redis_client_instance, mock_redis):
+    """Test setting and getting values."""
+    key = "test_key"
+    value = "test_value"
+
+    mock_redis.setex.return_value = True
+    mock_redis.get.return_value = value.encode()
+
+    result = redis_client_instance.set(key, value, ttl=60)
+    assert result is True
+
+    retrieved = redis_client_instance.get(key)
+    assert retrieved == value.encode()
+
+
+def test_delete(redis_client_instance, mock_redis):
+    """Test deleting values."""
+    key = "test_key_to_delete"
+
+    mock_redis.delete.return_value = 1
+
+    result = redis_client_instance.delete(key)
+    assert result is True
+
+
+def test_exists(redis_client_instance, mock_redis):
+    """Test checking if keys exist."""
+    key = "test_key_exists"
+
+    mock_redis.exists.side_effect = [0, 1]
+
+    assert redis_client_instance.exists(key) is False
+    assert redis_client_instance.exists(key) is True
+
+
+def test_increment(redis_client_instance, mock_redis):
+    """Test incrementing values."""
+    key = "test_counter"
+
+    mock_redis.incrby.side_effect = [1, 2, 7]
+
+    result = redis_client_instance.increment(key)
+    assert result == 1
+
+    result = redis_client_instance.increment(key)
+    assert result == 2
+
+    result = redis_client_instance.increment(key, 5)
+    assert result == 7
+
+
+def test_in_memory_fallback(redis_client_instance):
+    """Test in-memory fallback when Redis is disabled."""
+    redis_client_instance.redis_client = None
+    key = "fallback_key"
+
+    assert redis_client_instance.set(key, "value", ttl=60) is True
+    retrieved = redis_client_instance.get(key)
+    assert retrieved == "value"

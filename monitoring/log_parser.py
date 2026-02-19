@@ -2,10 +2,22 @@
 
 import gzip
 import json
+import os
 import re
+from functools import lru_cache
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional
+
+
+AUDIT_LOG_PATH = os.environ.get(
+    "AUDIT_LOG_PATH",
+    "/var/log/audit/audit.log",
+)
+
+@lru_cache(maxsize=1)
+def _find_log_files(log_dir: str) -> tuple:
+    return tuple(Path(log_dir).rglob("*.log"))
 
 
 class LogParser:
@@ -13,6 +25,11 @@ class LogParser:
 
     def __init__(self, log_dir: str = "logs"):
         self.log_dir = Path(log_dir)
+
+    def _get_log_files(self):
+        """Get log files with caching for performance."""
+        return _find_log_files(str(self.log_dir))
+
 
     def parse_log_file(self, file_path: str) -> Generator[Dict[str, Any], None, None]:
         """Parse a log file and yield log entries as dictionaries"""
@@ -52,22 +69,23 @@ class LogParser:
         """Search logs with various filters"""
         results = []
 
-        # Find all log files
-        log_files = list(self.log_dir.glob("*.log")) + list(
-            self.log_dir.glob("*.log.*")
-        )
+        # Find all log files using cached method
+        log_files = self._get_log_files()
 
         for log_file in log_files:
             for entry in self.parse_log_file(log_file):
-                # Apply filters
+                # Apply filters - use .get() with safe defaults
                 if component and entry.get("component") != component:
                     continue
-                if level and entry.get("level") != level.upper():
+                if level and entry.get("level", "").upper() != level.upper():
                     continue
                 if start_time or end_time:
                     try:
+                        timestamp_value = entry.get("timestamp", "")
+                        if not timestamp_value:
+                            continue
                         timestamp = datetime.fromisoformat(
-                            entry["timestamp"].replace("Z", "+00:00")
+                            timestamp_value.replace("Z", "+00:00")
                         )
                         if start_time and timestamp < start_time:
                             continue
@@ -112,10 +130,11 @@ class LogParser:
         )
 
     def get_audit_events(
-        self, event_type: Optional[str] = None, hours: int = 24
+        self, event_type: Optional[str] = None, hours: int = 24, audit_log_path: Optional[Path] = None
     ) -> List[Dict[str, Any]]:
         """Get audit events from the audit log"""
-        audit_log_path = Path("monitoring/audit.log")
+        if audit_log_path is None:
+            audit_log_path = Path(AUDIT_LOG_PATH)
 
         if not audit_log_path.exists():
             return []
@@ -127,8 +146,11 @@ class LogParser:
         for entry in self.parse_log_file(audit_log_path):
             # Check if it's within time range
             try:
+                timestamp_value = entry.get("timestamp", "")
+                if not timestamp_value:
+                    continue
                 timestamp = datetime.fromisoformat(
-                    entry["timestamp"].replace("Z", "+00:00")
+                    timestamp_value.replace("Z", "+00:00")
                 )
                 if start_time and timestamp < start_time:
                     continue
