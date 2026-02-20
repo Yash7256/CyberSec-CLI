@@ -30,8 +30,11 @@ class VersionMatch:
 VERSION_PATTERNS = {
     # SSH
     "ssh": [
-        (r"SSH-(\d+\.\d+)[-\s]([^\r\n]+)", VersionConfidence.HIGH),
+        # OpenSSH patterns - capture the software version, not protocol version
+        (r"OpenSSH[_-]?(\d+\.\d+(?:[pP]\d+)?)", VersionConfidence.HIGH),
         (r"OpenSSH[_-]?(\d+\.\d+(?:[pP]\d+)?)[^\r\n]*", VersionConfidence.HIGH),
+        # Generic SSH version string (fallback)
+        (r"SSH-(\d+\.\d+)[-\s]([^\r\n]+)", VersionConfidence.MEDIUM),
         (r"Dropbear_ssh_(\d+\.\d+)", VersionConfidence.MEDIUM),
         (r"libssh[_-]?(\d+\.\d+)", VersionConfidence.MEDIUM),
     ],
@@ -49,6 +52,10 @@ VERSION_PATTERNS = {
         (r"lighttpd/(\d+\.\d+\.\d+)", VersionConfidence.HIGH),
         (r"Google Frontend", VersionConfidence.MEDIUM),
         (r"cloudflare", VersionConfidence.LOW),
+        # Phusion Passenger - various formats
+        (r"Phusion Passenger\s+(\d+\.\d+\.\d+)", VersionConfidence.HIGH),
+        (r"Phusion Passenger\(R\)\s+(\d+\.\d+\.\d+)", VersionConfidence.HIGH),
+        (r"X-Powered-By:.*Passenger.*(\d+\.\d+\.\d+)", VersionConfidence.HIGH),
     ],
     
     # Databases
@@ -79,24 +86,43 @@ VERSION_PATTERNS = {
         (r"Version\s*(\d+\.\d+\.\d+)", VersionConfidence.MEDIUM),
     ],
     
-    # Mail
+    # Mail - Fixed patterns
     "smtp": [
-        (r"220[- ]([^\r\n]+)", VersionConfidence.MEDIUM),
-        (r"Postfix\s+(\w+)", VersionConfidence.HIGH),
+        # Exim - must be before generic 220 pattern
+        (r"Exim\s+(\d+\.\d+(?:\.\d+)?)", VersionConfidence.HIGH),
         (r"Exim\s+(\d+[\.\d]*)", VersionConfidence.HIGH),
+        # Postfix
+        (r"Postfix\s+(\w+)", VersionConfidence.HIGH),
+        # Generic SMTP response - now more specific to avoid capturing dates
+        (r"220[- ](?:[^\s]+\s+)?(?:ESMTP\s+)?([^\r\n]+)", VersionConfidence.LOW),
         (r"Courier\s+ESMTP", VersionConfidence.MEDIUM),
         (r"Microsoft[\sE]SMTP", VersionConfidence.MEDIUM),
         (r"Post.Office", VersionConfidence.MEDIUM),
     ],
+    # Exim as separate key for direct matching
+    "exim": [
+        (r"Exim\s+(\d+\.\d+(?:\.\d+)?)", VersionConfidence.HIGH),
+        (r"Exim\s+(\d+[\.\d]*)", VersionConfidence.HIGH),
+    ],
+    # OpenSMTPD
+    "smtpd": [
+        (r"OpenSMTPD[\s/]*(\d+\.\d+)", VersionConfidence.HIGH),
+    ],
+    # Dovecot - intentionally does NOT expose version in banner
+    "dovecot": [],
     "imap": [
-        (r"\*\s*OK[\s]+([^\r\n]+)", VersionConfidence.MEDIUM),
-        (r"Dovecot[\s]([\d\.]+)", VersionConfidence.HIGH),
+        # Dovecot doesn't expose version - match but don't capture
+        (r"Dovecot ready", VersionConfidence.LOW),
+        # Only capture if there's an actual version number pattern
+        (r"\*\s*OK[\s]+[\w\s]+[\s]+(\d+\.[\d\.]+)", VersionConfidence.MEDIUM),
         (r"Courier-IMAP", VersionConfidence.MEDIUM),
         (r"Microsoft[\s]Exchange", VersionConfidence.MEDIUM),
     ],
     "pop3": [
-        (r"\+OK[\s]+([^\r\n]+)", VersionConfidence.MEDIUM),
-        (r"Dovecot[\s]([\d\.]+)", VersionConfidence.HIGH),
+        # Dovecot doesn't expose version - match but don't capture
+        (r"Dovecot ready", VersionConfidence.LOW),
+        # Only capture if there's an actual version number pattern  
+        (r"\+OK[\s]+[\w\s]+[\s]+(\d+\.[\d\.]+)", VersionConfidence.MEDIUM),
     ],
     
     # FTP
@@ -184,6 +210,23 @@ VERSION_PATTERNS = {
 }
 
 
+# Maps detected service names → version pattern keys
+# Because the scanner may identify "smtp" but the version
+# pattern is stored under "exim" or "postfix"
+SERVICE_ALIASES = {
+    "smtp": ["exim", "postfix", "sendmail", "exchange", "smtpd"],
+    "pop3": ["dovecot", "courier"],
+    "imap": ["dovecot", "courier", "cyrus"],
+    "imaps": ["dovecot", "courier"],
+    "http": ["nginx", "apache", "iis", "caddy", "lighttpd", "litespeed"],
+    "https": ["nginx", "apache", "iis", "caddy", "lighttpd", "litespeed"],
+    "ssh": ["openssh", "dropbear", "libssh"],
+    "mysql": ["mysql", "mariadb", "percona"],
+    "postgres": ["postgresql"],
+    "ftp": ["proftpd", "vsftpd", "pure-ftpd", "filezilla"],
+}
+
+
 # Product name normalization
 PRODUCT_ALIASES = {
     "openssh": "OpenSSH",
@@ -255,38 +298,58 @@ def extract_version(banner: str, service_type: str = None) -> VersionMatch:
             raw_match=""
         )
     
-    # Try service-specific patterns first
-    if service_type and service_type in VERSION_PATTERNS:
-        for pattern, confidence in VERSION_PATTERNS[service_type]:
-            match = re.search(pattern, banner, re.IGNORECASE | re.MULTILINE)
-            if match:
-                groups = match.groups()
-                if len(groups) >= 1:
-                    version = groups[0].strip()
-                    product = groups[1].strip() if len(groups) > 1 else None
+    # Skip if service is unknown or None - we'll try all patterns instead
+    if service_type and service_type not in ("unknown", "", None):
+        # Build candidate service types: direct match + aliases
+        candidates = [service_type]
+        if service_type in SERVICE_ALIASES:
+            candidates.extend(SERVICE_ALIASES[service_type])
+        
+        # Try each candidate's patterns
+        for candidate in candidates:
+            if candidate not in VERSION_PATTERNS:
+                continue
+            for pattern, confidence in VERSION_PATTERNS[candidate]:
+                match = re.search(pattern, banner, re.IGNORECASE | re.MULTILINE)
+                if match:
+                    groups = match.groups()
+                    # Skip patterns with no capture groups (just detection patterns)
+                    if len(groups) == 0:
+                        continue
+                    version = groups[0].strip() if groups[0] else ""
+                    product = groups[1].strip() if len(groups) > 1 and groups[1] else None
                     
-                    # Clean up version
+                    # Clean up version - keep only valid version characters
                     version = re.sub(r'[^\d.\-_p]', '', version)
                     
-                    return VersionMatch(
-                        version=version,
-                        product=normalize_product_name(product) if product else service_type.title(),
-                        confidence=confidence.value,
-                        raw_match=match.group(0)[:100]
-                    )
+                    # Validate version looks like a real version number
+                    # Must have at least one digit and look like semver (x.y or x.y.z or x.yZp)
+                    if version and len(version) >= 2 and re.match(r'^\d+\.\d+', version):
+                        return VersionMatch(
+                            version=version,
+                            product=normalize_product_name(product) if product else candidate.title(),
+                            confidence=confidence.value,
+                            raw_match=match.group(0)[:100]
+                        )
     
-    # Fall back to trying all patterns
+    # Fall back to trying all patterns (for when service_type is unknown)
     for svc_type, patterns in VERSION_PATTERNS.items():
         for pattern, confidence in patterns:
+            # Skip detection-only patterns (no capture groups)
+            if '(' not in pattern:
+                continue
             match = re.search(pattern, banner, re.IGNORECASE | re.MULTILINE)
             if match:
                 groups = match.groups()
-                if len(groups) >= 1:
-                    version = groups[0].strip()
-                    product = groups[1].strip() if len(groups) > 1 else None
-                    
-                    version = re.sub(r'[^\d.\-_p]', '', version)
-                    
+                if len(groups) == 0:
+                    continue
+                version = groups[0].strip() if groups[0] else ""
+                product = groups[1].strip() if len(groups) > 1 and groups[1] else None
+                
+                version = re.sub(r'[^\d.\-_p]', '', version)
+                
+                # Strict validation - must look like real version
+                if version and len(version) >= 2 and re.match(r'^\d+\.\d+', version):
                     return VersionMatch(
                         version=version if version else None,
                         product=normalize_product_name(product) if product else svc_type.title(),

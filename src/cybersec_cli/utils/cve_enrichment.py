@@ -20,6 +20,18 @@ except ImportError:
         "Install httpx to enable live CVE lookups: pip install httpx"
     )
 
+# CVE matching confidence thresholds
+# Below MIN_CONFIDENCE_FOR_CVE → return empty, add cve_note
+# Above → proceed with NVD lookup
+CVE_CONFIDENCE_THRESHOLDS = {
+    "require_banner": False,
+    "require_service": True,
+    "min_confidence": 0.3,
+    "version_overrides_confidence": True,
+}
+
+MIN_CONFIDENCE_FOR_CVE = 0.3
+
 logger = logging.getLogger(__name__)
 
 # Base paths
@@ -219,11 +231,87 @@ class CVESearchAPI:
             return []
 
 
-async def enrich_service_with_live_data(service: str, version: Optional[str] = None) -> List[Dict]:
-    """Attempt to fetch live data if not in cache."""
+async def enrich_service_with_live_data(
+    service: str,
+    version: Optional[str] = None,
+    banner: Optional[str] = None,
+    confidence: float = 0.0,
+) -> Dict:
+    """Attempt to fetch live data if not in cache.
+    
+    Returns empty result if confidence is too low to make
+    meaningful CVE assignments — avoids misleading output.
+    
+    Args:
+        service: Service name (e.g., 'ssh', 'http')
+        version: Optional version string
+        banner: Optional banner response from service
+        confidence: Confidence level (0.0-1.0) for service detection
+        
+    Returns:
+        Dict with 'vulnerabilities', 'cvss_score', 'cve_note', 'cve_status' keys
+    """
+    # Gate 1: Reject if no evidence of what's actually running
+    # (confidence=0 AND no banner AND no version)
+    has_version = version and version not in {"unknown", ""}
+    if confidence == 0 and not banner and not has_version:
+        return {
+            "vulnerabilities": [],
+            "cvss_score": 0,
+            "cve_note": "Service unidentified (confidence=0, no banner, no version). "
+                        "CVE matching skipped to avoid false positives. "
+                        "Identify service manually before assessing CVEs.",
+            "cve_status": "SKIPPED_LOW_CONFIDENCE"
+        }
+    
+    # Gate 2: Reject generic/unknown service labels with no version
+    if service in {"unknown", "", None} and not version:
+        return {
+            "vulnerabilities": [],
+            "cvss_score": 0,
+            "cve_note": f"Service type unknown on this port. "
+                        f"CVE matching requires confirmed service identity.",
+            "cve_status": "SKIPPED_UNKNOWN_SERVICE"
+        }
+    
+    # Gate 3: Only assign CVEs when we have something real to match on
+    # (service name confirmed OR version string present OR banner captured)
+    has_evidence = (
+        (service and service not in {"unknown", ""}) or
+        (version and version not in {"unknown", ""}) or
+        (banner and len(banner) > 10)
+    )
+    
+    if not has_evidence:
+        return {
+            "vulnerabilities": [],
+            "cvss_score": 0,
+            "cve_note": "Insufficient evidence for CVE matching.",
+            "cve_status": "SKIPPED_NO_EVIDENCE"
+        }
+    
+    # Check confidence threshold (unless we have version or banner which overrides confidence)
+    has_version = version and version not in {"unknown", ""}
+    has_banner = banner and len(banner) > 10
+    if confidence < MIN_CONFIDENCE_FOR_CVE and not has_version and not has_banner:
+        return {
+            "vulnerabilities": [],
+            "cvss_score": 0,
+            "cve_note": f"Low confidence ({confidence:.1f}). CVE matching requires "
+                        f"higher confidence or version information.",
+            "cve_status": "SKIPPED_LOW_CONFIDENCE"
+        }
+    
+    # Proceed with real CVE lookup
     cached = get_cves_for_service(service, version)
     if cached:
-        return cached
+        cve_ids = [cve.get("id") for cve in cached if cve.get("id")]
+        return {
+            "vulnerabilities": cve_ids,
+            "cvss_score": max((cve.get("cvss", 0) for cve in cached), default=0),
+            "cve_note": f"CVE data from cache for {service}",
+            "cve_status": "SUCCESS_CACHED"
+        }
     
     # Not in cache, try fetch
     logger.info(f"Fetching live CVE data for {service} {version}")
@@ -231,9 +319,20 @@ async def enrich_service_with_live_data(service: str, version: Optional[str] = N
     
     if live_cves:
         add_cve_entry(service, live_cves, version)
-        return live_cves
+        cve_ids = [cve.get("id") for cve in live_cves if cve.get("id")]
+        return {
+            "vulnerabilities": cve_ids,
+            "cvss_score": max((cve.get("cvss", 0) for cve in live_cves), default=0),
+            "cve_note": f"CVE data fetched from NVD for {service}",
+            "cve_status": "SUCCESS_LIVE"
+        }
         
-    return []
+    return {
+        "vulnerabilities": [],
+        "cvss_score": 0,
+        "cve_note": f"No CVEs found for {service}",
+        "cve_status": "NO_CVES_FOUND"
+    }
 
 
 async def enrich_scan_result(scan_output: str) -> Dict:

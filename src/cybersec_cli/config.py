@@ -110,7 +110,7 @@ class RateLimitConfig(BaseModel):
     client_rate_window: int = 3600  # 1 hour in seconds
     target_rate_limit: int = 50  # scans per hour per target
     target_rate_window: int = 3600  # 1 hour in seconds
-    port_limit_per_scan: int = 1000  # max ports per single scan
+    port_limit_per_scan: int = 65536  # max ports per single scan
     port_warn_threshold: int = 100  # warn if more than this many ports
     global_concurrent_limit: int = 1000  # max concurrent scans system-wide
     rate_limit_whitelist: list = Field(

@@ -175,6 +175,9 @@ class PortResult:
     tls_info: Optional[Dict[str, Any]] = None
     # [I-5] HTTP inspection results
     http_info: Optional[Dict[str, Any]] = None
+    # CVE enrichment status
+    cve_status: Optional[str] = None  # SKIPPED_LOW_CONFIDENCE, SUCCESS, etc.
+    cve_note: Optional[str] = None  # Explanation of why CVE matching was skipped
 
     def to_dict(self) -> Dict:
         """Convert the result to a dictionary."""
@@ -196,6 +199,10 @@ class PortResult:
             result["tls_info"] = self.tls_info
         if self.http_info:
             result["http_info"] = self.http_info
+        if self.cve_status:
+            result["cve_status"] = self.cve_status
+        if self.cve_note:
+            result["cve_note"] = self.cve_note
         return result
 
 
@@ -505,7 +512,7 @@ class PortScanner:
             )
         
         # Cap the number of ports to prevent DoS
-        MAX_PORTS = 10000
+        MAX_PORTS = 65536
         if len(port_set) > MAX_PORTS:
             raise ValueError(
                 f"Port range too large ({len(port_set)} ports). Maximum allowed: {MAX_PORTS}."

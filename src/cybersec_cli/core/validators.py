@@ -242,7 +242,7 @@ def validate_port_range(ports: List[int]) -> bool:
     if not isinstance(ports, list):
         return False
 
-    if len(ports) > 1000:  # Reasonable limit
+    if len(ports) > 65536:  # Allow full port range
         return False
 
     seen = set()

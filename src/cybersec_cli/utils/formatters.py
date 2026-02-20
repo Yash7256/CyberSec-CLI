@@ -146,11 +146,12 @@ VULNERABILITY_DB = {
 }
 
 
-def get_vulnerability_info(port: int) -> Dict[str, Any]:
+def get_vulnerability_info(port: int, service: Optional[str] = None) -> Dict[str, Any]:
     """Get vulnerability information for a given port.
 
     Args:
         port: Port number
+        service: Optional service name for more specific lookup
     Returns:
         Dictionary with vulnerability information
     """

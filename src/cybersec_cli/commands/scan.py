@@ -222,7 +222,19 @@ def scan_command(
                 for result in scanner.results:
                     if result.state.name == "OPEN" and result.service and result.service != "unknown":
                         try:
-                            live_cves = await enrich_service_with_live_data(result.service, result.version)
+                            # Pass confidence and banner to enable confidence gating
+                            cve_result = await enrich_service_with_live_data(
+                                result.service,
+                                result.version,
+                                result.banner,
+                                result.confidence
+                            )
+                            live_cves = cve_result.get("vulnerabilities", [])
+                            
+                            # Store CVE status and note on the result
+                            result.cve_status = cve_result.get("cve_status", "UNKNOWN")
+                            result.cve_note = cve_result.get("cve_note", "")
+                            
                             if live_cves:
                                 if result.port not in VULNERABILITY_DB:
                                     base_info = get_vulnerability_info(result.port, result.service).copy()
@@ -231,9 +243,8 @@ def scan_command(
                                 current_entry = VULNERABILITY_DB[result.port]
                                 existing_cves = set(current_entry.get("cves", []))
                                 for cve in live_cves:
-                                    cve_id = cve.get("id")
-                                    if cve_id and cve_id not in existing_cves:
-                                        current_entry.setdefault("cves", []).append(cve_id)
+                                    if cve not in existing_cves:
+                                        current_entry.setdefault("cves", []).append(cve)
                         except Exception:
                             pass
             

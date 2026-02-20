@@ -49,6 +49,7 @@ try:
     from src.cybersec_cli.core.port_priority import get_scan_order
     from src.cybersec_cli.tools.network.port_scanner import PortScanner, PortState, ScanType
     from src.cybersec_cli.utils.formatters import get_vulnerability_info
+    from src.cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
 
     HAS_SCAN_MODULES = True
 except ImportError as e:
@@ -58,6 +59,9 @@ except ImportError as e:
     else:
         logging.error(f"Failed to import scan modules: {e}")
     HAS_SCAN_MODULES = False
+    # Fallback to avoid NameError
+    async def enrich_service_with_live_data(*args, **kwargs):
+        return {"vulnerabilities": [], "cvss_score": 0, "cve_note": "Import failed", "cve_status": "ERROR"}
 
 # Import database functions
 try:
@@ -386,6 +390,30 @@ async def _perform_scan_task_async(
                     # Get vulnerability information for this port
                     vuln_info = get_vulnerability_info(result.port, result.service)
 
+                    # Live CVE enrichment with confidence gating
+                    cve_result = {
+                        "vulnerabilities": [],
+                        "cvss_score": 0.0,
+                        "cve_note": "",
+                        "cve_status": "NOT_ENRICHED"
+                    }
+                    if result.service and result.service != "unknown":
+                        try:
+                            cve_result = await enrich_service_with_live_data(
+                                result.service,
+                                result.version,
+                                result.banner,
+                                result.confidence
+                            )
+                        except Exception as e:
+                            logger.debug(f"CVE enrichment failed for port {result.port}: {e}")
+                            cve_result = {
+                                "vulnerabilities": [],
+                                "cvss_score": 0.0,
+                                "cve_note": f"CVE enrichment error: {str(e)}",
+                                "cve_status": "ENRICHMENT_ERROR"
+                            }
+
                     port_info = {
                         "port": result.port,
                         "service": result.service or "unknown",
@@ -398,8 +426,10 @@ async def _perform_scan_task_async(
                             if "severity" in vuln_info
                             else "UNKNOWN"
                         ),
-                        "cvss_score": vuln_info.get("cvss_score", 0.0),
-                        "vulnerabilities": vuln_info.get("cves", []),
+                        "cvss_score": cve_result.get("cvss_score", 0.0),
+                        "vulnerabilities": cve_result.get("vulnerabilities", []),
+                        "cve_status": cve_result.get("cve_status", "NOT_ENRICHED"),
+                        "cve_note": cve_result.get("cve_note", ""),
                         "recommendations": (
                             vuln_info.get("recommendation", "").split("\n")
                             if vuln_info.get("recommendation")

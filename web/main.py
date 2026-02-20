@@ -499,7 +499,7 @@ def _parse_ports_arg(ports_str: str) -> List[int]:
             if start < 1 or end > 65535 or start > end:
                 raise ValueError("Invalid port range")
             range_len = end - start + 1
-            if len(ports) + range_len > 1000:
+            if len(ports) + range_len > 65536:
                 raise ValueError("Port range too large")
             ports.extend(list(range(start, end + 1)))
         else:
@@ -507,7 +507,7 @@ def _parse_ports_arg(ports_str: str) -> List[int]:
             if port < 1 or port > 65535:
                 raise ValueError("Invalid port value")
             ports.append(port)
-        if len(ports) > 1000:
+        if len(ports) > 65536:
             raise ValueError("Port range too large")
 
     if not validate_port_range(ports):
