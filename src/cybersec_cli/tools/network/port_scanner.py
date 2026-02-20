@@ -25,6 +25,62 @@ from rich.table import Table
 from cybersec_cli.config import settings
 from cybersec_cli.utils.logger import get_logger, setup_logger
 
+# [P1-3] Smart port ordering
+try:
+    from cybersec_cli.utils.port_ordering import get_scan_order as _get_scan_order
+    HAS_PORT_ORDERING = True
+except ImportError:
+    HAS_PORT_ORDERING = False
+    def _get_scan_order(ports):
+        return [ports, [], [], []]
+
+# [P2-2] Version detection
+try:
+    from cybersec_cli.utils.version_detector import extract_version
+    HAS_VERSION_DETECTOR = True
+except ImportError:
+    HAS_VERSION_DETECTOR = False
+    def extract_version(banner, service_type=None):
+        return None
+
+# [P2-5] TLS inspection
+try:
+    from cybersec_cli.utils.tls_inspector import inspect_tls
+    HAS_TLS_INSPECTOR = True
+except ImportError:
+    HAS_TLS_INSPECTOR = False
+    async def inspect_tls(*args, **kwargs):
+        return None
+
+# [P3-4] Data scrubbing
+try:
+    from cybersec_cli.utils.data_scrubber import scrub_sensitive
+    HAS_DATA_SCRUBBER = True
+except ImportError:
+    HAS_DATA_SCRUBBER = False
+    def scrub_sensitive(text):
+        return text
+
+# [P4-4] Vulnerability correlation
+try:
+    from cybersec_cli.utils.vuln_correlation import find_combo_risks, calculate_exposure_score
+    HAS_VULN_CORRELATION = True
+except ImportError:
+    HAS_VULN_CORRELATION = False
+    def find_combo_risks(ports):
+        return []
+    def calculate_exposure_score(ports):
+        return 0.0
+
+# [P4-2] HTTP inspection
+try:
+    from cybersec_cli.utils.http_inspector import inspect_http
+    HAS_HTTP_INSPECTOR = True
+except ImportError:
+    HAS_HTTP_INSPECTOR = False
+    async def inspect_http(*args, **kwargs):
+        return None
+
 # Import adaptive configuration
 try:
     from cybersec_cli.core.adaptive_config import AdaptiveScanConfig
@@ -115,6 +171,10 @@ class PortResult:
     window_size: Optional[int] = None  # TCP Window Size
     confidence: float = 0.0  # Confidence level for service detection (0.0-1.0
     cached_at: Optional[str] = None  # Timestamp when result was cached
+    # [I-4] TLS inspection results
+    tls_info: Optional[Dict[str, Any]] = None
+    # [I-5] HTTP inspection results
+    http_info: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict:
         """Convert the result to a dictionary."""
@@ -132,7 +192,68 @@ class PortResult:
         }
         if self.cached_at:
             result["cached_at"] = self.cached_at
+        if self.tls_info:
+            result["tls_info"] = self.tls_info
+        if self.http_info:
+            result["http_info"] = self.http_info
         return result
+
+
+@dataclass
+class ScanResult:
+    """Complete scan result including metadata and vulnerability correlation."""
+    target: str
+    ports: List[PortResult]
+    scan_time: float
+    combo_risks: List[Any] = None
+    exposure_score: float = 0.0
+    os_info: Optional[Dict[str, Any]] = None
+
+    def __post_init__(self):
+        if self.combo_risks is None:
+            self.combo_risks = []
+
+    def __iter__(self):
+        return iter(self.ports)
+
+    def __len__(self):
+        return len(self.ports)
+
+    def __getitem__(self, index):
+        return self.ports[index]
+
+    def __bool__(self):
+        return len(self.ports) > 0
+
+    def __contains__(self, item):
+        return item in self.ports
+
+    def __repr__(self):
+        return (
+            f"ScanResult(target={self.target!r}, "
+            f"ports={len(self.ports)}, "
+            f"exposure_score={self.exposure_score:.1f}, "
+            f"combo_risks={len(self.combo_risks)})"
+        )
+
+
+# ScanResult is intentionally backwards-compatible with
+# List[PortResult] via __iter__, __len__, __getitem__,
+# __bool__, and __contains__.
+#
+# This means all existing callers work without modification:
+#   for result in scanner.scan(): ...       ← works
+#   if not scanner.scan(): ...              ← works
+#   results[0]                              ← works
+#
+# New callers can access enrichment data explicitly:
+#   scan = await scanner.scan()
+#   scan.combo_risks    ← vulnerability combinations
+#   scan.exposure_score ← overall risk score
+#   scan.tls_info       ← TLS inspection (on PortResult)
+#   scan.http_info      ← HTTP inspection (on PortResult)
+#   scan.target         ← original target
+#   scan.scan_time      ← total scan duration
 
 
 class ScanType(Enum):
@@ -526,6 +647,36 @@ class PortScanner:
                             if self.banner_grabbing and self._is_banner_port(port):
                                 await self._grab_banner(port, result)
 
+                        # [P2-2] Version detection - extract version from banner
+                        if HAS_VERSION_DETECTOR and result.banner and result.service:
+                            version_match = extract_version(result.banner, result.service)
+                            if version_match and version_match.version:
+                                result.version = version_match.version
+                                # Boost confidence if we got a high-confidence version
+                                if version_match.confidence > result.confidence:
+                                    result.confidence = version_match.confidence
+
+                        # [P3-4] Data scrubbing - sanitize banner before storing
+                        if HAS_DATA_SCRUBBER and result.banner:
+                            result.banner = scrub_sensitive(result.banner)
+
+                        # [P2-5] TLS inspection for HTTPS ports
+                        if HAS_TLS_INSPECTOR and port in [443, 8443, 9443, 4443]:
+                            try:
+                                tls_info = await inspect_tls(self.hostname or self.ip, port, self.timeout)
+                                if tls_info and tls_info.is_tls:
+                                    # Add TLS-specific info to banner
+                                    tls_details = f"\n[TLS: {tls_info.tls_version} {tls_info.cipher_suite}]"
+                                    if tls_info.certificate:
+                                        tls_details += f"\n[Cert: {tls_info.certificate.subject} -> {tls_info.certificate.issuer}]"
+                                        tls_details += f"\n[Cert Expiry: {tls_info.certificate.not_after}]"
+                                    result.banner = (result.banner or "") + tls_details
+                                    # Update confidence based on TLS inspection
+                                    if tls_info.security_score >= 80:
+                                        result.confidence = max(result.confidence, 0.95)
+                            except Exception as e:
+                                self.logger.debug(f"TLS inspection failed for port {port}: {e}")
+
                 # Record attempt for adaptive scanning
                 self._maybe_adjust_adaptive_params(success)
 
@@ -908,7 +1059,7 @@ class PortScanner:
 
     async def scan(
         self, streaming: bool = False, force: bool = False
-    ) -> List[PortResult]:
+    ) -> ScanResult:
         """
         Perform the port scan with optional caching.
 
@@ -917,8 +1068,21 @@ class PortScanner:
             force: If True, bypasses cache and performs fresh scan
 
         Returns:
-            List of PortResult objects with scan results
+            ScanResult object containing port results and metadata
         """
+        # Track scan start time for timing metadata
+        self._scan_start_time = time.monotonic()
+        
+        # [I-1] Smart port ordering - reorder ports by statistical frequency
+        if HAS_PORT_ORDERING and not streaming:
+            try:
+                ordered_lists = _get_scan_order(list(self.ports))
+                # Flatten priority-ordered ports (critical first)
+                self.ports = ordered_lists[0] + ordered_lists[1] + ordered_lists[2] + ordered_lists[3]
+                self.logger.debug(f"Ports reordered by frequency priority")
+            except Exception as e:
+                self.logger.debug(f"Port ordering failed: {e}")
+
         # Check cache first if caching is enabled and force is False
         if HAS_SCAN_CACHE and scan_cache and not force:
             cache_key = scan_cache.get_cache_key(self.target, sorted(list(self.ports)))
@@ -1042,6 +1206,85 @@ class PortScanner:
         closed_count = len([r for r in self.results if r.state == PortState.CLOSED])
         filtered_count = len([r for r in self.results if r.state == PortState.FILTERED])
 
+        # Track scan time
+        scan_time = time.monotonic() - getattr(self, '_scan_start_time', time.monotonic())
+
+        # [I-4] TLS inspection - parallel for all HTTPS ports
+        combo_risks = []
+        exposure_score = 0.0
+        os_info = None
+        
+        if HAS_TLS_INSPECTOR and open_count > 0:
+            try:
+                tls_ports = [
+                    r for r in self.results
+                    if r.state == PortState.OPEN
+                    and (r.port in {443, 8443, 9443, 4443, 9443} or r.service in {"https", "http ssl"})
+                ]
+                if tls_ports:
+                    self.logger.debug(f"Performing TLS inspection on {len(tls_ports)} ports")
+                    tls_tasks = [
+                        inspect_tls(self.hostname or self.target, r.port)
+                        for r in tls_ports
+                    ]
+                    tls_results = await asyncio.gather(*tls_tasks, return_exceptions=True)
+                    for port_result, tls_data in zip(tls_ports, tls_results):
+                        if tls_data and not isinstance(tls_data, Exception):
+                            # Convert TLS info to dict for storage
+                            port_result.tls_info = {
+                                'tls_version': getattr(tls_data, 'tls_version', None),
+                                'cipher_suite': getattr(tls_data, 'cipher_suite', None),
+                                'security_score': getattr(tls_data, 'security_score', 0),
+                                'is_tls': getattr(tls_data, 'is_tls', False),
+                            }
+            except Exception as e:
+                self.logger.debug(f"TLS inspection failed: {e}")
+
+        # [I-5] HTTP inspection - parallel for all HTTP ports (AFTER TLS)
+        if HAS_HTTP_INSPECTOR and open_count > 0:
+            try:
+                http_ports = [
+                    r for r in self.results
+                    if r.state == PortState.OPEN
+                    and (
+                        r.port in {80, 443, 8080, 8000, 8008, 8443, 8888, 9000, 9090}
+                        or r.service in {"http", "https", "http-proxy"}
+                    )
+                ]
+                if http_ports:
+                    self.logger.debug(f"Performing HTTP inspection on {len(http_ports)} ports")
+                    http_tasks = [
+                        inspect_http(self.hostname or self.target, r.port, use_https=(r.port in {443, 8443}))
+                        for r in http_ports
+                    ]
+                    http_results = await asyncio.gather(*http_tasks, return_exceptions=True)
+                    for port_result, http_data in zip(http_ports, http_results):
+                        if http_data and not isinstance(http_data, Exception):
+                            port_result.http_info = {
+                                'is_http': getattr(http_data, 'is_http', False),
+                                'http_version': getattr(http_data, 'http_version', None),
+                                'status_code': getattr(http_data, 'status_code', None),
+                                'security_score': getattr(http_data, 'security_score', 0),
+                                'security_headers_audit': getattr(http_data, 'security_headers_audit', {}),
+                                'vulnerabilities': getattr(http_data, 'vulnerabilities', []),
+                            }
+            except Exception as e:
+                self.logger.debug(f"HTTP inspection failed: {e}")
+
+        # [I-6] Vulnerability correlation - analyze port combinations
+        if HAS_VULN_CORRELATION and open_count > 0:
+            try:
+                open_ports_list = [r.port for r in self.results if r.state == PortState.OPEN]
+                combo_risks = find_combo_risks(open_ports_list)
+                exposure_score = calculate_exposure_score(open_ports_list)
+                
+                if combo_risks:
+                    self.logger.warning(f"[VULN CORRELATION] Found {len(combo_risks)} risk(s) - Exposure Score: {exposure_score}/100")
+                    for risk in combo_risks:
+                        self.logger.warning(f"  - [{risk.risk.value}] {risk.name}: {risk.description[:80]}...")
+            except Exception as e:
+                self.logger.debug(f"Vulnerability correlation failed: {e}")
+
         # Perform OS detection if enabled and we have open ports
         if self.os_detection and open_count > 0:
             self.logger.info("Performing OS detection...")
@@ -1061,11 +1304,19 @@ class PortScanner:
             )
             self.logger.info(f"Open ports found: {open_ports_list}")
 
-        return self.results
+        # [I-6] Return ScanResult with metadata
+        return ScanResult(
+            target=self.target,
+            ports=self.results,
+            scan_time=scan_time,
+            combo_risks=combo_risks,
+            exposure_score=exposure_score,
+            os_info=os_info,
+        )
 
     def scan_sync(
         self, streaming: bool = False, force: bool = False
-    ) -> List[PortResult]:
+    ) -> ScanResult:
         """
         Synchronous version of the scan method for use in Celery tasks.
 
@@ -1074,7 +1325,7 @@ class PortScanner:
             force: If True, bypasses cache and performs fresh scan
 
         Returns:
-            List of PortResult objects with scan results
+            ScanResult object containing port results and metadata
         """
         return asyncio.run(self.scan(streaming=streaming, force=force))
 
@@ -1381,6 +1632,52 @@ class PortScanner:
             "fingerprints_analyzed": 0,
             "method": "Banner Analysis"
         }
+
+
+# Helper function for command-line usage
+async def scan_ports(
+    target: str,
+    ports: Optional[Union[List[int], str, int]] = None,
+    scan_type: str = "tcp_connect",
+    timeout: float = 1.0,
+    max_concurrent: int = 100,
+    service_detection: bool = True,
+    banner_grabbing: bool = True,
+    os_detection: bool = False,
+    output_format: str = "table",
+    require_reachable: bool = False,
+    force: bool = False,
+) -> str:
+    """Scan ports on a target and return results in the specified format.
+
+    Args:
+        target: Target hostname or IP address
+        ports: Port(s) to scan (e.g., [80, 443], '1-1024', 8080)
+        scan_type: Type of scan ('tcp_connect', 'tcp_syn', 'udp')
+        timeout: Connection timeout in seconds
+        max_concurrent: Maximum number of concurrent connections
+        service_detection: Whether to detect services
+        banner_grabbing: Whether to grab banners
+        output_format: Output format ('table', 'json', 'list')
+        force: If True, bypass cache and perform fresh scan
+
+    Returns:
+        Formatted scan results
+    """
+    # Resolve target once to prevent DNS rebinding
+    from src.cybersec_cli.core.validators import resolve_target
+    resolved = await resolve_target(target)
+    
+    # Select best candidate
+    best_os = max(candidates.items(), key=lambda x: x[1])
+    
+    return {
+        "os_name": best_os[0],
+        "accuracy": "Low (Inferred)" if best_os[1] < 3 else "Medium (Banner)",
+        "details": f"Inferred from application banners (analyzed {analyzed_banners} banners)",
+        "fingerprints_analyzed": 0,
+        "method": "Banner Analysis"
+    }
 
 
 # Helper function for command-line usage

@@ -5,7 +5,7 @@ import logging
 import os
 import re
 import socket
-from typing import List
+from typing import List, Optional
 
 # Import structured logging
 try:

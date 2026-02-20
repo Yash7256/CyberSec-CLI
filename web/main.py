@@ -515,6 +515,59 @@ def _parse_ports_arg(ports_str: str) -> List[int]:
     return ports
 
 
+app = FastAPI(
+    title="CyberSec CLI API",
+    description="REST API for CyberSec CLI - Network security scanning and vulnerability assessment",
+    version="1.0.0",
+)
+
+# CORS middleware - allow all origins in development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/", tags=["Root"])
+async def serve_frontend():
+    """Serve the frontend index.html for SPA routing."""
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+
+@app.get("/api/info", tags=["Root"])
+async def api_info():
+    """API info endpoint - returns API info and available endpoints."""
+    return {
+        "name": "CyberSec CLI API",
+        "version": "1.0.0",
+        "description": "Network security scanning and vulnerability assessment",
+        "docs": "/docs",
+        "redoc": "/redoc",
+        "endpoints": {
+            "scans": "/api/scans",
+            "scan": "/api/scan",
+            "os_fingerprint": "/api/os-fingerprint",
+            "vuln_lookup": "/api/vuln-lookup",
+            "metrics": "/api/metrics",
+            "websocket": "/ws/command",
+        }
+    }
+
+
+@app.get("/favicon.ico", tags=["Static"])
+async def favicon():
+    """Return 204 No Content for favicon requests."""
+    return Response(status_code=204)
+
+
+# Mount static files for frontend
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
 def _parse_and_validate_scan_command(raw_command: str) -> List[str]:
     tokens = shlex.split(raw_command)
     if not tokens or tokens[0].lower() != "scan":
@@ -819,10 +872,10 @@ async def stream_scan_results(
                 PortState,
                 ScanType,
             )
-            from src.cybersec_cli.core.validators import resolve_target
+            from src.cybersec_cli.core.validators import resolve_target_ip
             
             # Resolve target once to prevent DNS rebinding
-            resolved_ip = resolve_target(target)
+            resolved_ip = resolve_target_ip(target)
             if not resolved_ip:
                 raise ValueError(f"Could not resolve target: {target}")
 
@@ -944,10 +997,10 @@ async def stream_scan_results_new(
                 ScanType,
             )
             from src.cybersec_cli.utils.formatters import get_vulnerability_info
-            from src.cybersec_cli.core.validators import resolve_target
+            from src.cybersec_cli.core.validators import resolve_target_ip
             
             # Resolve target once to prevent DNS rebinding
-            resolved_ip = resolve_target(target)
+            resolved_ip = resolve_target_ip(target)
             if not resolved_ip:
                 raise ValueError(f"Could not resolve target: {target}")
             
@@ -995,7 +1048,7 @@ async def stream_scan_results_new(
                 for result in results:
                     if result.state == PortState.OPEN:
                         # Get vulnerability information for this port
-                        vuln_info = get_vulnerability_info(result.port, result.service)
+                        vuln_info = get_vulnerability_info(result.port)
                         
                         # Live enrichment
                         if result.service and result.service != "unknown":
@@ -1438,18 +1491,18 @@ async def websocket_endpoint(websocket: WebSocket):
     
     try:
         token = websocket.query_params.get("token")
-            # Use timing-safe comparison to prevent timing attacks
-            if not _timing_safe_compare(token, WS_API_KEY):
-                await websocket.send_text(
-                    json.dumps(
-                        {
-                            "type": "auth_error",
-                            "message": "Missing or invalid token for WebSocket connection",
-                        }
-                    )
+        # Use timing-safe comparison to prevent timing attacks
+        if not _timing_safe_compare(token, WS_API_KEY):
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "auth_error",
+                        "message": "Missing or invalid token for WebSocket connection",
+                    }
                 )
-                await websocket.close(code=1008)
-                return
+            )
+            await websocket.close(code=1008)
+            return
     except Exception:
         # If anything goes wrong reading query params, close connection
         try:
@@ -1815,12 +1868,16 @@ async def websocket_endpoint(websocket: WebSocket):
                             logger.debug(
                                 f"Error recording scan end for {client_host}: {end_err}"
                             )
-
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
+                    # WebSocket cleanup
+                    manager.disconnect(websocket)
+            except WebSocketDisconnect:
+                manager.disconnect(websocket)
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                await websocket.send_text(f"[ERR] Error executing command: {str(e)}")
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
-        await websocket.send_text(f"[ERR] Error executing command: {str(e)}")
     finally:
         manager.disconnect(websocket)
 
@@ -1863,8 +1920,8 @@ async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
             raise HTTPException(status_code=400, detail="Invalid target")
 
         # Resolve target once to prevent DNS rebinding
-        from src.cybersec_cli.core.validators import resolve_target
-        resolved_ip = resolve_target(req_data.target)
+        from src.cybersec_cli.core.validators import resolve_target_ip
+        resolved_ip = resolve_target_ip(req_data.target)
         if not resolved_ip:
             raise HTTPException(status_code=400, detail="Could not resolve target")
 
