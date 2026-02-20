@@ -1,3 +1,12 @@
+function escapeHtml(unsafe) {
+    return (unsafe || '')
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function renderPortScanResults(data) {
     console.log('Rendering port scan data:', data); // Debug log
     // Create main container
@@ -8,15 +17,15 @@ function renderPortScanResults(data) {
     const summary = document.createElement('div');
     summary.className = 'bg-gray-800 p-4 rounded-lg border-l-4 border-blue-500';
     summary.innerHTML = `
-        <h3 class="text-xl font-semibold text-blue-400 mb-3">🔍 Port Scan Summary</h3>
+        <h3 class="text-xl font-semibold text-blue-400 mb-3">Port Scan Summary</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div class="bg-gray-900 p-3 rounded">
                 <p class="text-gray-400 text-sm">Target</p>
-                <p class="text-white font-mono break-all">${data.target || 'N/A'}</p>
+                <p class="text-white font-mono break-all">${escapeHtml(data.target || 'N/A')}</p>
             </div>
             <div class="bg-gray-900 p-3 rounded">
                 <p class="text-gray-400 text-sm">Scan Type</p>
-                <p class="text-white">${data.scanType || 'N/A'}</p>
+                <p class="text-white">${escapeHtml(data.scanType || 'N/A')}</p>
             </div>
             <div class="bg-gray-900 p-3 rounded">
                 <p class="text-gray-400 text-sm">Timestamp</p>
@@ -24,7 +33,7 @@ function renderPortScanResults(data) {
             </div>
             <div class="bg-gray-900 p-3 rounded">
                 <p class="text-gray-400 text-sm">Ports Scanned</p>
-                <p class="text-white">${data.portsScanned || 0}</p>
+                <p class="text-white">${escapeHtml(String(data.portsScanned || 0))}</p>
             </div>
             <div class="bg-gray-900 p-3 rounded">
                 <p class="text-gray-400 text-sm">Open Ports</p>
@@ -32,7 +41,7 @@ function renderPortScanResults(data) {
             </div>
             <div class="bg-gray-900 p-3 rounded">
                 <p class="text-gray-400 text-sm">Closed Ports</p>
-                <p class="text-red-400">${data.closedPorts || 0}</p>
+                <p class="text-red-400">${escapeHtml(String(data.closedPorts || 0))}</p>
             </div>
         </div>
     `;
@@ -102,13 +111,16 @@ function renderPortScanResults(data) {
                 </span>`;
             }
             
+            const service = escapeHtml(port.service || 'Unknown');
+            const version = escapeHtml(port.version || 'Not detected');
+            
             header.innerHTML = `
                 <div class="flex items-center mb-1 sm:mb-0">
                     <span class="font-mono font-bold text-lg">Port ${port.port}</span>
                     ${riskBadge}
                     ${protocolBadge}
                 </div>
-                <span class="text-sm text-gray-300">${port.service || 'Unknown Service'}</span>
+                <span class="text-sm text-gray-300">${service}</span>
             `;
             portCard.appendChild(header);
 
@@ -120,21 +132,21 @@ function renderPortScanResults(data) {
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
                         <p class="text-sm text-gray-400">Service</p>
-                        <p class="font-mono break-all">${port.service || 'Unknown'}</p>
+                        <p class="font-mono break-all">${service}</p>
                     </div>
                     <div>
                         <p class="text-sm text-gray-400">Version</p>
-                        <p class="font-mono break-all">${port.version || 'Not detected'}</p>
+                        <p class="font-mono break-all">${version}</p>
                     </div>
                     ${port.state ? `
                     <div>
                         <p class="text-sm text-gray-400">State</p>
-                        <p class="font-mono break-all">${port.state}</p>
+                        <p class="font-mono break-all">${escapeHtml(port.state)}</p>
                     </div>` : ''}
                     ${port.reason ? `
                     <div>
                         <p class="text-sm text-gray-400">Reason</p>
-                        <p class="font-mono break-all">${port.reason}</p>
+                        <p class="font-mono break-all">${escapeHtml(port.reason)}</p>
                     </div>` : ''}`;
 
             // Add banner if available

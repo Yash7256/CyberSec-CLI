@@ -317,10 +317,24 @@ class CyberSecCLI:
         )
 
         try:
+            # Resolve target once to prevent DNS rebinding
+            from src.cybersec_cli.core.validators import resolve_target
+            resolved_ip = resolve_target(target)
+            if not resolved_ip:
+                self.layout["content"].update(
+                    Panel(
+                        Text.from_markup(
+                            f"[red]Could not resolve target: {target}[/]"
+                        )
+                    )
+                )
+                return
+
             # Initialize and run the scanner
             effective_require = require_reachable and not force
             scanner = PortScanner(
                 target=target,
+                resolved_ip=resolved_ip,  # Pass pre-resolved IP
                 ports=ports,
                 scan_type=ScanType.TCP_CONNECT,
                 timeout=2.0,

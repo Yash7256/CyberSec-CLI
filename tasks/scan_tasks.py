@@ -127,6 +127,7 @@ def _safe_stop_timer(start_time: float) -> float:
 
 def _parse_ports_spec(ports: str) -> List[int]:
     """Parse a ports string into a list of validated port integers."""
+    MAX_PORTS = 10000
     port_list: List[int] = []
     if not ports:
         return port_list
@@ -150,9 +151,8 @@ def _parse_ports_spec(ports: str) -> List[int]:
         if start > end:
             logger.warning(f"Invalid port range: {start}-{end}")
             return []
-        return list(range(start, end + 1))
-
-    if "," in ports:
+        port_list = list(range(start, end + 1))
+    elif "," in ports:
         for raw_port in ports.split(","):
             raw_port = raw_port.strip()
             try:
@@ -163,16 +163,22 @@ def _parse_ports_spec(ports: str) -> List[int]:
                 logger.warning(f"Invalid port value skipped: {raw_port!r}")
                 continue
             port_list.append(port)
-        return port_list
-
-    try:
-        port = int(ports)
-        if not (1 <= port <= 65535):
-            raise ValueError(f"Port out of range: {port}")
-    except (ValueError, TypeError):
-        logger.warning(f"Invalid port value skipped: {ports!r}")
-        return []
-    return [port]
+    else:
+        try:
+            port = int(ports)
+            if not (1 <= port <= 65535):
+                raise ValueError(f"Port out of range: {port}")
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid port value skipped: {ports!r}")
+            return []
+        port_list = [port]
+    
+    if len(port_list) > MAX_PORTS:
+        raise ValueError(
+            f"Port range too large ({len(port_list)} ports). Maximum allowed: {MAX_PORTS}."
+        )
+    
+    return port_list
 
 
 class ScanTask(Task):
@@ -344,12 +350,19 @@ async def _perform_scan_task_async(
                 elif config["scan_type"].upper() == "SYN":
                     scan_type = ScanType.TCP_SYN
 
+            # Resolve target once to prevent DNS rebinding
+            from src.cybersec_cli.core.validators import resolve_target
+            resolved_ip = resolve_target(target)
+            if not resolved_ip:
+                raise ValueError(f"Could not resolve target: {target}")
+
             timeout = config.get("timeout", 1.0)
             max_concurrent = config.get("max_concurrent", 50)
             enhanced_service_detection = config.get("enhanced_service_detection", True)
 
             scanner = PortScanner(
                 target=target,
+                resolved_ip=resolved_ip,  # Pass pre-resolved IP
                 ports=group,
                 scan_type=scan_type,
                 timeout=timeout,

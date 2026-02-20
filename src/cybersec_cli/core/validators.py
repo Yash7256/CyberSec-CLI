@@ -75,7 +75,30 @@ ALWAYS_BLOCKED = [
 ]
 
 
-def validate_target(target: str, allow_private: bool = False) -> bool:
+def resolve_target_ip(target: str) -> Optional[str]:
+    """Resolve a target to a single IP address without re-resolving later.
+
+    Returns the original IP string if already an IP, otherwise resolves hostname.
+    """
+    if not target or not isinstance(target, str):
+        return None
+    target = target.strip()
+    if not target:
+        return None
+    try:
+        # If it's already an IP address (IPv4/IPv6), return it as-is
+        return str(ipaddress.ip_address(target))
+    except ValueError:
+        pass
+    try:
+        return socket.gethostbyname(target)
+    except socket.gaierror:
+        return None
+
+
+def validate_target(
+    target: str, allow_private: bool = False, resolved_ip: Optional[str] = None
+) -> bool:
     """
     Validate a target string to ensure it's safe to scan.
 
@@ -157,7 +180,8 @@ def validate_target(target: str, allow_private: bool = False) -> bool:
 
     # Try to resolve the hostname to check if it points to a blocked IP
     try:
-        resolved_ip = socket.gethostbyname(target)
+        if resolved_ip is None:
+            resolved_ip = socket.gethostbyname(target)
         ip_obj = ipaddress.ip_address(resolved_ip)
 
         # Check if resolved IP is in always-blocked list

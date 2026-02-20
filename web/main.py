@@ -25,14 +25,14 @@ from dotenv import load_dotenv
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Security
+from fastapi.security import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-
 from pydantic import BaseModel
 from src.cybersec_cli.utils.logger import log_forced_scan
 from src.cybersec_cli.core.auth import verify_api_key
@@ -43,6 +43,50 @@ def _timing_safe_compare(a: Optional[str], b: Optional[str]) -> bool:
     if not isinstance(a, str) or not isinstance(b, str):
         return False
     return hmac.compare_digest(a, b)
+
+
+# API key security scheme
+API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=False)
+
+
+async def get_current_user(api_key: str = Security(API_KEY_HEADER)) -> str:
+    """Extract and verify user identity from API key.
+    
+    The Authorization header should contain: Bearer <api_key>
+    or just the raw api_key (for backwards compatibility).
+    
+    Returns the user_id associated with the API key.
+    Raises HTTPException(401) if the key is invalid or missing.
+    """
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authentication credentials",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Handle "Bearer <token>" format
+    scheme, _, token = api_key.partition(" ")
+    if scheme.lower() == "bearer":
+        api_key = token.strip()
+    
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Verify the API key and get user info
+    key_info = verify_api_key(api_key)
+    if key_info is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or expired API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    return key_info.user_id
 
 
 class OSFingerprintRequest(BaseModel):
@@ -370,6 +414,8 @@ def init_db():
         """
     CREATE TABLE IF NOT EXISTS scans (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        uuid TEXT UNIQUE NOT NULL,
+        user_id TEXT,
         timestamp TEXT,
         target TEXT,
         ip TEXT,
@@ -378,7 +424,20 @@ def init_db():
     )
     """
     )
+    c.execute("CREATE INDEX IF NOT EXISTS idx_scans_uuid ON scans(uuid)")
+    c.execute("CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)")
     conn.commit()
+    
+    # Apply retention policy: delete scans older than 30 days
+    try:
+        c.execute("DELETE FROM scans WHERE timestamp < datetime('now', '-30 days')")
+        deleted = c.rowcount
+        if deleted > 0:
+            logger.info(f"Deleted {deleted} old scan records (retention policy: 30 days)")
+        conn.commit()
+    except Exception as e:
+        logger.warning(f"Failed to apply retention policy: {e}")
+    
     conn.close()
 
 
@@ -535,20 +594,21 @@ def _validate_scan_flag_value(flag: str, value: str) -> None:
         return
 
 
-def save_scan_result(target: str, ip: Optional[str], command: str, output: str) -> int:
+def save_scan_result(target: str, ip: Optional[str], command: str, output: str, user_id: Optional[str] = None) -> str:
     try:
         with sqlite3.connect(SCANS_DB) as conn:
             c = conn.cursor()
             ts = datetime.utcnow().isoformat() + "Z"
+            scan_uuid = str(uuid.uuid4())
             c.execute(
-                "INSERT INTO scans (timestamp, target, ip, command, output) VALUES (?, ?, ?, ?, ?)",
-                (ts, target, ip or "", command, output),
+                "INSERT INTO scans (uuid, user_id, timestamp, target, ip, command, output) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (scan_uuid, user_id, ts, target, ip or "", command, output),
             )
             conn.commit()
-            return c.lastrowid
+            return scan_uuid
     except Exception:
         logger.exception("Failed to save scan result")
-        return -1
+        return ""
 
 
 def list_scans(limit: int = 50):
@@ -569,11 +629,14 @@ def list_scans(limit: int = 50):
         return []
 
 
-def get_scan_output(scan_id: int) -> Optional[str]:
+def get_scan_output(scan_uuid: str, user_id: Optional[str] = None) -> Optional[str]:
     try:
         with sqlite3.connect(SCANS_DB) as conn:
             c = conn.cursor()
-            c.execute("SELECT output FROM scans WHERE id = ?", (scan_id,))
+            if user_id:
+                c.execute("SELECT output FROM scans WHERE uuid = ? AND (user_id = ? OR user_id IS NULL)", (scan_uuid, user_id))
+            else:
+                c.execute("SELECT output FROM scans WHERE uuid = ?", (scan_uuid,))
             row = c.fetchone()
         return row[0] if row else None
     except Exception:
@@ -581,569 +644,27 @@ def get_scan_output(scan_id: int) -> Optional[str]:
         return None
 
 
-# Initialize DB on startup
-init_db()
-
-# Create FastAPI app with enhanced OpenAPI schema
-app = FastAPI(
-    title="CyberSec-CLI API",
-    description="Comprehensive cybersecurity CLI tool with web interface for network scanning, vulnerability assessment, and security analysis.",
-    version="1.0.0",
-    contact={
-        "name": "CyberSec-CLI Team",
-        "url": "https://github.com/CyberSec-CLI",
-        "email": "support@cybersec-cli.com",
-    },
-    license_info={
-        "name": "MIT License",
-        "url": "https://opensource.org/licenses/MIT",
-    },
-    openapi_tags=[
-        {"name": "Authentication", "description": "API key authentication endpoints"},
-        {"name": "Scanning", "description": "Network scanning operations and results"},
-        {"name": "Streaming", "description": "Real-time scan result streaming"},
-        {
-            "name": "Async Scanning",
-            "description": "Asynchronous scan operations with Celery",
-        },
-        {"name": "Rate Limiting", "description": "Rate limiting and abuse prevention"},
-        {"name": "Health", "description": "System health and monitoring endpoints"},
-        {"name": "WebSocket", "description": "WebSocket-based real-time communication"},
-    ],
-)
-
-
-# Initialize optional services on startup (e.g. Redis)
-@app.on_event("startup")
-async def _on_startup():
-    await init_redis()
-    await init_rate_limiter()
-    await init_db_pool()
-
-
-async def init_db_pool():
-    """Initialize asyncpg pool for PostgreSQL if configured."""
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        app.state.db_pool = None
-        logger.info("DATABASE_URL not set; skipping PostgreSQL pool")
-        return
-    if asyncpg is None:
-        app.state.db_pool = None
-        logger.warning("asyncpg not installed; skipping PostgreSQL pool")
-        return
+def list_scans(limit: int = 50, user_id: Optional[str] = None):
     try:
-        app.state.db_pool = await asyncpg.create_pool(database_url)
-        logger.info("PostgreSQL pool initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize PostgreSQL pool: {e}")
-        app.state.db_pool = None
-
-
-async def get_db(request: Request):
-    """Acquire a pooled PostgreSQL connection for the request."""
-    pool = getattr(request.app.state, "db_pool", None)
-    if pool is None:
-        yield None
-        return
-    async with pool.acquire() as conn:
-        yield conn
-
-
-async def wait_for_active_scans() -> None:
-    """Wait for active scans to complete before shutdown."""
-    # Poll until all in-memory active scans have drained
-    while scan_concurrency.has_active_scans():
-        await asyncio.sleep(0.5)
-    return None
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Cleanup on shutdown"""
-    logger.info("Shutting down gracefully...")
-
-    # Wait for active scans to complete (with timeout)
-    try:
-        await asyncio.wait_for(wait_for_active_scans(), timeout=30.0)
-    except asyncio.TimeoutError:
-        logger.warning("Shutdown timeout reached, forcing exit")
-
-    # Close database connections
-    pool = getattr(app.state, "db_pool", None)
-    if pool:
-        await pool.close()
-
-    # Close Redis connections
-    if redis_client and hasattr(redis_client, "close"):
-        redis_client.close()
-
-    logger.info("Shutdown complete")
-
-
-# Include Chat Router
-try:
-    from web.routes.chat import router as chat_router
-    app.include_router(chat_router)
-    logger.info("Chat router registered")
-except Exception as e:
-    logger.warning(f"Failed to register chat router: {e}")
-
-
-# CORS middleware
-# Validate settings before using for CORS
-if settings is None:
-    raise RuntimeError(
-        "Application settings failed to load. Check that the configuration module "
-        "is properly installed and environment variables are set. "
-        "Cannot start without valid settings."
-    )
-
-# Handle case where settings.cors might not be defined
-cors_config = getattr(settings, "cors", None)
-if cors_config is None:
-    raise RuntimeError(
-        "CORS configuration is missing (settings.cors is None). "
-        "Set CORS settings explicitly; permissive defaults are not allowed."
-    )
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=getattr(cors_config, "allow_origins", []),
-    allow_credentials=getattr(cors_config, "allow_credentials", False),
-    allow_methods=getattr(cors_config, "allow_methods", ["GET", "POST", "PUT", "DELETE"]),
-    allow_headers=getattr(cors_config, "allow_headers", ["Content-Type", "Authorization"]),
-)
-
-# Security headers middleware
-
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        nonce = secrets.token_urlsafe(16)
-        request.state.csp_nonce = nonce
-        response = await call_next(request)
-
-        # Add security headers
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
-        )
-        csp = (
-            f"script-src 'nonce-{nonce}' 'strict-dynamic'; "
-            f"style-src 'nonce-{nonce}'; "
-            "object-src 'none'; base-uri 'none';"
-        )
-        response.headers["Content-Security-Policy"] = csp
-
-        return response
-
-
-app.add_middleware(SecurityHeadersMiddleware)
-
-
-# API Key Authentication Middleware
-class APIKeyAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # List of endpoints that don't require authentication
-        public_endpoints = [
-            "/",
-            "/health/redis",
-            "/api/status",
-            "/metrics",
-            "/static",
-            "/docs",
-            "/redoc",
-            "/openapi.json",
+        with sqlite3.connect(SCANS_DB) as conn:
+            c = conn.cursor()
+            if user_id:
+                c.execute(
+                    "SELECT id, uuid, timestamp, target, ip, command FROM scans WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+                    (user_id, limit),
+                )
+            else:
+                c.execute(
+                    "SELECT id, uuid, timestamp, target, ip, command FROM scans ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                )
+            rows = c.fetchall()
+        return [
+            dict(id=r[0], uuid=r[1], timestamp=r[2], target=r[3], ip=r[4], command=r[5])
+            for r in rows
         ]
-
-        # Check if the endpoint is public
-        is_public = any(request.url.path.startswith(ep) for ep in public_endpoints)
-
-        if not is_public:
-            # Check for API key in Authorization header only (query params are not secure)
-            auth_header = request.headers.get("Authorization")
-            if not auth_header:
-                raise HTTPException(
-                    status_code=401,
-                    detail="API key must be provided via Authorization header",
-                )
-            scheme, _, token = auth_header.partition(" ")
-            if scheme.lower() != "bearer" or not token.strip():
-                raise HTTPException(
-                    status_code=401,
-                    detail="API key must be provided via Authorization header",
-                )
-            api_key = token.strip()
-
-            # Verify the API key
-            key_info = verify_api_key(api_key)
-            if not key_info:
-                raise HTTPException(status_code=401, detail="Invalid API key")
-
-        response = await call_next(request)
-        return response
-
-
-app.add_middleware(APIKeyAuthMiddleware)
-
-# Import for request ID tracking
-
-# Global shutdown event
-shutdown_event = asyncio.Event()
-
-
-# Request ID tracking middleware
-class RequestIDMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # Generate or extract request ID
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-
-        # Add request ID to request state for access in endpoints
-        request.state.request_id = request_id
-
-        # Set context for logging
-        set_request_id(request_id)
-
-        response = await call_next(request)
-
-        # Add request ID to response headers
-        response.headers["X-Request-ID"] = request_id
-
-        return response
-
-
-app.add_middleware(RequestIDMiddleware)
-
-
-def handle_shutdown(signum, frame):
-    """Handle shutdown signals"""
-    logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-    shutdown_event.set()
-
-
-# Register signal handlers
-signal.signal(signal.SIGTERM, handle_shutdown)
-signal.signal(signal.SIGINT, handle_shutdown)
-
-
-# Global exception handlers
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler for all unhandled exceptions"""
-    # Log the exception with full context
-    logger.error(
-        f"Unhandled exception in API: {str(exc)}",
-        extra={
-            "context": {
-                "endpoint": request.url.path,
-                "method": request.method,
-                "client_ip": request.client.host if request.client else None,
-                "exception_type": type(exc).__name__,
-            }
-        },
-    )
-
-    # Return user-friendly error message
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "message": "An unexpected error occurred. Please try again later.",
-            "request_id": getattr(request.state, "request_id", None),
-        },
-    )
-
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handle HTTP exceptions"""
-    # Log HTTP exceptions as well
-    logger.warning(
-        f"HTTP exception: {exc.status_code} - {exc.detail}",
-        extra={
-            "context": {
-                "endpoint": request.url.path,
-                "method": request.method,
-                "client_ip": request.client.host if request.client else None,
-                "status_code": exc.status_code,
-            }
-        },
-    )
-
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": "Request error",
-            "message": exc.detail,
-            "request_id": getattr(request.state, "request_id", None),
-        },
-    )
-
-
-# Static files directory
-STATIC_DIR = os.path.join(BASE_DIR, "static")
-
-# Create static directory if it doesn't exist
-os.makedirs(STATIC_DIR, exist_ok=True)
-os.makedirs(os.path.join(STATIC_DIR, "img"), exist_ok=True)
-
-# Mount static files
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# Admin files
-ADMIN_DIR = os.path.join(BASE_DIR, "admin")
-if os.path.exists(ADMIN_DIR):
-    app.mount("/admin", StaticFiles(directory=ADMIN_DIR), name="admin")
-
-def _render_html_with_nonce(file_path: Path, nonce: str) -> HTMLResponse:
-    with open(file_path, "r", encoding="utf-8") as f:
-        content = f.read()
-    content = content.replace("{{CSP_NONCE}}", nonce)
-    return HTMLResponse(content=content)
-
-
-@app.get("/admin", include_in_schema=False)
-async def admin_dashboard(request: Request):
-    """Serve the admin dashboard page."""
-    base = Path(ADMIN_DIR).resolve()
-    requested = (base / "rate_limits.html").resolve()
-    if not str(requested).startswith(str(base)):
-        raise HTTPException(403, "Access denied")
-    if requested.exists():
-        nonce = getattr(request.state, "csp_nonce", "")
-        return _render_html_with_nonce(requested, nonce)
-    else:
-        raise HTTPException(status_code=404, detail="Admin dashboard not found")
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        # Accept the websocket first; auth will be checked in endpoint
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            try:
-                await connection.send_text(message)
-            except Exception as e:
-                logger.error(f"Error broadcasting message: {e}")
-
-
-manager = ConnectionManager()
-
-
-# API Endpoints
-@app.get(
-    "/",
-    tags=["Static Content"],
-    summary="Serve main page",
-    description="Serves the main HTML page for the CyberSec-CLI web interface.",
-)
-async def read_root(request: Request):
-    index_path = Path(STATIC_DIR) / "index.html"
-    nonce = getattr(request.state, "csp_nonce", "")
-    return _render_html_with_nonce(index_path, nonce)
-
-
-@app.get(
-    "/api/status",
-    tags=["Health"],
-    summary="Get API status",
-    description="Returns the current status of the CyberSec-CLI API.",
-    responses={
-        200: {
-            "description": "API status information",
-            "content": {
-                "application/json": {
-                    "example": {"status": "CyberSec-CLI API is running"}
-                }
-            },
-        }
-    },
-)
-async def get_status():
-    return {"status": "CyberSec-CLI API is running"}
-
-
-@app.get(
-    "/health/redis",
-    tags=["Health"],
-    summary="Check Redis health",
-    description="Health check endpoint for Redis connectivity and latency.",
-    responses={
-        200: {
-            "description": "Redis health status",
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "healthy": {
-                            "summary": "Healthy Redis connection",
-                            "value": {
-                                "status": "healthy",
-                                "latency_ms": 2.5,
-                                "message": "Redis connection is healthy",
-                            },
-                        },
-                        "unhealthy": {
-                            "summary": "Unhealthy Redis connection",
-                            "value": {
-                                "status": "unhealthy",
-                                "error": "Connection refused",
-                                "message": "Redis connection failed",
-                            },
-                        },
-                        "disabled": {
-                            "summary": "Redis not configured",
-                            "value": {
-                                "status": "disabled",
-                                "message": "Redis is not available or not configured",
-                            },
-                        },
-                    }
-                }
-            },
-        }
-    },
-)
-async def redis_health_check():
-    """Health check endpoint for Redis connectivity and latency."""
-    if not HAS_REDIS or redis_client is None:
-        return {
-            "status": "disabled",
-            "message": "Redis is not available or not configured",
-        }
-
-    try:
-        start_time = time.time()
-        ping_fn = (
-            redis_client.redis_client.ping
-            if redis_client is not None and redis_client.redis_client is not None
-            else None
-        )
-        if ping_fn is None:
-            raise ConnectionError("Redis client not initialized")
-
-        if asyncio.iscoroutinefunction(ping_fn):
-            await ping_fn()
-        else:
-            # Test Redis connectivity - run sync call in thread pool
-            await _run_blocking(ping_fn)
-
-        latency = (time.time() - start_time) * 1000  # Convert to milliseconds
-
-        return {
-            "status": "healthy",
-            "latency_ms": round(latency, 2),
-            "message": "Redis connection is healthy",
-        }
-    except ConnectionError as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "message": "Redis connection failed",
-        }
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "message": "Redis connection failed",
-        }
-
-
-@app.get(
-    "/health/postgres",
-    tags=["Health"],
-    summary="Check PostgreSQL health",
-    description="Health check endpoint for PostgreSQL connectivity.",
-    responses={
-        200: {
-            "description": "PostgreSQL health status",
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "healthy": {
-                            "summary": "Healthy PostgreSQL connection",
-                            "value": {
-                                "status": "healthy",
-                                "message": "PostgreSQL connection is healthy",
-                            },
-                        },
-                        "unhealthy": {
-                            "summary": "Unhealthy PostgreSQL connection",
-                            "value": {
-                                "status": "unhealthy",
-                                "error": "Connection refused",
-                                "message": "PostgreSQL connection failed",
-                            },
-                        },
-                        "disabled": {
-                            "summary": "PostgreSQL not configured",
-                            "value": {
-                                "status": "disabled",
-                                "message": "PostgreSQL is not available or not configured",
-                            },
-                        },
-                    }
-                }
-            },
-        }
-    },
-)
-async def postgres_health(conn=Depends(get_db)):
-    """Health check endpoint for PostgreSQL connectivity."""
-    if conn is None:
-        return {"status": "disabled", "message": "DATABASE_URL not set"}
-
-    try:
-        await conn.fetchval("SELECT 1")
-        return {"status": "healthy", "message": "PostgreSQL connection is healthy"}
-    except Exception as e:
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-            "message": "PostgreSQL connection failed",
-        }
-
-
-@app.get(
-    "/api/audit/forced_scans",
-    tags=["Audit"],
-    summary="Get forced scan audit logs",
-    description="Returns the forced scan audit log as JSON list (read from reports/forced_scans.jsonl).",
-    responses={
-        200: {
-            "description": "List of forced scan audit entries",
-            "content": {
-                "application/json": {
-                    "example": [
-                        {
-                            "timestamp": "2023-01-01T12:00:00Z",
-                            "target": "example.com",
-                            "resolved_ip": "93.184.216.34",
-                            "original_command": "scan example.com",
-                            "client_host": "127.0.0.1",
-                            "consent": True,
-                            "note": "forced_via_websocket",
-                        }
-                    ]
-                }
-            },
-        }
-    },
-)
-def _read_forced_scans_file(reports_file: str):
-    if not os.path.exists(reports_file):
+    except Exception:
+        logger.exception("Failed to list scans")
         return []
     entries = []
     try:
@@ -1174,7 +695,7 @@ async def get_forced_scans():
     "/api/scans",
     tags=["Scanning"],
     summary="List scan results",
-    description="Returns a list of previous scan results.",
+    description="Returns a list of previous scan results for the authenticated user.",
     dependencies=[Depends(rate_limit_dependency)],
     responses={
         200: {
@@ -1183,7 +704,7 @@ async def get_forced_scans():
                 "application/json": {
                     "example": [
                         {
-                            "id": 1,
+                            "uuid": "abc-123",
                             "timestamp": "2023-01-01T12:00:00Z",
                             "target": "example.com",
                             "ip": "93.184.216.34",
@@ -1192,27 +713,35 @@ async def get_forced_scans():
                     ]
                 }
             },
-        }
+        },
+        401: {
+            "description": "Authentication required",
+            "content": {"application/json": {"example": {"detail": "Missing authentication credentials"}}},
+        },
     },
 )
-async def api_list_scans(limit: int = 50):
-    return await _run_blocking(list_scans, limit)
+async def api_list_scans(limit: int = 50, current_user: str = Depends(get_current_user)):
+    return await _run_blocking(list_scans, limit, current_user)
 
 
 @app.get(
     "/api/scans/{scan_id}",
     tags=["Scanning"],
     summary="Get scan result by ID",
-    description="Returns the detailed output of a specific scan by its ID.",
+    description="Returns the detailed output of a specific scan by its UUID (owned by authenticated user).",
     dependencies=[Depends(rate_limit_dependency)],
     responses={
         200: {
             "description": "Scan result details",
             "content": {
                 "application/json": {
-                    "example": {"id": 1, "output": "Scan results for example.com..."}
+                    "example": {"uuid": "abc-123", "output": "Scan results for example.com..."}
                 }
             },
+        },
+        401: {
+            "description": "Authentication required",
+            "content": {"application/json": {"example": {"detail": "Missing authentication credentials"}}},
         },
         404: {
             "description": "Scan not found",
@@ -1220,11 +749,11 @@ async def api_list_scans(limit: int = 50):
         },
     },
 )
-async def api_get_scan(scan_id: int):
-    out = await _run_blocking(get_scan_output, scan_id)
+async def api_get_scan(scan_id: str, current_user: str = Depends(get_current_user)):
+    out = await _run_blocking(get_scan_output, scan_id, current_user)
     if out is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    return {"id": scan_id, "output": out}
+    return {"uuid": scan_id, "output": out}
 
 
 @app.get(
@@ -1284,12 +813,18 @@ async def stream_scan_results(
             # Send initial event
             yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'message': f'Starting scan on {target} with {total_ports} ports'})}\n\n"
 
-            # Import scanner
+            # Import scanner and validators
             from src.cybersec_cli.tools.network.port_scanner import (
                 PortScanner,
                 PortState,
                 ScanType,
             )
+            from src.cybersec_cli.core.validators import resolve_target
+            
+            # Resolve target once to prevent DNS rebinding
+            resolved_ip = resolve_target(target)
+            if not resolved_ip:
+                raise ValueError(f"Could not resolve target: {target}")
 
             # Scan each priority group
             for i, group in enumerate(priority_groups):
@@ -1302,6 +837,7 @@ async def stream_scan_results(
                 # Create scanner for this group with enhanced service detection
                 scanner = PortScanner(
                     target=target,
+                    resolved_ip=resolved_ip,  # Pass pre-resolved IP
                     ports=group,
                     scan_type=ScanType.TCP_CONNECT,
                     timeout=1.0,
@@ -1350,6 +886,7 @@ async def stream_scan_results(
     tags=["Streaming"],
     summary="Stream scan results with vulnerability analysis",
     description="Stream port scan results using Server-Sent Events (SSE) after each priority tier completes, with vulnerability analysis.",
+    dependencies=[Depends(rate_limit_dependency)],
     responses={
         200: {
             "description": "Streaming scan results with vulnerability analysis",
@@ -1407,6 +944,13 @@ async def stream_scan_results_new(
                 ScanType,
             )
             from src.cybersec_cli.utils.formatters import get_vulnerability_info
+            from src.cybersec_cli.core.validators import resolve_target
+            
+            # Resolve target once to prevent DNS rebinding
+            resolved_ip = resolve_target(target)
+            if not resolved_ip:
+                raise ValueError(f"Could not resolve target: {target}")
+            
             # Import live enrichment
             try:
                 from src.cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
@@ -1429,6 +973,7 @@ async def stream_scan_results_new(
                 # Create scanner for this group with enhanced service detection
                 scanner = PortScanner(
                     target=target,
+                    resolved_ip=resolved_ip,  # Pass pre-resolved IP
                     ports=group,
                     scan_type=ScanType.TCP_CONNECT,
                     timeout=1.0,
@@ -1878,9 +1423,21 @@ async def get_metrics():
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     # If WS_API_KEY is set, require the client to provide it as ?token=KEY
+    # WebSocket authentication is REQUIRED - refuse all connections if not configured
+    if not WS_API_KEY:
+        await websocket.send_text(
+            json.dumps(
+                {
+                    "type": "auth_error",
+                    "message": "WebSocket authentication not configured. Set WEBSOCKET_API_KEY environment variable.",
+                }
+            )
+        )
+        await websocket.close(code=1008)
+        return
+    
     try:
-        if WS_API_KEY:
-            token = websocket.query_params.get("token")
+        token = websocket.query_params.get("token")
             # Use timing-safe comparison to prevent timing attacks
             if not _timing_safe_compare(token, WS_API_KEY):
                 await websocket.send_text(
@@ -2142,111 +1699,122 @@ async def websocket_endpoint(websocket: WebSocket):
                     continue
 
                 scan_started = True
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable,
-                    "-m",
-                    "cybersec_cli",
-                    *safe_tokens,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    cwd=os.getcwd(),
-                )
+                process = None
+                try:
+                    process = await asyncio.create_subprocess_exec(
+                        sys.executable,
+                        "-m",
+                        "cybersec_cli",
+                        *safe_tokens,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        cwd=os.getcwd(),
+                    )
 
-                # Collect complete output
-                stdout_data = []
-                stderr_data = []
+                    # Collect complete output
+                    stdout_data = []
+                    stderr_data = []
 
-                # Read stdout and stderr
-                while True:
-                    # Check if process has finished
-                    if process.returncode is not None:
-                        # Read any remaining output
-                        try:
-                            remaining_stdout = await process.stdout.read()
-                            if remaining_stdout:
-                                try:
-                                    stdout_data.append(
-                                        remaining_stdout.decode("utf-8", errors="replace")
-                                    )
-                                except UnicodeDecodeError:
-                                    # If we can't decode as UTF-8, try with error replacement
-                                    stdout_data.append(
-                                        remaining_stdout.decode("utf-8", errors="replace")
-                                    )
-                        except Exception as e:
-                            logger.error(f"Error reading remaining stdout: {e}")
-                        break
-
-                    # Read available output
-                    try:
-                        stdout = await process.stdout.read(4096)
-                        if stdout:
+                    # Read stdout and stderr
+                    while True:
+                        # Check if process has finished
+                        if process.returncode is not None:
+                            # Read any remaining output
                             try:
-                                stdout_data.append(stdout.decode("utf-8", errors="replace"))
-                            except UnicodeDecodeError:
-                                stdout_data.append(stdout.decode("utf-8", errors="replace"))
-                    except Exception as e:
-                        logger.error(f"Error reading stdout: {e}")
-                        break
+                                remaining_stdout = await process.stdout.read()
+                                if remaining_stdout:
+                                    try:
+                                        stdout_data.append(
+                                            remaining_stdout.decode("utf-8", errors="replace")
+                                        )
+                                    except UnicodeDecodeError:
+                                        # If we can't decode as UTF-8, try with error replacement
+                                        stdout_data.append(
+                                            remaining_stdout.decode("utf-8", errors="replace")
+                                        )
+                            except Exception as e:
+                                logger.error(f"Error reading remaining stdout: {e}")
+                            break
 
-                    # Small delay to prevent busy waiting
-                    await asyncio.sleep(0.01)
-
-                # Read any remaining stderr
-                try:
-                    stderr = await process.stderr.read()
-                    if stderr:
+                        # Read available output
                         try:
-                            stderr_data.append(stderr.decode("utf-8", errors="replace"))
-                        except UnicodeDecodeError:
-                            stderr_data.append(stderr.decode("utf-8", errors="replace"))
-                except Exception as e:
-                    logger.error(f"Error reading stderr: {e}")
+                            stdout = await process.stdout.read(4096)
+                            if stdout:
+                                try:
+                                    stdout_data.append(stdout.decode("utf-8", errors="replace"))
+                                except UnicodeDecodeError:
+                                    stdout_data.append(stdout.decode("utf-8", errors="replace"))
+                        except Exception as e:
+                            logger.error(f"Error reading stdout: {e}")
+                            break
 
-                # Send complete output
-                full_output = "".join(stdout_data)
+                        # Small delay to prevent busy waiting
+                        await asyncio.sleep(0.01)
 
-                # Check if this looks like a port scan (contains the port scan header)
-                if "╭─ Cybersec CLI - Port Scan Results" in full_output:
-                    # Send as a single message for the port scan
-                    await websocket.send_text(full_output)
-                else:
-                    # Send line by line for regular output
-                    for line in full_output.splitlines():
-                        if line.strip():
-                            await websocket.send_text(f"[OUT] {line}")
-
-                # Send any errors
-                if stderr_data:
-                    await websocket.send_text(f"[ERR] {''.join(stderr_data)}")
-
-                # Send completion message
-                await websocket.send_text(
-                    f"[END] Command completed with return code {process.returncode}"
-                )
-
-                # Persist scan output if this was a scan command
-                try:
-                    if len(parts) >= 2 and parts[0].lower() == "scan":
-                        # Try to determine ip for storage
-                        try:
-                            stored_ip = socket.gethostbyname(parts[1])
-                        except Exception:
-                            stored_ip = None
-                        await _run_blocking(
-                            save_scan_result, parts[1], stored_ip, command, full_output
-                        )
-                except Exception:
-                    logger.exception("Failed to persist scan result")
-
-            finally:
-                if scan_started:
+                    # Read any remaining stderr
                     try:
-                        await scan_concurrency.record_scan_end(client_host)
-                    except Exception as end_err:
-                        logger.debug(
-                            f"Error recording scan end for {client_host}: {end_err}"
-                        )
+                        stderr = await process.stderr.read()
+                        if stderr:
+                            try:
+                                stderr_data.append(stderr.decode("utf-8", errors="replace"))
+                            except UnicodeDecodeError:
+                                stderr_data.append(stderr.decode("utf-8", errors="replace"))
+                    except Exception as e:
+                        logger.error(f"Error reading stderr: {e}")
+
+                    # Send complete output
+                    full_output = "".join(stdout_data)
+
+                    # Check if this looks like a port scan (contains the port scan header)
+                    if "╭─ Cybersec CLI - Port Scan Results" in full_output:
+                        # Send as a single message for the port scan
+                        await websocket.send_text(full_output)
+                    else:
+                        # Send line by line for regular output
+                        for line in full_output.splitlines():
+                            if line.strip():
+                                await websocket.send_text(f"[OUT] {line}")
+
+                    # Send any errors
+                    if stderr_data:
+                        await websocket.send_text(f"[ERR] {''.join(stderr_data)}")
+
+                    # Send completion message
+                    await websocket.send_text(
+                        f"[END] Command completed with return code {process.returncode}"
+                    )
+
+                    # Persist scan output if this was a scan command
+                    try:
+                        if len(parts) >= 2 and parts[0].lower() == "scan":
+                            # Try to determine ip for storage
+                            try:
+                                stored_ip = socket.gethostbyname(parts[1])
+                            except Exception:
+                                stored_ip = None
+                            await _run_blocking(
+                                save_scan_result, parts[1], stored_ip, command, full_output
+                            )
+                    except Exception:
+                        logger.exception("Failed to persist scan result")
+
+                finally:
+                    # Ensure subprocess is terminated on disconnect
+                    if process and process.returncode is None:
+                        process.terminate()
+                        try:
+                            await asyncio.wait_for(process.wait(), timeout=5.0)
+                        except asyncio.TimeoutError:
+                            process.kill()
+                            await process.wait()
+                    
+                    if scan_started:
+                        try:
+                            await scan_concurrency.record_scan_end(client_host)
+                        except Exception as end_err:
+                            logger.debug(
+                                f"Error recording scan end for {client_host}: {end_err}"
+                            )
 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -2294,9 +1862,16 @@ async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
         if not validate_target(req_data.target):
             raise HTTPException(status_code=400, detail="Invalid target")
 
+        # Resolve target once to prevent DNS rebinding
+        from src.cybersec_cli.core.validators import resolve_target
+        resolved_ip = resolve_target(req_data.target)
+        if not resolved_ip:
+            raise HTTPException(status_code=400, detail="Could not resolve target")
+
         # Create PortScanner instance with OS detection enabled
         scanner = PortScanner(
             target=req_data.target,
+            resolved_ip=resolved_ip,  # Pass pre-resolved IP
             scan_type=ScanType.TCP_CONNECT,
             timeout=2.0,
             max_concurrent=50,

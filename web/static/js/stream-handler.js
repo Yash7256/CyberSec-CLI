@@ -267,17 +267,7 @@ class StreamHandler {
         
         const portInfo = document.createElement('div');
         portInfo.className = 'flex items-center';
-        portInfo.innerHTML = `
-            <span class="font-mono font-bold text-lg">Port ${port.port}</span>
-            <span class="ml-3 px-3 py-1 text-xs font-bold rounded-full ${this.getRiskBadgeClass(riskLevel)}">
-                ${riskLevel.toUpperCase()}
-            </span>
-            ${port.protocol ? `
-                <span class="ml-2 px-3 py-1 text-xs bg-blue-900 text-blue-200 rounded-full">
-                    ${port.protocol.toUpperCase()}
-                </span>
-            ` : ''}
-        `;
+        portInfo.textContent = `Port ${port.port} ${riskLevel.toUpperCase()}${port.protocol ? ' ' + port.protocol.toUpperCase() : ''}`;
         
         const serviceInfo = document.createElement('span');
         serviceInfo.className = 'text-sm text-gray-300';
@@ -290,25 +280,29 @@ class StreamHandler {
         const details = document.createElement('div');
         details.className = 'p-4';
         
+        const service = this.escapeHtml(port.service || 'Unknown');
+        const version = this.escapeHtml(port.version || 'Not detected');
+        const exposure = port.exposure ? this.escapeHtml(port.exposure) : '';
+        
         let detailsHtml = `
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                     <p class="text-sm text-gray-400">Service</p>
-                    <p class="font-mono break-all">${port.service || 'Unknown'}</p>
+                    <p class="font-mono break-all">${service}</p>
                 </div>
                 <div>
                     <p class="text-sm text-gray-400">Version</p>
-                    <p class="font-mono break-all">${port.version || 'Not detected'}</p>
+                    <p class="font-mono break-all">${version}</p>
                 </div>
                 ${port.cvss_score ? `
                 <div>
                     <p class="text-sm text-gray-400">CVSS Score</p>
                     <p class="font-mono break-all">${port.cvss_score.toFixed(1)}/10</p>
                 </div>` : ''}
-                ${port.exposure ? `
+                ${exposure ? `
                 <div>
                     <p class="text-sm text-gray-400">Exposure</p>
-                    <p class="font-mono break-all">${port.exposure}</p>
+                    <p class="font-mono break-all">${exposure}</p>
                 </div>` : ''}
         `;
         

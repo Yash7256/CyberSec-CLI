@@ -160,11 +160,46 @@ def scan_command(
     # If user passed --force, do not enforce reachability even if requested
     effective_require = require_reachable and not force
 
+    # Resolve target once to prevent DNS rebinding
+    from src.cybersec_cli.core.validators import resolve_target
+    resolved_ip = resolve_target(target)
+    if not resolved_ip:
+        click.echo(f"Error: Could not resolve target: {target}", err=True)
+        return
+
     if test:
         if target and target != "scanme.nmap.org":
             click.echo(
                 "Note: --test flag overrides the provided target with scanme.nmap.org"
             )
+        target = "scanme.nmap.org"
+        click.echo(f"Running test scan against {target} (safe for testing)")
+    elif not target:
+        raise click.UsageError("No target specified. Use --help for usage information.")
+
+    # Validate target - reject private/reserved IP ranges
+    if not validate_target(target, allow_private=False):
+        click.echo(f"Error: Target {target} is not allowed for scanning.", err=True)
+        return
+
+    try:
+        # Initialize the port scanner
+        scanner = PortScanner(
+            target=target,
+            resolved_ip=resolved_ip,  # Pass pre-resolved IP
+            ports=ports,
+            scan_type=ScanType(scan_type.lower()),
+            timeout=timeout,
+            max_concurrent=concurrent,
+            service_detection=not no_service_detection,
+            banner_grabbing=not no_banner,
+            os_detection=os,
+            rate_limit=rate_limit,
+            require_reachable=effective_require,
+            adaptive_scanning=adaptive,
+            enhanced_service_detection=enhanced_service_detection,
+            force_scan=force,
+        )
         target = "scanme.nmap.org"
         click.echo(f"Running test scan against {target} (safe for testing)")
     elif not target:

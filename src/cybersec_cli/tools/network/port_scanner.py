@@ -215,6 +215,7 @@ class PortScanner:
         force_scan: bool = False,
         adaptive_scanning: Optional[bool] = None,
         enhanced_service_detection: Optional[bool] = None,
+        resolved_ip: Optional[str] = None,
         logger=None,
     ):
         """
@@ -232,6 +233,7 @@ class PortScanner:
             force_scan: Whether to bypass reserved-domain checks
             adaptive_scanning: Whether to enable adaptive concurrency control (None to use config setting)
             enhanced_service_detection: Whether to enable enhanced service detection (None to use config setting)
+            resolved_ip: Pre-resolved IP address to prevent DNS rebinding attacks
         """
         self.logger = logger or setup_logger(__name__)
 
@@ -324,24 +326,29 @@ class PortScanner:
             f"Ports to scan: {len(self.ports)} ports (range: {min(self.ports)}-{max(self.ports)})"
         )
 
-        # Resolve hostname to IP if needed
-        try:
-            self.ip = str(ipaddress.ip_address(target))
+        # Resolve hostname to IP if needed (use pre-resolved IP to prevent DNS rebinding)
+        if resolved_ip:
+            self.ip = resolved_ip
             self.hostname = target
-            self.logger.info(f"Target is valid IP address: {self.ip}")
-        except ValueError:
-            # It's a hostname, resolve it
+            self.logger.info(f"Using pre-resolved IP {self.ip} for target '{target}'")
+        else:
             try:
-                self.ip = socket.gethostbyname(target)
+                self.ip = str(ipaddress.ip_address(target))
                 self.hostname = target
-                self.logger.info(f"Resolved hostname '{target}' to IP {self.ip}")
-            except socket.gaierror as e:
-                error_msg = (
-                    f"Could not resolve hostname '{target}'. "
-                    f"Please verify the hostname is correct and reachable."
-                )
-                self.logger.error(error_msg)
-                raise ValueError(error_msg) from e
+                self.logger.info(f"Target is valid IP address: {self.ip}")
+            except ValueError:
+                # It's a hostname, resolve it
+                try:
+                    self.ip = socket.gethostbyname(target)
+                    self.hostname = target
+                    self.logger.info(f"Resolved hostname '{target}' to IP {self.ip}")
+                except socket.gaierror as e:
+                    error_msg = (
+                        f"Could not resolve hostname '{target}'. "
+                        f"Please verify the hostname is correct and reachable."
+                    )
+                    self.logger.error(error_msg)
+                    raise ValueError(error_msg) from e
 
         # Optional quick reachability check (synchronous, lightweight)
         if self.require_reachable:
@@ -370,11 +377,20 @@ class PortScanner:
                     port_set.add(int(part))
             return port_set
         elif isinstance(ports, (list, tuple, set)):
-            return set(ports)
+            port_set = set(ports)
         else:
             raise ValueError(
                 "Invalid ports format. Expected int, str, or list of ints."
             )
+        
+        # Cap the number of ports to prevent DoS
+        MAX_PORTS = 10000
+        if len(port_set) > MAX_PORTS:
+            raise ValueError(
+                f"Port range too large ({len(port_set)} ports). Maximum allowed: {MAX_PORTS}."
+            )
+        
+        return port_set
 
     async def _rate_limit(self):
         """Enforce rate limiting using token bucket algorithm."""
@@ -1379,7 +1395,7 @@ async def scan_ports(
     os_detection: bool = False,
     output_format: str = "table",
     require_reachable: bool = False,
-    force: bool = False,  # Add force parameter for bypassing cache and reserved-domain checks
+    force: bool = False,
 ) -> str:
     """Scan ports on a target and return results in the specified format.
 
@@ -1397,10 +1413,17 @@ async def scan_ports(
     Returns:
         Formatted scan results
     """
+    # Resolve target once to prevent DNS rebinding
+    from src.cybersec_cli.core.validators import resolve_target
+    resolved_ip = resolve_target(target)
+    if not resolved_ip:
+        raise ValueError(f"Could not resolve target: {target}")
+    
     try:
         effective_require = require_reachable and not force
         scanner = PortScanner(
             target=target,
+            resolved_ip=resolved_ip,  # Pass pre-resolved IP
             ports=ports,
             scan_type=ScanType(scan_type),
             timeout=timeout,

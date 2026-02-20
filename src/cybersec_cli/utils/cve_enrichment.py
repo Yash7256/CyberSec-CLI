@@ -30,6 +30,7 @@ CVE_CACHE_FILE = BASE_DIR.parent / ".secrets" / "cve_cache.json"
 
 # Simple in-memory CVE cache (loaded at startup)
 _cve_cache: Dict[str, List[Dict]] = {}
+MAX_CACHE_SIZE = 1000
 
 
 def init_cve_cache():
@@ -49,6 +50,17 @@ def init_cve_cache():
     else:
         _cve_cache = {}
         logger.debug("CVE cache file not found; starting with empty cache")
+
+
+def _evict_old_entries():
+    """Evict oldest entries if cache exceeds MAX_CACHE_SIZE."""
+    global _cve_cache
+    if len(_cve_cache) > MAX_CACHE_SIZE:
+        # Remove oldest entries (first ~10% of keys)
+        keys_to_remove = list(_cve_cache.keys())[:max(1, MAX_CACHE_SIZE // 10)]
+        for key in keys_to_remove:
+            del _cve_cache[key]
+        logger.debug(f"Evicted {len(keys_to_remove)} old entries from CVE cache")
 
 
 def save_cve_cache():
@@ -96,6 +108,7 @@ def add_cve_entry(
         if version:
             key += f":{version}"
         _cve_cache[key] = cves
+        _evict_old_entries()
         save_cve_cache()
         logger.debug(f"Added {len(cves)} CVEs for service: {key}")
         return True
