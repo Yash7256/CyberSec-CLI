@@ -54,11 +54,11 @@ except ImportError:
 
 # [P3-4] Data scrubbing
 try:
-    from cybersec_cli.utils.data_scrubber import scrub_sensitive
+    from cybersec_cli.utils.data_scrubber import create_scrubbed_banner
     HAS_DATA_SCRUBBER = True
 except ImportError:
     HAS_DATA_SCRUBBER = False
-    def scrub_sensitive(text):
+    def create_scrubbed_banner(text, service=None):
         return text
 
 # [P4-4] Vulnerability correlation
@@ -665,7 +665,7 @@ class PortScanner:
 
                         # [P3-4] Data scrubbing - sanitize banner before storing
                         if HAS_DATA_SCRUBBER and result.banner:
-                            result.banner = scrub_sensitive(result.banner)
+                            result.banner = create_scrubbed_banner(result.banner, service=result.service)
 
                         # [P2-5] TLS inspection for HTTPS ports
                         if HAS_TLS_INSPECTOR and port in [443, 8443, 9443, 4443]:

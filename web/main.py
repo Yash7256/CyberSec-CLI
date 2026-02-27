@@ -1432,6 +1432,68 @@ if CELERY_AVAILABLE:
         return response
 
 
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+    context: Optional[str] = None
+
+@app.post("/api/chat", tags=["AI"], summary="AI Assistant Chat")
+async def chat_endpoint(request: ChatRequest):
+    import requests
+    try:
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            return JSONResponse(status_code=500, content={"detail": "GROQ_API_KEY environment variable not set. Please set it to use the AI assistant."})
+            
+        system_prompt = "You are an expert cybersecurity assistant for CyberSec-CLI. You help users understand their scan results and provide remediation advice."
+        if request.context:
+            system_prompt += f"\n\nHere is the context of the user's current security scan:\n{request.context}"
+            
+        messages = [{"role": "system", "content": system_prompt}]
+        for msg in request.messages:
+            messages.append({"role": msg.role, "content": msg.content})
+            
+        loop = asyncio.get_running_loop()
+        
+        def make_request():
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.1-8b-instant",
+                    "messages": messages,
+                    "temperature": 0.5,
+                    "max_tokens": 1024
+                },
+                timeout=15
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        data = await loop.run_in_executor(None, make_request)
+        ai_message = data["choices"][0]["message"]["content"]
+        
+        return {"content": ai_message}
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"Error in chat endpoint HTTP request: {e}")
+        error_detail = "Failed to communicate with AI provider"
+        if getattr(e, 'response', None) and e.response.status_code == 403:
+            error_detail = "API Key lacks permissions or has incorrect scope."
+        elif getattr(e, 'response', None) and e.response.status_code == 401:
+            error_detail = "Invalid API Key."
+        return JSONResponse(status_code=500, content={"detail": error_detail})
+    except Exception as e:
+        logger.error(f"Error in chat endpoint: {e}")
+        return JSONResponse(status_code=500, content={"detail": str(e)})
+
+
 # Admin endpoints for rate limiting
 @app.post(
     "/api/admin/rate-limits/reset/{client_id}",

@@ -101,7 +101,7 @@
             margin-right: 6px;
             margin-bottom: 4px;
         }
-        
+
         #osRawData {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
@@ -114,7 +114,7 @@
             max-height: 300px;
             overflow-y: auto;
         }
-        
+
         .error-message {
             background: rgba(255, 0, 0, 0.1);
             border: 1px solid rgba(255, 0, 0, 0.2);
@@ -124,7 +124,7 @@
             margin: 1rem 0;
             font-weight: 500;
         }
-        
+
         .chat-toggle-btn {
             background: linear-gradient(135deg, var(--purple-gradient-start), var(--purple-gradient-end));
             border: none;
@@ -138,11 +138,11 @@
             gap: 0.5rem;
             transition: all 0.2s;
         }
-        
+
         .chat-toggle-btn:hover {
             opacity: 0.9;
         }
-        
+
         /* OS-specific results window adjustments */
         #osFingerprintView .results-window {
             margin-top: 1.5rem;
@@ -457,7 +457,7 @@
         .results-window.chat-active .results-panel {
             border-right: 1px solid rgba(255, 255, 255, 0.08);
         }
-        
+
         #osResultsWindow.chat-active .results-panel {
             border-right: 1px solid rgba(255, 255, 255, 0.08);
         }
@@ -1460,18 +1460,20 @@
             <div class="control-panel">
                 <div class="input-group">
                     <label class="input-label">Target Host</label>
-                    <input type="text" id="osTarget" class="control-input" placeholder="Example.com or 192.168.1.1" autocomplete="off">
+                    <input type="text" id="osTarget" class="control-input" placeholder="Example.com or 192.168.1.1"
+                        autocomplete="off">
                 </div>
-                
+
                 <button id="osStartBtn" class="start-button">Start OS Fingerprinting</button>
             </div>
-            
+
             <!-- Results Window with AI Chat Panel (Same structure as port scanner) -->
             <div class="results-window" id="osResultsWindow">
                 <div class="results-panel">
                     <div id="osEmptyState" class="empty-state">
                         <h2 class="empty-subtext">OS Fingerprinting Tool</h2>
-                        <p class="empty-subtext">Enter a target and click Start OS Fingerprinting to analyze the operating system</p>
+                        <p class="empty-subtext">Enter a target and click Start OS Fingerprinting to analyze the
+                            operating system</p>
                     </div>
 
                     <div id="osResultsContainer" class="results-container hidden">
@@ -1511,7 +1513,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                
+
                                 <div class="info-card">
                                     <div class="card-header">
                                         <i class="fa-solid fa-network-wired"></i>
@@ -1533,7 +1535,7 @@
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <div id="osRawResults" class="raw-results hidden">
                                 <h4>Raw Results</h4>
                                 <pre id="osRawData"></pre>
@@ -1541,7 +1543,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- AI Chat Panel (Same as port scanner) -->
                 <div id="osChatWindow" class="chat-panel">
                     <div class="chat-header">
@@ -1553,20 +1555,21 @@
 
                     <div id="osChatMessages" class="chat-messages">
                         <div class="chat-message ai">
-                            Hello! I'm your OS fingerprinting assistant. I can help analyze the OS detection results for this target. What would you like to know?
+                            Hello! I'm your OS fingerprinting assistant. I can help analyze the OS detection results for
+                            this target. What would you like to know?
                         </div>
                     </div>
 
                     <div class="chat-input-area">
-                        <input type="text" id="osChatInput" class="chat-input" placeholder="Ask about OS fingerprinting results..."
-                            onkeypress="handleOsChatKey(event)">
+                        <input type="text" id="osChatInput" class="chat-input"
+                            placeholder="Ask about OS fingerprinting results..." onkeypress="handleOsChatKey(event)">
                         <button class="chat-send-btn" onclick="sendOsChatMessage()">
                             <i class="fas fa-paper-plane"></i>
                         </button>
                     </div>
                 </div>
             </div>
-            
+
             <!-- Chat Widget Button (Bottom Right) -->
             <button id="osChatWidgetBtn" class="chat-widget-btn" onclick="toggleOsChat()">
                 <svg viewBox="0 0 640 512" xmlns="http://www.w3.org/2000/svg" class="chat-icon">
@@ -1952,13 +1955,13 @@
                             <span class="detail-value">` + (port.exposure || 'Unknown') + `</span>
                         </div>
                         ` + ((port.mitre_attack && port.mitre_attack.length)
-                            ? `<div class="detail-item">
+                        ? `<div class="detail-item">
                                     <span class="detail-label">MITRE ATT&CK</span>
                                     <span class="detail-value">
                                         ${port.mitre_attack.map(tid => `<span class="mitre-pill">${tid}</span>`).join(' ')}
                                     </span>
                                </div>`
-                            : '') + `
+                        : '') + `
                     </div>`;
 
                 portItem.innerHTML = portHTML;
@@ -2376,18 +2379,18 @@
             const target = document.getElementById('osTarget').value.trim();
             const enhancedDetection = document.getElementById('osEnhancedDetection').checked;
             const serviceDetection = document.getElementById('osServiceDetection').checked;
-            
+
             if (!target) {
                 alert('Please enter a target host');
                 return;
             }
-            
+
             // Show loading indicator
             document.getElementById('osLoadingIndicator').classList.remove('hidden');
-            
+
             // Hide previous results
             document.getElementById('osResultsContainer').classList.add('hidden');
-            
+
             try {
                 // Make API request to perform OS fingerprinting
                 const response = await fetch(`/api/os-fingerprint`, {
@@ -2402,51 +2405,51 @@
                         service_detection: serviceDetection
                     })
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`Server error: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 // Hide loading indicator
                 document.getElementById('osLoadingIndicator').classList.add('hidden');
-                
+
                 // Update results
                 updateOsFingerprintingResults(data);
-                
+
                 // Show results container
                 document.getElementById('osResultsContainer').classList.remove('hidden');
-                
+
             } catch (error) {
                 // Hide loading indicator
                 document.getElementById('osLoadingIndicator').classList.add('hidden');
-                
+
                 // Show error message
                 alert(`Error performing OS fingerprinting: ${error.message}`);
                 console.error('OS fingerprinting error:', error);
             }
         });
-        
+
         function updateOsFingerprintingResults(data) {
             // Update target info
             document.getElementById('osTargetInfo').textContent = data.target || 'Unknown';
-            
+
             // Update OS information
             document.getElementById('osName').textContent = data.os_info?.os_name || 'Unknown';
             document.getElementById('osVendor').textContent = data.os_info?.vendor || 'Unknown';
             document.getElementById('osFamily').textContent = data.os_info?.os_family || 'Unknown';
             document.getElementById('osGen').textContent = data.os_info?.os_gen || 'Unknown';
             document.getElementById('osAccuracy').textContent = data.os_info?.accuracy ? `${data.os_info.accuracy}%` : 'Unknown';
-            
+
             // Update network information
             document.getElementById('osTargetIp').textContent = data.ip || 'Unknown';
             document.getElementById('osHostname').textContent = data.target || 'Unknown';
             document.getElementById('osOpenPortsCount').textContent = data.open_ports_count || '0';
-            
+
             // Update raw results
             document.getElementById('osRawData').textContent = JSON.stringify(data, null, 2);
-            
+
             // Show raw results section
             document.getElementById('osRawResults').classList.remove('hidden');
         }
@@ -2470,7 +2473,7 @@
                 setTimeout(() => chatInput.focus(), 300);
             }
         }
-        
+
         function toggleOsChat() {
             const osResultsWindow = document.getElementById('osResultsWindow');
             osResultsWindow.classList.toggle('chat-active');
@@ -2481,32 +2484,32 @@
                 }, 300);
             }
         }
-        
+
         function handleOsChatKey(event) {
             if (event.key === 'Enter') {
                 sendOsChatMessage();
             }
         }
-        
+
         async function sendOsChatMessage() {
             const input = document.getElementById('osChatInput');
             const text = input.value.trim();
             if (!text) return;
-            
+
             const messagesContainer = document.getElementById('osChatMessages');
-            
+
             // Add user message
             const userMsgDiv = document.createElement('div');
             userMsgDiv.className = 'chat-message user';
             userMsgDiv.textContent = text;
             messagesContainer.appendChild(userMsgDiv);
-            
+
             // Clear input
             input.value = '';
-            
+
             // Get OS results context
             const osContext = getOsResultsContext();
-            
+
             try {
                 // Show typing indicator
                 const typingIndicator = document.createElement('div');
@@ -2521,7 +2524,7 @@
                 `;
                 messagesContainer.appendChild(typingIndicator);
                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                
+
                 // Call the API
                 const response = await fetch('/api/chat', {
                     method: 'POST',
@@ -2531,11 +2534,11 @@
                         context: osContext
                     })
                 });
-                
+
                 // Remove typing indicator
                 const typingElem = document.getElementById('osTypingIndicator');
                 if (typingElem) typingElem.remove();
-                
+
                 if (!response.ok) {
                     const errorMsg = document.createElement('div');
                     errorMsg.className = 'chat-message ai';
@@ -2543,46 +2546,46 @@
                     messagesContainer.appendChild(errorMsg);
                     return;
                 }
-                
+
                 const data = await response.json();
                 const aiResponse = data.content;
-                
+
                 // Add AI response
                 const aiMsgDiv = document.createElement('div');
                 aiMsgDiv.className = 'chat-message ai';
                 aiMsgDiv.innerHTML = aiResponse;
                 messagesContainer.appendChild(aiMsgDiv);
-                
+
             } catch (error) {
                 const typingElem = document.getElementById('osTypingIndicator');
                 if (typingElem) typingElem.remove();
-                
+
                 const errorMsg = document.createElement('div');
                 errorMsg.className = 'chat-message ai';
                 errorMsg.textContent = 'Connection error. Please try again.';
                 messagesContainer.appendChild(errorMsg);
             }
-            
+
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-        
+
         // OS Fingerprinting Functions
-        document.getElementById('osStartBtn').addEventListener('click', async function() {
+        document.getElementById('osStartBtn').addEventListener('click', async function () {
             const target = document.getElementById('osTarget').value.trim();
             if (!target) {
                 alert('Please enter a target host');
                 return;
             }
-            
+
             // Show loading indicator
             document.getElementById('osEmptyState').classList.add('hidden');
             document.getElementById('osResultsContainer').classList.remove('hidden');
-            
+
             // Show loading state in all info values
             document.querySelectorAll('#osResultsContent .info-value').forEach(el => {
                 el.textContent = 'Scanning...';
             });
-            
+
             try {
                 const response = await fetch('/api/os-fingerprint', {
                     method: 'POST',
@@ -2594,16 +2597,16 @@
                         service_detection: true
                     })
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`Server error: ${response.status}`);
                 }
-                
+
                 const data = await response.json();
-                
+
                 // Update results
                 updateOsResults(data);
-                
+
             } catch (error) {
                 console.error('OS fingerprinting error:', error);
                 // Show error in the results
@@ -2611,11 +2614,11 @@
                 osResultsContent.innerHTML = `<div class="error-message">Error: ${error.message}</div>`;
             }
         });
-        
+
         function updateOsResults(data) {
             // Update target info
             document.getElementById('osTargetInfo').textContent = data.target;
-            
+
             // Update OS information
             const osInfo = data.os_info || {};
             document.getElementById('osName').textContent = osInfo.os_name || '-';
@@ -2623,35 +2626,40 @@
             document.getElementById('osFamily').textContent = osInfo.os_family || '-';
             document.getElementById('osGen').textContent = osInfo.os_gen || '-';
             document.getElementById('osAccuracy').textContent = osInfo.accuracy || '-';
-            
+
             // Update network information
             document.getElementById('osTargetIp').textContent = data.ip || '-';
             document.getElementById('osHostname').textContent = data.target || '-';
             document.getElementById('osOpenPortsCount').textContent = data.open_ports_count || '0';
-            
+
             // Store raw data
             document.getElementById('osRawData').textContent = JSON.stringify(data, null, 2);
         }
-        
+
         function getOsResultsContext() {
-            // Gather OS fingerprinting results context
+            // Get full JSON from the hidden raw data element
+            let rawDataStr = document.getElementById('osRawData').textContent;
+            if (rawDataStr) {
+                try {
+                    const rawData = JSON.parse(rawDataStr);
+                    return "=== COMPLETE OS FINGERPRINTING SCAN RESULTS ===\n" + JSON.stringify(rawData, null, 2);
+                } catch (e) {
+                    console.error("Failed to parse OS raw data", e);
+                }
+            }
+
+            // Fallback
             const osName = document.getElementById('osName').textContent;
             const osVendor = document.getElementById('osVendor').textContent;
             const osFamily = document.getElementById('osFamily').textContent;
-            const osGen = document.getElementById('osGen').textContent;
-            const osAccuracy = document.getElementById('osAccuracy').textContent;
             const osTargetIp = document.getElementById('osTargetIp').textContent;
-            const osOpenPortsCount = document.getElementById('osOpenPortsCount').textContent;
-            
+
             return `OS Fingerprinting Results Context:\n` +
-                   `Target: ${document.getElementById('osTargetInfo').textContent || 'Unknown'}\n` +
-                   `IP Address: ${osTargetIp}\n` +
-                   `Identified OS: ${osName}\n` +
-                   `Vendor: ${osVendor}\n` +
-                   `OS Family: ${osFamily}\n` +
-                   `OS Generation: ${osGen}\n` +
-                   `Accuracy: ${osAccuracy}\n` +
-                   `Open Ports Found: ${osOpenPortsCount}\n`;
+                `Target: ${document.getElementById('osTargetInfo').textContent || 'Unknown'}\n` +
+                `IP Address: ${osTargetIp}\n` +
+                `Identified OS: ${osName}\n` +
+                `Vendor: ${osVendor}\n` +
+                `OS Family: ${osFamily}\n`;
         }
 
         function toggleFilters(e) {
@@ -2724,30 +2732,22 @@
                 // Check if we have scan results from the stream handler
                 if (typeof streamHandler !== 'undefined' && streamHandler.scanResults) {
                     const results = streamHandler.scanResults;
-                    const allPorts = [
-                        ...results.critical.map(p => ({ ...p, priority: 'critical' })),
-                        ...results.high.map(p => ({ ...p, priority: 'high' })),
-                        ...results.medium.map(p => ({ ...p, priority: 'medium' })),
-                        ...results.low.map(p => ({ ...p, priority: 'low' }))
-                    ];
 
-                    if (allPorts.length > 0) {
-                        context = "=== CURRENT SCAN RESULTS ===\n";
-                        context += `Total Open Ports: ${allPorts.length}\n\n`;
+                    // Create a deep copy to avoid modifying the original data
+                    const cleanResults = JSON.parse(JSON.stringify(results));
 
-                        allPorts.forEach(port => {
-                            context += `Port ${port.port}/${port.protocol || 'TCP'}: ${port.service || 'Unknown'}\n`;
-                            context += `  - Status: ${port.status || 'Open'}\n`;
-                            context += `  - Risk Level: ${port.risk || port.priority}\n`;
-                            if (port.version) context += `  - Version: ${port.version}\n`;
-                            if (port.banner) context += `  - Banner: ${port.banner}\n`;
-                            if (port.cvss_score) context += `  - CVSS Score: ${port.cvss_score}\n`;
-                            if (port.vulnerabilities && port.vulnerabilities.length > 0) {
-                                context += `  - Vulnerabilities: ${port.vulnerabilities.join(', ')}\n`;
-                            }
-                            context += '\n';
-                        });
-                    }
+                    // Remove potentially large body_preview fields to prevent blowing up the LLM context limit
+                    ['critical', 'high', 'medium', 'low'].forEach(level => {
+                        if (cleanResults[level]) {
+                            cleanResults[level].forEach(port => {
+                                if (port.http && port.http.body_preview) {
+                                    delete port.http.body_preview;
+                                }
+                            });
+                        }
+                    });
+
+                    context = "=== COMPLETE SCAN RESULTS ===\n" + JSON.stringify(cleanResults, null, 2);
                 }
 
                 // Fallback: also include visible results text if no structured data
