@@ -57,6 +57,23 @@ VULNERABILITY_DB = {
         "cves": ["CVE-2020-15778", "CVE-2019-18277"],
         "exposure": "Internet/Internal",
         "default_creds": "Common (admin:admin, ftp:ftp, anonymous:anonymous)",
+        "mitre_attack": ["T1040", "T1078"],
+    },
+    # HTTP alternate port
+    81: {
+        "severity": Severity.MEDIUM,
+        "description": "HTTP service detected (alt port)",
+        "recommendation": (
+            "1. Enforce HTTPS and redirect HTTP on this port\n"
+            "2. Apply the same hardening as port 80 (HSTS, headers)\n"
+            "3. Disable if not strictly required\n"
+            "4. Restrict exposure to trusted networks"
+        ),
+        "cvss_score": 6.5,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Varies by application",
+        "mitre_attack": ["T1071", "T1568"],
     },
     # SSH (Secure Shell)
     22: {
@@ -74,6 +91,39 @@ VULNERABILITY_DB = {
         "cves": ["CVE-2023-48795", "CVE-2023-38408"],
         "exposure": "Internet/Internal",
         "default_creds": "Varies by system",
+        "mitre_attack": ["T1110", "T1078"],
+    },
+    # Telnet
+    23: {
+        "severity": Severity.HIGH,
+        "description": "Telnet service detected",
+        "recommendation": (
+            "1. Disable Telnet; replace with SSH wherever possible\n"
+            "2. If required temporarily, restrict access with ACLs\n"
+            "3. Enforce strong authentication and monitor sessions\n"
+            "4. Move sensitive services behind a VPN or jump host"
+        ),
+        "cvss_score": 8.0,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Varies by device; often unset",
+        "mitre_attack": ["T1040", "T1078"],
+    },
+    # SunRPC / portmapper
+    111: {
+        "severity": Severity.MEDIUM,
+        "description": "rpcbind/portmap exposed",
+        "recommendation": (
+            "1. Restrict rpcbind to internal networks\n"
+            "2. Disable NFS/portmap if unused\n"
+            "3. Use firewalls to limit RPC services\n"
+            "4. Audit exported RPC services regularly"
+        ),
+        "cvss_score": 6.5,
+        "cves": [],
+        "exposure": "Internal recommended",
+        "default_creds": "Not applicable",
+        "mitre_attack": ["T1021", "T1569"],
     },
     # MySQL Database
     3306: {
@@ -91,6 +141,7 @@ VULNERABILITY_DB = {
         "cves": ["CVE-2023-21912", "CVE-2022-21549"],
         "exposure": "Internal recommended",
         "default_creds": "root:<empty>, root:root, mysql:mysql",
+        "mitre_attack": ["T1213", "T1078"],
     },
     # HTTP (Web Server)
     80: {
@@ -108,6 +159,116 @@ VULNERABILITY_DB = {
         "cves": ["CVE-2023-25690", "CVE-2023-27522"],
         "exposure": "Internet/Internal",
         "default_creds": "Varies by application",
+        "mitre_attack": ["T1078", "T1568"],
+    },
+    # HTTPS (Web Server)
+    443: {
+        "severity": Severity.LOW,
+        "description": "HTTPS service detected",
+        "recommendation": (
+            "1. Enforce modern TLS (1.2+) and strong cipher suites\n"
+            "2. Enable HSTS and redirect HTTP to HTTPS\n"
+            "3. Monitor certificate validity and use CAA records\n"
+            "4. Disable weak protocols and renegotiation issues"
+        ),
+        "cvss_score": 3.5,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Varies by application",
+        "mitre_attack": ["T1078", "T1568"],
+    },
+    # HTTPS (alt ports)
+    443: {
+        "severity": Severity.LOW,
+        "description": "HTTPS service detected",
+        "recommendation": (
+            "1. Enforce modern TLS (1.2+) and strong cipher suites\n"
+            "2. Enable HSTS and redirect HTTP to HTTPS\n"
+            "3. Monitor certificate validity and use CAA records\n"
+            "4. Disable weak protocols and renegotiation issues"
+        ),
+        "cvss_score": 3.5,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Varies by application",
+        "mitre_attack": ["T1078", "T1568"],
+    },
+    444: {
+        "severity": Severity.LOW,
+        "description": "HTTPS service detected (alt port)",
+        "recommendation": (
+            "1. Apply same TLS hardening as port 443\n"
+            "2. Avoid exposing alternate HTTPS unless required\n"
+            "3. Ensure valid certificates cover this port\n"
+            "4. Redirect to primary HTTPS where possible"
+        ),
+        "cvss_score": 3.5,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Varies by application",
+        "mitre_attack": ["T1078", "T1568"],
+    },
+    # SMTP submission / SMTPS
+    465: {
+        "severity": Severity.MEDIUM,
+        "description": "SMTP submission (SMTPS) detected",
+        "recommendation": (
+            "1. Require authentication and enforce TLS\n"
+            "2. Disable weak ciphers and SSLv2/3\n"
+            "3. Enable SPF/DKIM/DMARC\n"
+            "4. Rate-limit login attempts"
+        ),
+        "cvss_score": 6.0,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Mailbox credentials",
+        "mitre_attack": ["T1586", "T1114"],
+    },
+    587: {
+        "severity": Severity.MEDIUM,
+        "description": "SMTP submission detected",
+        "recommendation": (
+            "1. Enforce STARTTLS and strong auth\n"
+            "2. Restrict relaying; require auth\n"
+            "3. Apply abuse rate limits and logging\n"
+            "4. Implement SPF/DKIM/DMARC"
+        ),
+        "cvss_score": 6.0,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Mailbox credentials",
+        "mitre_attack": ["T1586", "T1114"],
+    },
+    # IMAPS / POP3S
+    993: {
+        "severity": Severity.MEDIUM,
+        "description": "IMAPS service detected",
+        "recommendation": (
+            "1. Enforce strong TLS and modern ciphers\n"
+            "2. Disable plaintext auth (LOGIN/PLAIN without TLS)\n"
+            "3. Enable MFA where possible\n"
+            "4. Monitor for brute-force attempts"
+        ),
+        "cvss_score": 6.0,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Mailbox credentials",
+        "mitre_attack": ["T1114", "T1586"],
+    },
+    995: {
+        "severity": Severity.MEDIUM,
+        "description": "POP3S service detected",
+        "recommendation": (
+            "1. Enforce TLS and disable plaintext auth\n"
+            "2. Enable MFA where possible\n"
+            "3. Rate-limit login attempts\n"
+            "4. Prefer IMAP/SMTP with stronger controls"
+        ),
+        "cvss_score": 6.0,
+        "cves": [],
+        "exposure": "Internet/Internal",
+        "default_creds": "Mailbox credentials",
+        "mitre_attack": ["T1114", "T1586"],
     },
     # DNS (Domain Name System)
     53: {
@@ -125,6 +286,7 @@ VULNERABILITY_DB = {
         "cves": ["CVE-2023-2828", "CVE-2023-2829"],
         "exposure": "Internet/Internal",
         "default_creds": "Varies by implementation",
+        "mitre_attack": ["T1078", "T1568"],
     },
     # Default for unknown services
     "default": {
@@ -142,6 +304,7 @@ VULNERABILITY_DB = {
         "cves": [],
         "exposure": "Unknown",
         "default_creds": "Check documentation",
+        "mitre_attack": [],
     },
 }
 
@@ -373,7 +536,13 @@ def generate_security_findings(scanner: PortScanner) -> List[Panel]:
             finding_text.append("Default Credentials: ", style="bold")
             finding_text.append(vuln_info["default_creds"])
 
-        # Known Vulnerabilities
+        # MITRE ATT&CK
+        if vuln_info.get("mitre_attack"):
+            finding_text.append("\n🎯 ", style="bold")
+            finding_text.append("MITRE ATT&CK: ", style="bold")
+            finding_text.append(", ".join(vuln_info["mitre_attack"]))
+
+        # Known Vulnerabilities (CVEs)
         if "cves" in vuln_info and vuln_info["cves"]:
             finding_text.append("\n\n🚨 ", style="bold")
             finding_text.append("Known Vulnerabilities:", style="bold")
@@ -470,6 +639,8 @@ def format_scan_results_list(results: List[PortResult]) -> str:
         lines.append(line)
 
         # Add vulnerability info
+        if vuln_info.get("mitre_attack"):
+            lines.append(f"   🎯 MITRE ATT&CK: {', '.join(vuln_info['mitre_attack'])}")
         lines.append(f"   ⚠️  {vuln_info['description']}")
         lines.append(f"   💡 {vuln_info['recommendation']}")
         lines.append("-" * 50)

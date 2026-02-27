@@ -90,6 +90,18 @@
             color: var(--text-primary);
         }
 
+        .mitre-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #1e1b4b;
+            border: 1px solid rgba(139, 126, 235, 0.5);
+            color: #c7d2fe;
+            font-size: 0.78rem;
+            margin-right: 6px;
+            margin-bottom: 4px;
+        }
+        
         #osRawData {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
@@ -1590,6 +1602,22 @@
                 </div>
 
                 <div class="modal-section">
+                    <h4>MITRE ATT&CK</h4>
+                    <div class="modal-detail" id="modalMitre"></div>
+                </div>
+
+                <div class="modal-section">
+                    <h4>HTTP Inspection</h4>
+                    <div class="modal-detail" id="modalHttp"></div>
+                </div>
+
+                <div class="modal-section">
+                    <h4>TLS</h4>
+                    <div class="modal-detail" id="modalTls"></div>
+                </div>
+
+
+                <div class="modal-section">
                     <h4>Service Information</h4>
                     <div class="modal-detail" id="modalServiceInfo"></div>
                     <div class="modal-detail" id="modalBanner"></div>
@@ -1923,6 +1951,14 @@
                             <span class="detail-label">Exposure</span>
                             <span class="detail-value">` + (port.exposure || 'Unknown') + `</span>
                         </div>
+                        ` + ((port.mitre_attack && port.mitre_attack.length)
+                            ? `<div class="detail-item">
+                                    <span class="detail-label">MITRE ATT&CK</span>
+                                    <span class="detail-value">
+                                        ${port.mitre_attack.map(tid => `<span class="mitre-pill">${tid}</span>`).join(' ')}
+                                    </span>
+                               </div>`
+                            : '') + `
                     </div>`;
 
                 portItem.innerHTML = portHTML;
@@ -2047,9 +2083,12 @@
                 const modalExposure = document.getElementById('modalExposure');
                 const modalCredentials = document.getElementById('modalCredentials');
                 const modalVulnerabilities = document.getElementById('modalVulnerabilities');
+                const modalMitre = document.getElementById('modalMitre');
                 const modalServiceInfo = document.getElementById('modalServiceInfo');
                 const modalBanner = document.getElementById('modalBanner');
                 const modalRecommendations = document.getElementById('modalRecommendations');
+                const modalHttp = document.getElementById('modalHttp');
+                const modalTls = document.getElementById('modalTls');
 
                 // Set port title
                 modalTitle.textContent = `Port ${port.port} - ${port.service || 'Unknown Service'}`;
@@ -2067,14 +2106,10 @@
                 }
 
                 // Set exposure
-                if (port.exposure) {
-                    modalExposure.innerHTML = `<strong>Exposure:</strong> ${port.exposure}`;
-                } else {
-                    modalExposure.innerHTML = '<strong>Exposure:</strong> Unknown';
-                }
+                modalExposure.innerHTML = `<strong>Exposure:</strong> ${port.exposure || 'Unknown'}`;
 
-                // Set default credentials (this would come from the backend in a real implementation)
-                const defaultCredentials = port.default_credentials || 'Common (admin:admin, ftp:ftp, anonymous:anonymous)';
+                // Default credentials
+                const defaultCredentials = port.default_creds || port.default_credentials || 'Not provided';
                 modalCredentials.innerHTML = `<strong>Default Credentials:</strong> ${defaultCredentials}`;
 
                 // Set vulnerabilities
@@ -2083,6 +2118,17 @@
                     modalVulnerabilities.innerHTML = `<ul>${vulnsList}</ul>`;
                 } else {
                     modalVulnerabilities.innerHTML = 'No known vulnerabilities detected';
+                }
+
+                // Set MITRE ATT&CK
+                if (modalMitre) {
+                    if (port.mitre_attack && port.mitre_attack.length > 0) {
+                        modalMitre.innerHTML = port.mitre_attack
+                            .map(tid => `<span class="mitre-pill">${tid}</span>`)
+                            .join(' ');
+                    } else {
+                        modalMitre.innerHTML = 'Not mapped';
+                    }
                 }
 
                 // Set service info
@@ -2095,20 +2141,81 @@
                     modalBanner.innerHTML = '<strong>Banner:</strong> Not available';
                 }
 
-                // Set recommendations (this would come from the backend in a real implementation)
-                const recommendations = port.recommendations || [
-                    'Use secure alternatives if possible',
-                    'Enable encryption if available',
-                    'Implement access controls',
-                    'Keep software updated',
-                    'Enable logging and monitoring'
-                ];
+                // HTTP inspection
+                if (modalHttp) {
+                    if (port.http) {
+                        const esc = (txt) => {
+                            if (!txt) return '';
+                            const map = {
+                                '&': '&amp;',
+                                '<': '&lt;',
+                                '>': '&gt;',
+                                '"': '&quot;',
+                                "'": '&#39;',
+                            };
+                            return txt.replace(/[&<>\"']/g, (ch) => map[ch] || ch);
+                        };
+                        const audit = port.http.security_headers_audit || {};
+                        const missingHeaders = Object.entries(audit)
+                            .filter(([, status]) => status === 'missing' || status === 'weak')
+                            .map(([name, status]) => `${name} (${status})`);
+                        const cspWarnings = port.http.csp_warnings || [];
+                        const corsWarnings = port.http.cors_warnings || [];
+                        const bodyPreview = port.http.body_preview || '';
+                        modalHttp.innerHTML = `
+                            <div><strong>HTTP:</strong> ${port.http.status_code || 'N/A'}${port.http.mime ? ` · ${port.http.mime}` : ''}</div>
+                            <div><strong>Size/Compression:</strong> ${port.http.content_length || 'unknown'} bytes${port.http.gzip ? ' · gzip' : ''}${port.http.brotli ? ' · br' : ''}</div>
+                            ${port.http.cache_control ? `<div><strong>Cache:</strong> ${port.http.cache_control}</div>` : ''}
+                            ${port.http.etag ? `<div><strong>ETag:</strong> ${port.http.etag}</div>` : ''}
+                            ${port.http.redirects && port.http.redirects.length ? `<div><strong>Redirects:</strong> ${port.http.redirects.map(r => `${r.status} → ${r.url}`).join(', ')}</div>` : ''}
+                            ${port.http.ttfb_ms ? `<div><strong>TTFB:</strong> ${port.http.ttfb_ms.toFixed(0)} ms</div>` : ''}
+                            ${port.http.meta && port.http.meta.title ? `<div><strong>Title:</strong> ${esc(port.http.meta.title)}</div>` : ''}
+                            <div><strong>Security Score:</strong> ${port.http.security_score ?? 'N/A'}</div>
+                            ${missingHeaders.length ? `<div><strong>Missing/Weak:</strong> ${missingHeaders.join(', ')}</div>` : ''}
+                            ${cspWarnings.length ? `<div><strong>CSP:</strong> ${cspWarnings.join('; ')}</div>` : ''}
+                            ${corsWarnings.length ? `<div><strong>CORS:</strong> ${corsWarnings.join('; ')}</div>` : ''}
+                            ${port.http.directory_listing ? `<div><strong>Directory Listing:</strong> Detected</div>` : ''}
+                            ${port.http.forms_over_http ? `<div><strong>Forms over HTTP:</strong> Yes</div>` : ''}
+                            ${bodyPreview ? `<details class="mt-2"><summary class="underline cursor-pointer">HTML preview (first 4KB)</summary><pre class="mt-1 whitespace-pre-wrap text-xs bg-slate-800/60 p-2 rounded">${esc(bodyPreview)}</pre></details>` : ''}
+                        `;
+                    } else {
+                        modalHttp.innerHTML = 'No HTTP analysis';
+                    }
+                }
 
-                if (Array.isArray(recommendations)) {
-                    const recList = recommendations.map((rec, index) => `<li>${index + 1}. ${rec}</li>`).join('');
+                // TLS info
+                if (modalTls) {
+                    if (port.tls) {
+                        modalTls.innerHTML = `
+                            <div><strong>TLS Version:</strong> ${port.tls.tls_version || 'Unknown'}</div>
+                            <div><strong>Cipher Suite:</strong> ${port.tls.cipher_suite || 'Unknown'}</div>
+                            ${port.tls.cipher_strength ? `<div><strong>Cipher Strength:</strong> ${port.tls.cipher_strength}</div>` : ''}
+                            ${port.tls.cert_subject ? `<div><strong>Cert Subject:</strong> ${port.tls.cert_subject}</div>` : ''}
+                            ${port.tls.cert_issuer ? `<div><strong>Cert Issuer:</strong> ${port.tls.cert_issuer}</div>` : ''}
+                            ${port.tls.cert_not_after ? `<div><strong>Cert Expiry:</strong> ${port.tls.cert_not_after}</div>` : ''}
+                            ${port.tls.cert_days_until_expiry ? `<div><strong>Days to Expiry:</strong> ${port.tls.cert_days_until_expiry}</div>` : ''}
+                            ${port.tls.warnings ? `<div class="text-yellow-500 text-sm">Warnings: ${(port.tls.warnings || []).join('; ')}</div>` : ''}
+                            ${port.tls.error ? `<div class="text-yellow-500 text-sm">TLS Error: ${port.tls.error}</div>` : ''}
+                        `;
+                    } else {
+                        modalTls.innerHTML = 'No TLS data';
+                    }
+                }
+
+
+                // Recommendations (avoid double-numbering)
+                const recommendations = Array.isArray(port.recommendations)
+                    ? port.recommendations
+                    : (port.recommendations ? [port.recommendations] : []);
+
+                if (recommendations.length) {
+                    const recList = recommendations
+                        .map(rec => rec.toString().trim().replace(/^\\d+\\.\\s*/, ''))
+                        .map(rec => `<li>• ${rec}</li>`)
+                        .join('');
                     modalRecommendations.innerHTML = `<ul>${recList}</ul><div class="powered-by-llm">Powered by CyberSec LLM</div>`;
                 } else {
-                    modalRecommendations.innerHTML = recommendations + '<div class="powered-by-llm">Powered by CyberSec LLM</div>';
+                    modalRecommendations.innerHTML = 'No recommendations provided<div class="powered-by-llm">Powered by CyberSec LLM</div>';
                 }
 
                 // Show modal

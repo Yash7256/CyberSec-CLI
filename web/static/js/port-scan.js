@@ -176,6 +176,70 @@ function renderPortScanResults(data) {
                     </div>`;
             }
 
+            // Add MITRE ATT&CK techniques
+            if (port.mitre_attack && port.mitre_attack.length > 0) {
+                detailsHtml += `
+                    <div class="mb-4">
+                        <p class="text-sm font-medium text-indigo-400 mb-2">
+                            <i class="fas fa-bullseye mr-1"></i> MITRE ATT&CK
+                        </p>
+                        <div class="flex flex-wrap gap-2">
+                            ${port.mitre_attack.map(tid => `
+                                <span class="px-2 py-1 text-xs bg-indigo-900 text-indigo-100 rounded-full border border-indigo-700">
+                                    ${escapeHtml(tid)}
+                                </span>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+            }
+
+            // TLS details
+            if (port.tls) {
+                detailsHtml += `
+                    <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <p class="text-sm text-gray-400">TLS Version</p>
+                            <p class="font-mono break-all">${escapeHtml(port.tls.tls_version || 'Unknown')}</p>
+                        </div>
+                        <div>
+                            <p class="text-sm text-gray-400">Cipher Suite</p>
+                            <p class="font-mono break-all">${escapeHtml(port.tls.cipher_suite || 'Unknown')}</p>
+                        </div>
+                        ${port.tls.error ? `<div class="md:col-span-2 text-sm text-yellow-400">TLS Inspection Error: ${escapeHtml(port.tls.error)}</div>` : ''}
+                    </div>`;
+            }
+
+            // HTTP inspection details
+            if (port.http) {
+                if (port.http.error) {
+                    detailsHtml += `
+                        <div class="mb-4 text-sm text-yellow-400">
+                            <i class="fas fa-globe mr-1"></i> HTTP Inspection Error: ${escapeHtml(port.http.error)}
+                        </div>`;
+                } else {
+                    const audit = port.http.security_headers_audit || {};
+                    const missingHeaders = Object.entries(audit)
+                        .filter(([, status]) => status === 'missing' || status === 'weak')
+                        .map(([name, status]) => `${name} (${status})`);
+                    const cspWarnings = port.http.csp_warnings || [];
+                    const corsWarnings = port.http.cors_warnings || [];
+                    detailsHtml += `
+                        <div class="mb-4">
+                            <p class="text-sm font-medium text-blue-300 mb-1">
+                                <i class="fas fa-globe mr-1"></i> HTTP Inspection
+                            </p>
+                            <p class="text-sm text-gray-300">Status: ${port.http.status_code || 'N/A'} | HTTP ${port.http.http_version || ''}</p>
+                            <p class="text-sm text-gray-300">Security Score: ${port.http.security_score ?? 'N/A'}</p>
+                            ${missingHeaders.length ? `<p class="text-sm text-yellow-400 mt-1">Missing/Weak: ${missingHeaders.join(', ')}</p>` : ''}
+                            ${cspWarnings.length ? `<p class="text-sm text-yellow-400 mt-1">CSP: ${cspWarnings.join('; ')}</p>` : ''}
+                            ${corsWarnings.length ? `<p class="text-sm text-yellow-400 mt-1">CORS: ${corsWarnings.join('; ')}</p>` : ''}
+                            ${port.http.directory_listing ? `<p class="text-sm text-red-400 mt-1">Directory listing detected</p>` : ''}
+                            ${port.http.forms_over_http ? `<p class="text-sm text-yellow-400 mt-1">Forms submit over HTTP</p>` : ''}
+                        </div>`;
+
+                }
+            }
+
             // Add recommendations
             if (port.recommendations && port.recommendations.length > 0) {
                 detailsHtml += `

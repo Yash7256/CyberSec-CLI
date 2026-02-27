@@ -37,6 +37,25 @@ from pydantic import BaseModel
 from src.cybersec_cli.utils.logger import log_forced_scan
 from src.cybersec_cli.core.auth import verify_api_key
 from src.cybersec_cli.core.validators import validate_target, validate_port_range
+from src.cybersec_cli.utils.web_enricher import enrich_http_site
+
+# Static fallback for MITRE ATT&CK mappings by port (used if formatter data missing)
+PORT_MITRE_MAP = {
+    21: ["T1040", "T1078"],
+    22: ["T1110", "T1078"],
+    23: ["T1040", "T1078"],
+    81: ["T1071", "T1568"],
+    111: ["T1021", "T1569"],
+    53: ["T1078", "T1568"],
+    80: ["T1078", "T1568"],
+    443: ["T1078", "T1568"],
+    444: ["T1078", "T1568"],
+    465: ["T1586", "T1114"],
+    587: ["T1586", "T1114"],
+    993: ["T1114", "T1586"],
+    995: ["T1114", "T1586"],
+    3306: ["T1213", "T1078"],
+}
 
 
 def _timing_safe_compare(a: Optional[str], b: Optional[str]) -> bool:
@@ -911,6 +930,13 @@ async def stream_scan_results(
                 open_ports = []
                 for result in results:
                     if result.state == PortState.OPEN:
+                        try:
+                            from src.cybersec_cli.utils.formatters import get_vulnerability_info
+                            vuln_info = get_vulnerability_info(result.port, result.service)
+                        except Exception:
+                            vuln_info = {}
+
+                        mitre_list = vuln_info.get("mitre_attack") or PORT_MITRE_MAP.get(result.port, [])
                         port_info = {
                             "port": result.port,
                             "service": result.service or "unknown",
@@ -918,6 +944,7 @@ async def stream_scan_results(
                             "banner": result.banner or "",
                             "confidence": result.confidence,
                             "protocol": result.protocol,
+                            "mitre_attack": mitre_list,
                         }
                         open_ports.append(port_info)
                         yield f"data: {json.dumps({'type': 'open_port', 'port': port_info, 'progress': progress_percentage})}\n\n"
@@ -1049,32 +1076,40 @@ async def stream_scan_results_new(
                     if result.state == PortState.OPEN:
                         # Get vulnerability information for this port
                         vuln_info = get_vulnerability_info(result.port)
-                        
                         # Live enrichment
                         if result.service and result.service != "unknown":
                             try:
                                 live_cves = await enrich_service_with_live_data(result.service, result.version)
                                 if live_cves:
+                                    # Normalize to list of dicts
+                                    norm_cves = []
+                                    if isinstance(live_cves, dict):
+                                        norm_cves = [live_cves]
+                                    elif isinstance(live_cves, (list, tuple)):
+                                        for item in live_cves:
+                                            if isinstance(item, dict):
+                                                norm_cves.append(item)
+                                            else:
+                                                norm_cves.append({"id": str(item), "severity": "LOW"})
+                                    else:
+                                        norm_cves = [{"id": str(live_cves), "severity": "LOW"}]
+
                                     # Merge/Override with live data
                                     existing_cves = set(vuln_info.get("cves", []))
-                                    for cve in live_cves:
+                                    for cve in norm_cves:
                                         cve_id = cve.get("id")
                                         if cve_id and cve_id not in existing_cves:
                                             vuln_info.setdefault("cves", []).append(cve_id)
-                                            # We can also append the description to recommendations if needed, 
-                                            # or just let the frontend handle the IDs.
                                     
                                     # Update severity if we found higher severity CVEs
                                     from src.cybersec_cli.utils.formatters import Severity
                                     max_live_severity = "LOW"
-                                    for c in live_cves:
+                                    for c in norm_cves:
                                         s = c.get("severity", "LOW")
-                                        # Simple severity ranking
                                         rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
                                         if rank.get(s, 0) > rank.get(max_live_severity, 0):
                                             max_live_severity = s
                                     
-                                    # Compare with current severity
                                     if max_live_severity in Severity.__members__:
                                         live_sev_enum = Severity[max_live_severity]
                                         if live_sev_enum.value > vuln_info["severity"].value:
@@ -1084,6 +1119,38 @@ async def stream_scan_results_new(
                                 logger.warning(f"Live enrichment failed: {e}")
 
 
+                        # Fallback HTTP/TLS inspection if scanner didn't attach it
+                        if not getattr(result, "tls_info", None):
+                            try:
+                                tls_data = await inspect_tls(target, result.port, timeout=1.5)
+                                if tls_data and not isinstance(tls_data, Exception):
+                                    result.tls_info = {
+                                        "tls_version": getattr(tls_data, "tls_version", None),
+                                        "cipher_suite": getattr(tls_data, "cipher_suite", None),
+                                        "security_score": getattr(tls_data, "security_score", 0),
+                                        "is_tls": getattr(tls_data, "is_tls", False),
+                                    }
+                            except Exception:
+                                result.tls_info = result.tls_info or None
+
+                        if not getattr(result, "http_info", None) and (
+                            (result.service and ("http" in result.service))
+                            or result.port in {80, 81, 443, 444}
+                        ):
+                            try:
+                                http_data = await enrich_http_site(
+                                    target,
+                                    result.port,
+                                    use_https=("https" in (result.service or "") or result.port in {443,444}),
+                                    timeout=15.0,
+                                    screenshot=False,
+                                )
+                                if http_data:
+                                    result.http_info = http_data
+                            except Exception:
+                                result.http_info = result.http_info or None
+
+                        mitre_list = vuln_info.get("mitre_attack") or PORT_MITRE_MAP.get(result.port, [])
                         port_info = {
                             "port": result.port,
                             "service": result.service or "unknown",
@@ -1094,6 +1161,9 @@ async def stream_scan_results_new(
                             "risk": vuln_info["severity"].name,
                             "cvss_score": vuln_info.get("cvss_score", 0.0),
                             "vulnerabilities": vuln_info.get("cves", []),
+                            "mitre_attack": mitre_list,
+                            "tls": getattr(result, "tls_info", None),
+                            "http": getattr(result, "http_info", None),
                             "recommendations": (
                                 vuln_info.get("recommendation", "").split("\n")
                                 if vuln_info.get("recommendation")

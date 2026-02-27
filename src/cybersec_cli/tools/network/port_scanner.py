@@ -1099,8 +1099,9 @@ class PortScanner:
                 # Return cached results with cache metadata
                 self.logger.info(f"Returning cached results for {self.target}")
                 cached_results = cached_result.get("results", [])
-                self.results = [
-                    PortResult(
+                self.results = []
+                for r in cached_results:
+                    pr = PortResult(
                         port=r["port"],
                         state=PortState(r["state"]),
                         service=r.get("service"),
@@ -1111,12 +1112,10 @@ class PortScanner:
                         ttl=r.get("ttl"),
                         confidence=r.get("confidence", 0.0),
                     )
-                    for r in cached_results
-                ]
-
-                # Add cache info to results
-                for result in self.results:
-                    result.cached_at = cached_result.get("cached_at")
+                    pr.tls_info = r.get("tls_info")
+                    pr.http_info = r.get("http_info")
+                    pr.cached_at = cached_result.get("cached_at")
+                    self.results.append(pr)
 
                 return self.results
 
@@ -1185,27 +1184,6 @@ class PortScanner:
             # Sort results by port number
             results = sorted(results, key=lambda x: x.port)
 
-        # Store results in cache if caching is enabled
-        if HAS_SCAN_CACHE and scan_cache and not force:
-            cache_key = scan_cache.get_cache_key(self.target, sorted(list(self.ports)))
-            # Convert results to serializable format
-            serializable_results = [
-                {
-                    "port": r.port,
-                    "state": r.state.value,
-                    "service": r.service,
-                    "banner": r.banner,
-                    "version": r.version,
-                    "protocol": r.protocol,
-                    "reason": r.reason,
-                    "ttl": r.ttl,
-                    "confidence": r.confidence,
-                }
-                for r in results
-            ]
-            cache_data = {"results": serializable_results}
-            await scan_cache.store_cache(cache_key, cache_data, target=self.target)
-
         self.results = results
 
         # Log completion statistics
@@ -1223,10 +1201,14 @@ class PortScanner:
         
         if HAS_TLS_INSPECTOR and open_count > 0:
             try:
+                tls_candidate_ports = {443, 444, 465, 587, 993, 995, 8443, 9443, 4443}
                 tls_ports = [
                     r for r in self.results
                     if r.state == PortState.OPEN
-                    and (r.port in {443, 8443, 9443, 4443, 9443} or r.service in {"https", "http ssl"})
+                    and (
+                        r.port in tls_candidate_ports
+                        or (r.service and any(s in (r.service or "").lower() for s in ["https", "ssl", "tls"]))
+                    )
                 ]
                 if tls_ports:
                     self.logger.debug(f"Performing TLS inspection on {len(tls_ports)} ports")
@@ -1244,24 +1226,33 @@ class PortScanner:
                                 'security_score': getattr(tls_data, 'security_score', 0),
                                 'is_tls': getattr(tls_data, 'is_tls', False),
                             }
+                        else:
+                            # Capture error so frontend shows something
+                            err_msg = str(tls_data) if isinstance(tls_data, Exception) else "TLS inspection unavailable"
+                            port_result.tls_info = {'error': err_msg}
             except Exception as e:
                 self.logger.debug(f"TLS inspection failed: {e}")
 
         # [I-5] HTTP inspection - parallel for all HTTP ports (AFTER TLS)
         if HAS_HTTP_INSPECTOR and open_count > 0:
             try:
+                http_candidate_ports = {80, 81, 443, 444, 8080, 8000, 8008, 8443, 8888, 9000, 9090}
                 http_ports = [
                     r for r in self.results
                     if r.state == PortState.OPEN
                     and (
-                        r.port in {80, 443, 8080, 8000, 8008, 8443, 8888, 9000, 9090}
-                        or r.service in {"http", "https", "http-proxy"}
+                        r.port in http_candidate_ports
+                        or (r.service and any(s in (r.service or "").lower() for s in ["http", "https", "proxy"]))
                     )
                 ]
                 if http_ports:
                     self.logger.debug(f"Performing HTTP inspection on {len(http_ports)} ports")
                     http_tasks = [
-                        inspect_http(self.hostname or self.target, r.port, use_https=(r.port in {443, 8443}))
+                        inspect_http(
+                            self.hostname or self.target,
+                            r.port,
+                            use_https=(r.port in {443, 444, 8443} or (r.service and "https" in (r.service or "").lower()))
+                        )
                         for r in http_ports
                     ]
                     http_results = await asyncio.gather(*http_tasks, return_exceptions=True)
@@ -1275,8 +1266,33 @@ class PortScanner:
                                 'security_headers_audit': getattr(http_data, 'security_headers_audit', {}),
                                 'vulnerabilities': getattr(http_data, 'vulnerabilities', []),
                             }
+                        else:
+                            err_msg = str(http_data) if isinstance(http_data, Exception) else "HTTP inspection unavailable"
+                            port_result.http_info = {'error': err_msg}
             except Exception as e:
                 self.logger.debug(f"HTTP inspection failed: {e}")
+
+        # Store enriched results in cache (after TLS/HTTP) if enabled
+        if HAS_SCAN_CACHE and scan_cache and not force:
+            cache_key = scan_cache.get_cache_key(self.target, sorted(list(self.ports)))
+            serializable_results = [
+                {
+                    "port": r.port,
+                    "state": r.state.value,
+                    "service": r.service,
+                    "banner": r.banner,
+                    "version": r.version,
+                    "protocol": r.protocol,
+                    "reason": r.reason,
+                    "ttl": r.ttl,
+                    "confidence": r.confidence,
+                    "tls_info": getattr(r, "tls_info", None),
+                    "http_info": getattr(r, "http_info", None),
+                }
+                for r in self.results
+            ]
+            cache_data = {"results": serializable_results}
+            await scan_cache.store_cache(cache_key, cache_data, target=self.target)
 
         # [I-6] Vulnerability correlation - analyze port combinations
         if HAS_VULN_CORRELATION and open_count > 0:
@@ -1412,6 +1428,74 @@ class PortScanner:
         # Sort all results by port number
         all_results.sort(key=lambda x: x.port)
         self.results = all_results
+
+        # After streaming scan, run TLS and HTTP inspections to enrich results
+        open_count = len([r for r in self.results if r.state == PortState.OPEN])
+        if HAS_TLS_INSPECTOR and open_count > 0:
+            try:
+                tls_candidate_ports = {443, 444, 465, 587, 993, 995, 8443, 9443, 4443}
+                tls_ports = [
+                    r for r in self.results
+                    if r.state == PortState.OPEN
+                    and (
+                        r.port in tls_candidate_ports
+                        or (r.service and any(s in (r.service or "").lower() for s in ["https", "ssl", "tls"]))
+                    )
+                ]
+                if tls_ports:
+                    tls_tasks = [
+                        inspect_tls(self.hostname or self.target, r.port)
+                        for r in tls_ports
+                    ]
+                    tls_results = await asyncio.gather(*tls_tasks, return_exceptions=True)
+                    for port_result, tls_data in zip(tls_ports, tls_results):
+                        if tls_data and not isinstance(tls_data, Exception):
+                            port_result.tls_info = {
+                                'tls_version': getattr(tls_data, 'tls_version', None),
+                                'cipher_suite': getattr(tls_data, 'cipher_suite', None),
+                                'security_score': getattr(tls_data, 'security_score', 0),
+                                'is_tls': getattr(tls_data, 'is_tls', False),
+                            }
+                        else:
+                            port_result.tls_info = {'error': str(tls_data)}
+            except Exception as e:
+                self.logger.debug(f"TLS inspection (streaming) failed: {e}")
+
+        if HAS_HTTP_INSPECTOR and open_count > 0:
+            try:
+                http_candidate_ports = {80, 81, 443, 444, 8080, 8000, 8008, 8443, 8888, 9000, 9090}
+                http_ports = [
+                    r for r in self.results
+                    if r.state == PortState.OPEN
+                    and (
+                        r.port in http_candidate_ports
+                        or (r.service and any(s in (r.service or "").lower() for s in ["http", "https", "proxy"]))
+                    )
+                ]
+                if http_ports:
+                    http_tasks = [
+                        inspect_http(
+                            self.hostname or self.target,
+                            r.port,
+                            use_https=(r.port in {443, 444, 8443} or (r.service and "https" in (r.service or "").lower()))
+                        )
+                        for r in http_ports
+                    ]
+                    http_results = await asyncio.gather(*http_tasks, return_exceptions=True)
+                    for port_result, http_data in zip(http_ports, http_results):
+                        if http_data and not isinstance(http_data, Exception):
+                            port_result.http_info = {
+                                'is_http': getattr(http_data, 'is_http', False),
+                                'http_version': getattr(http_data, 'http_version', None),
+                                'status_code': getattr(http_data, 'status_code', None),
+                                'security_score': getattr(http_data, 'security_score', 0),
+                                'security_headers_audit': getattr(http_data, 'security_headers_audit', {}),
+                                'vulnerabilities': getattr(http_data, 'vulnerabilities', []),
+                            }
+                        else:
+                            port_result.http_info = {'error': str(http_data)}
+            except Exception as e:
+                self.logger.debug(f"HTTP inspection (streaming) failed: {e}")
 
         # Log final completion statistics
         open_count = len([r for r in self.results if r.state == PortState.OPEN])
