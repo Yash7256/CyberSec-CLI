@@ -958,7 +958,12 @@ async def stream_scan_results(
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 @app.get(
@@ -1197,7 +1202,12 @@ async def stream_scan_results_new(
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no"
+    }
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers=headers)
 
 
 # Celery-based asynchronous scan endpoints
