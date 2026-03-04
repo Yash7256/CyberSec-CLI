@@ -32,6 +32,15 @@ def run_async(coro):
     loop = get_event_loop()
     return loop.run_until_complete(coro)
 
+
+def _get_db_path() -> str:
+    """Get the scans DB path — mirrors web/main.py SCANS_DB."""
+    reports_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), 
+        "reports"
+    )
+    return os.path.join(reports_dir, "scans.db")
+
 # Import structured logging
 try:
     from src.cybersec_cli.core.logging_config import get_logger, setup_logging
@@ -66,6 +75,7 @@ except ImportError as e:
 # Import database functions
 try:
     from web.main import save_scan_result
+    from web.database.queries import create_scan_record, save_port_result, finalize_scan
 
     HAS_DB_MODULES = True
 except ImportError as e:
@@ -225,6 +235,22 @@ async def _perform_scan_task_async(
     self.target = target
     self.ports = ports
     self.config = config
+
+    # Create scan record at START for streaming DB writes
+    scan_uuid_db = None
+    scan_id_db = None
+    if HAS_DB_MODULES:
+        try:
+            scan_uuid_db, scan_id_db = create_scan_record(
+                db_path=_get_db_path(),
+                target=target,
+                ip=None,
+                command=f"scan {target} --ports {ports}",
+                scan_type=config.get("scan_type", "tcp_connect") if config else "tcp_connect",
+            )
+            logger.info(f"Created scan record {scan_uuid_db} for task {scan_id}")
+        except Exception as e:
+            logger.warning(f"Could not create scan record: {e}")
 
     logger.info(f"Starting scan task {scan_id} for target {target}")
 
@@ -441,6 +467,29 @@ async def _perform_scan_task_async(
                         ),
                     }
                     all_results.append(port_info)
+                    
+                    # SAVE TO DB immediately for streaming writes
+                    if HAS_DB_MODULES and scan_id_db:
+                        try:
+                            save_port_result(
+                                db_path=_get_db_path(),
+                                scan_id=scan_id_db,
+                                port_data={
+                                    "port": result.port,
+                                    "protocol": result.protocol,
+                                    "service": result.service,
+                                    "version": result.version,
+                                    "banner": result.banner,
+                                    "risk": vuln_info["severity"].name if "severity" in vuln_info else "UNKNOWN",
+                                    "cvss_score": cve_result.get("cvss_score", 0.0),
+                                    "vulnerabilities": cve_result.get("vulnerabilities", []),
+                                    "tls_info": getattr(result, "tls_info", None),
+                                    "http_info": getattr(result, "http_info", None),
+                                    "confidence": result.confidence,
+                                }
+                            )
+                        except Exception as e:
+                            logger.warning(f"Failed to save port {result.port}: {e}")
 
             # Update task state after group completion
             self.update_state(
@@ -484,13 +533,26 @@ async def _perform_scan_task_async(
             cache_data = {"results": all_results}
             await scan_cache.store_cache(cache_key, cache_data, target=target)
 
-        # Save results to database if available
-        if HAS_DB_MODULES:
+        # Finalize scan with streaming DB writes
+        if HAS_DB_MODULES and scan_id_db:
+            try:
+                output = json.dumps(result_data, indent=2)
+                finalize_scan(
+                    db_path=_get_db_path(),
+                    scan_id=scan_id_db,
+                    status="completed",
+                    raw_output=output,
+                )
+                logger.info(f"Finalized scan {scan_uuid_db} for task {scan_id}")
+            except Exception as e:
+                logger.error(f"Failed to finalize scan: {e}")
+        elif HAS_DB_MODULES:
+            # Fallback: no scan_id_db (create_scan_record failed earlier)
             try:
                 command = f"scan {target} --ports {ports}"
                 output = json.dumps(result_data, indent=2)
                 save_scan_result(target, None, command, output)
-                logger.info(f"Saved scan results for {scan_id} to database")
+                logger.info(f"Saved scan results for {scan_id} to database (fallback)")
             except Exception as e:
                 logger.error(f"Failed to save scan results to database: {e}")
 
@@ -499,6 +561,16 @@ async def _perform_scan_task_async(
 
     except Exception as exc:
         logger.error(f"Scan task {scan_id} failed: {exc}")
+        # Finalize as failed
+        if HAS_DB_MODULES and scan_id_db:
+            try:
+                finalize_scan(
+                    db_path=_get_db_path(),
+                    scan_id=scan_id_db,
+                    status="failed",
+                )
+            except Exception:
+                pass
         # Record error metrics
         if HAS_METRICS:
             scan_duration = _safe_stop_timer(scan_start_time)

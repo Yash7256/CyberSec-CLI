@@ -6,21 +6,27 @@ Provides endpoints to create, revoke, and list authentication tokens.
 import logging
 import secrets
 import sqlite3
+import hashlib
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Base paths
-BASE_DIR = Path(__file__).parent
-REPORTS_DIR = Path(BASE_DIR).parent / "reports"
-# Move tokens database to a more secure location not directly accessible via web
-TOKENS_DB = Path(BASE_DIR).parent / ".secrets" / "tokens.db"
+
+def _hash_token(token: str) -> str:
+    """Hash a token using SHA-256 for secure storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def init_tokens_db():
     """Initialize the tokens database."""
+    # Base paths
+    BASE_DIR = Path(__file__).parent
+    REPORTS_DIR = Path(BASE_DIR).parent / "reports"
+    # Move tokens database to a more secure location not directly accessible via web
+    TOKENS_DB = Path(BASE_DIR).parent / ".secrets" / "tokens.db"
+
     # Create the secure directory for tokens database
     TOKENS_DB.parent.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(TOKENS_DB) as conn:
@@ -57,7 +63,8 @@ def create_token(
 
     for attempt in range(max_attempts):
         try:
-            token = secrets.token_urlsafe(32)
+            raw_token = secrets.token_urlsafe(32)
+            token_hash = _hash_token(raw_token)
             now = datetime.utcnow().isoformat() + "Z"
             expires_at = (
                 datetime.utcnow() + timedelta(days=expires_in_days)
@@ -66,8 +73,8 @@ def create_token(
             with sqlite3.connect(TOKENS_DB) as conn:
                 c = conn.cursor()
 
-                # Check if token already exists (unlikely but possible)
-                c.execute("SELECT COUNT(*) FROM auth_tokens WHERE token = ?", (token,))
+                # Check if token hash already exists (unlikely but possible)
+                c.execute("SELECT COUNT(*) FROM auth_tokens WHERE token = ?", (token_hash,))
                 count = c.fetchone()[0]
 
                 if count > 0:
@@ -81,14 +88,14 @@ def create_token(
                         )
                         return None
 
-                # Insert the new token
+                # Insert the token hash
                 c.execute(
                     """
                 INSERT INTO auth_tokens (token, name, created_at, expires_at)
                 VALUES (?, ?, ?, ?)
                 """,
                     (
-                        token,
+                        token_hash,
                         name or f'Token-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}',
                         now,
                         expires_at,
@@ -97,7 +104,7 @@ def create_token(
                 conn.commit()
 
             logger.info(f"Created new auth token: {name}")
-            return token
+            return raw_token  # Return plaintext ONCE to user
         except sqlite3.IntegrityError as e:
             # This could happen if there's a race condition or duplicate token
             logger.warning(

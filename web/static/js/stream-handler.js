@@ -120,7 +120,11 @@ class StreamHandler {
      * @param {Object} data - Event data
      */
     handleScanStart(data) {
-        this.totalPorts = data.total_ports;
+        this.totalPorts = data.total_ports || data.target;
+        this.scanUuid = data.scan_uuid;  // Store for chat context
+        if (data.scan_uuid) {
+            console.log('Scan ID:', data.scan_uuid);
+        }
         this.updateProgress(0);
         this.updateStatus(`Starting scan on ${data.target} (${this.totalPorts} ports)`);
     }
@@ -534,13 +538,25 @@ class StreamHandler {
     }
 
     /**
-     * Cancel the current scan
+     * @param {Object} data - Event data
      */
-    cancel() {
-        this.isCancelled = true;
+    handleScanComplete(data) {
+        this.scanUuid = data.scan_uuid;  // Store for chat context
+        this.updateProgress(100);
+        this.updateStatus('Scan completed');
         this.close();
-        this.hideScanningIndicator();
-        this.updateStatus('Scan cancelled', 'error');
+        
+        // Show completion message with scan ID if available
+        const completionMsg = document.getElementById('scan-completion-message');
+        if (completionMsg) {
+            completionMsg.classList.remove('hidden');
+            if (data.scan_uuid) {
+                console.log('Scan completed with ID:', data.scan_uuid);
+            }
+            setTimeout(() => {
+                completionMsg.classList.add('hidden');
+            }, 5000);
+        }
     }
 
     /**

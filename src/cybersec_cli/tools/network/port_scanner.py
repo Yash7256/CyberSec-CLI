@@ -1757,52 +1757,6 @@ async def scan_ports(
     """
     # Resolve target once to prevent DNS rebinding
     from src.cybersec_cli.core.validators import resolve_target
-    resolved = await resolve_target(target)
-    
-    # Select best candidate
-    best_os = max(candidates.items(), key=lambda x: x[1])
-    
-    return {
-        "os_name": best_os[0],
-        "accuracy": "Low (Inferred)" if best_os[1] < 3 else "Medium (Banner)",
-        "details": f"Inferred from application banners (analyzed {analyzed_banners} banners)",
-        "fingerprints_analyzed": 0,
-        "method": "Banner Analysis"
-    }
-
-
-# Helper function for command-line usage
-async def scan_ports(
-    target: str,
-    ports: Optional[Union[List[int], str, int]] = None,
-    scan_type: str = "tcp_connect",
-    timeout: float = 1.0,
-    max_concurrent: int = 100,
-    service_detection: bool = True,
-    banner_grabbing: bool = True,
-    os_detection: bool = False,
-    output_format: str = "table",
-    require_reachable: bool = False,
-    force: bool = False,
-) -> str:
-    """Scan ports on a target and return results in the specified format.
-
-    Args:
-        target: Target hostname or IP address
-        ports: Port(s) to scan (e.g., [80, 443], '1-1024', 8080)
-        scan_type: Type of scan ('tcp_connect', 'tcp_syn', 'udp')
-        timeout: Connection timeout in seconds
-        max_concurrent: Maximum number of concurrent connections
-        service_detection: Whether to detect services
-        banner_grabbing: Whether to grab banners
-        output_format: Output format ('table', 'json', 'list')
-        force: If True, bypass cache and perform fresh scan
-
-    Returns:
-        Formatted scan results
-    """
-    # Resolve target once to prevent DNS rebinding
-    from src.cybersec_cli.core.validators import resolve_target
     resolved_ip = resolve_target(target)
     if not resolved_ip:
         raise ValueError(f"Could not resolve target: {target}")

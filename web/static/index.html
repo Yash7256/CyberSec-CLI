@@ -1797,6 +1797,10 @@
 
             handleScanStart(data) {
                 this.totalPorts = data.total_ports;
+                this.scanUuid = data.scan_uuid;  // Store for chat context
+                if (data.scan_uuid) {
+                    console.log('Scan ID:', data.scan_uuid);
+                }
                 this.updateProgress(0);
                 this.updateStatus(`Starting scan on ${data.target} (${this.totalPorts} ports)`);
             }
@@ -1839,6 +1843,10 @@
             }
 
             handleScanComplete(data) {
+                this.scanUuid = data.scan_uuid;  // Store for chat context
+                if (data.scan_uuid) {
+                    console.log('Scan completed with ID:', data.scan_uuid);
+                }
                 this.updateStatus('Scan completed successfully!', 'complete');
 
                 // Wait a bit to show the complete status before closing/hiding progress
@@ -2711,6 +2719,80 @@
             return div;
         }
 
+        // Client-side context summarizer for AI chat
+        function buildOptimizedScanContext(scanResults) {
+            if (!scanResults) return "";
+            
+            const critical = scanResults.critical || [];
+            const high = scanResults.high || [];
+            const medium = scanResults.medium || [];
+            const low = scanResults.low || [];
+            
+            const totalOpen = critical.length + high.length + medium.length + low.length;
+            
+            // Build structured summary instead of raw JSON
+            let lines = [
+                "=== SCAN SUMMARY (AI-OPTIMIZED) ===",
+                `Total Open Ports: ${totalOpen}`,
+                `Critical: ${critical.length} | High: ${high.length} | Medium: ${medium.length} | Low: ${low.length}`,
+                ""
+            ];
+            
+            // Always include ALL critical ports
+            if (critical.length > 0) {
+                lines.push("--- CRITICAL PORTS ---");
+                critical.forEach(p => {
+                    lines.push(formatPortForContext(p, "CRITICAL"));
+                });
+                lines.push("");
+            }
+            
+            // Always include ALL high ports  
+            if (high.length > 0) {
+                lines.push("--- HIGH SEVERITY PORTS ---");
+                high.forEach(p => {
+                    lines.push(formatPortForContext(p, "HIGH"));
+                });
+                lines.push("");
+            }
+            
+            // Medium: max 15 ports
+            if (medium.length > 0) {
+                lines.push("--- MEDIUM SEVERITY PORTS ---");
+                medium.slice(0, 15).forEach(p => {
+                    lines.push(formatPortForContext(p, "MEDIUM"));
+                });
+                if (medium.length > 15) {
+                    lines.push(`... and ${medium.length - 15} more medium severity ports`);
+                }
+                lines.push("");
+            }
+            
+            // Low: max 5 ports — just port numbers
+            if (low.length > 0) {
+                const lowPorts = low.slice(0, 5).map(p => p.port).join(", ");
+                const remaining = low.length > 5 ? ` (+${low.length - 5} more)` : "";
+                lines.push("--- LOW SEVERITY PORTS (sample) ---");
+                lines.push(`Ports: ${lowPorts}${remaining}`);
+                lines.push("");
+            }
+            
+            return lines.join("\n");
+        }
+        
+        function formatPortForContext(portData, severity) {
+            const port = portData.port || "?";
+            const service = portData.service || "unknown";
+            const version = portData.version || "";
+            const cvss = portData.cvss_score ? ` CVSS:${portData.cvss_score}` : "";
+            
+            // Limit CVE list to top 3
+            const vulns = (portData.vulnerabilities || []).slice(0, 3);
+            const vulnStr = vulns.length > 0 ? ` [${vulns.join(", ")}]` : "";
+            
+            return `Port ${port}: ${service}${version ? " " + version : ""}${cvss}${vulnStr}`;
+        }
+
         async function sendChatMessage() {
             const text = chatInput.value.trim();
             if (!text) return;
@@ -2726,28 +2808,12 @@
             const typingIndicator = appendTypingIndicator();
 
             try {
-                // Gather context from scan results automatically
+                // Gather context from scan results automatically using optimized summarization
                 let context = "";
 
                 // Check if we have scan results from the stream handler
                 if (typeof streamHandler !== 'undefined' && streamHandler.scanResults) {
-                    const results = streamHandler.scanResults;
-
-                    // Create a deep copy to avoid modifying the original data
-                    const cleanResults = JSON.parse(JSON.stringify(results));
-
-                    // Remove potentially large body_preview fields to prevent blowing up the LLM context limit
-                    ['critical', 'high', 'medium', 'low'].forEach(level => {
-                        if (cleanResults[level]) {
-                            cleanResults[level].forEach(port => {
-                                if (port.http && port.http.body_preview) {
-                                    delete port.http.body_preview;
-                                }
-                            });
-                        }
-                    });
-
-                    context = "=== COMPLETE SCAN RESULTS ===\n" + JSON.stringify(cleanResults, null, 2);
+                    context = buildOptimizedScanContext(streamHandler.scanResults);
                 }
 
                 // Fallback: also include visible results text if no structured data
@@ -2757,6 +2823,15 @@
                         context = "=== SCAN RESULTS (from UI) ===\n" + resultsContainer.innerText.substring(0, 8000);
                     }
                 }
+
+                // Safety net: hard cap at 50,000 chars (~12,500 tokens)
+                const MAX_CONTEXT_CHARS = 50000;
+                if (context.length > MAX_CONTEXT_CHARS) {
+                    console.warn(`[CyberSec] Context truncated from ${context.length} to ${MAX_CONTEXT_CHARS} chars`);
+                    context = context.substring(0, MAX_CONTEXT_CHARS) + "\n[truncated]";
+                }
+
+                console.log(`[CyberSec] Sending context: ${context.length} chars to AI`);
 
                 const response = await fetch('/api/chat', {
                     method: 'POST',

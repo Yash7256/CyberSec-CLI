@@ -33,7 +33,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from src.cybersec_cli.utils.logger import log_forced_scan
 from src.cybersec_cli.core.auth import verify_api_key
 from src.cybersec_cli.core.validators import validate_target, validate_port_range
@@ -458,6 +458,15 @@ def init_db():
         logger.warning(f"Failed to apply retention policy: {e}")
     
     conn.close()
+    
+    # Initialize v2 normalized schema
+    try:
+        from web.database.schema import init_db_v2
+        conn = sqlite3.connect(SCANS_DB)
+        init_db_v2(conn)
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Failed to initialize v2 schema: {e}")
 
 
 def ensure_allowlists():
@@ -503,6 +512,29 @@ ALLOWED_SCAN_FLAGS_NO_VALUE = {
     "--enhanced-service-detection",
     "--no-enhanced-service-detection",
 }
+
+
+def _sanitize_port_data(d: dict) -> dict:
+    """Convert any Enum values to strings recursively."""
+    import enum
+    result = {}
+    for k, v in d.items():
+        # Handle Enum types - use .name (not .value which may be a tuple)
+        if hasattr(v, 'name') and isinstance(v, enum.Enum):
+            result[k] = str(v.name)
+        elif hasattr(v, 'value'):
+            result[k] = str(v.value)
+        elif isinstance(v, dict):
+            result[k] = _sanitize_port_data(v)
+        elif isinstance(v, list):
+            result[k] = [
+                str(i.name) if isinstance(i, enum.Enum) else 
+                str(i.value) if hasattr(i, 'value') else i 
+                for i in v
+            ]
+        else:
+            result[k] = v
+    return result
 
 
 def _parse_ports_arg(ports_str: str) -> List[int]:
@@ -559,6 +591,10 @@ async def serve_frontend():
 @app.get("/api/info", tags=["Root"])
 async def api_info():
     """API info endpoint - returns API info and available endpoints."""
+    # Initialize TokenCounter lazily to check availability
+    from web.utils.token_utils import TokenCounter
+    TokenCounter.initialize()
+    
     return {
         "name": "CyberSec CLI API",
         "version": "1.0.0",
@@ -572,6 +608,10 @@ async def api_info():
             "vuln_lookup": "/api/vuln-lookup",
             "metrics": "/api/metrics",
             "websocket": "/ws/command",
+        },
+        "token_counting": {
+            "method": "tiktoken" if TokenCounter.is_accurate() else "approximation",
+            "accurate": TokenCounter.is_accurate()
         }
     }
 
@@ -673,10 +713,19 @@ def save_scan_result(target: str, ip: Optional[str], command: str, output: str, 
             ts = datetime.utcnow().isoformat() + "Z"
             scan_uuid = str(uuid.uuid4())
             c.execute(
-                "INSERT INTO scans (uuid, user_id, timestamp, target, ip, command, output) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO scans (uuid, user_id, timestamp, target, ip, command, output, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, 2)",
                 (scan_uuid, user_id, ts, target, ip or "", command, output),
             )
+            scan_id = c.lastrowid
             conn.commit()
+            
+            # Insert normalized data
+            try:
+                from web.database.queries import _insert_normalized_data
+                _insert_normalized_data(conn, scan_id, output)
+            except Exception as e:
+                logger.warning(f"Failed to normalize scan data: {e}")
+            
             return scan_uuid
     except Exception:
         logger.exception("Failed to save scan result")
@@ -792,8 +841,25 @@ async def get_forced_scans():
         },
     },
 )
-async def api_list_scans(limit: int = 50, current_user: str = Depends(get_current_user)):
-    return await _run_blocking(list_scans, limit, current_user)
+async def api_list_scans(
+    limit: int = 50,
+    current_user: str = Depends(get_current_user),
+    min_cvss: float = None,
+    severity: str = None,
+    target: str = None,
+    has_cves: bool = None,
+):
+    from web.database.queries import list_scans as db_list_scans
+    with sqlite3.connect(SCANS_DB) as conn:
+        return db_list_scans(
+            conn,
+            user_id=current_user,
+            limit=limit,
+            min_cvss=min_cvss,
+            severity=severity,
+            target=target,
+            has_cves=has_cves,
+        )
 
 
 @app.get(
@@ -822,10 +888,25 @@ async def api_list_scans(limit: int = 50, current_user: str = Depends(get_curren
     },
 )
 async def api_get_scan(scan_id: str, current_user: str = Depends(get_current_user)):
-    out = await _run_blocking(get_scan_output, scan_id, current_user)
-    if out is None:
+    from web.database.queries import get_scan_detail
+    with sqlite3.connect(SCANS_DB) as conn:
+        result = get_scan_detail(conn, scan_id, current_user)
+    if result is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    return {"uuid": scan_id, "output": out}
+    return result
+
+
+@app.get(
+    "/api/stats",
+    tags=["Scanning"],
+    summary="Get scan statistics",
+    description="Returns aggregate statistics across all scans for the authenticated user.",
+    dependencies=[Depends(rate_limit_dependency)],
+)
+async def get_stats(current_user: str = Depends(get_current_user)):
+    with sqlite3.connect(SCANS_DB) as conn:
+        from web.database.queries import get_scan_stats
+        return get_scan_stats(conn, current_user)
 
 
 @app.get(
@@ -864,13 +945,40 @@ async def stream_scan_results(
     """
     Stream port scan results using Server-Sent Events (SSE).
     Scans ports on the target and streams results as they become available.
+    Persists results to database as they are discovered.
     """
 
     async def event_generator():
+        from web.database.queries import (
+            create_scan_record, save_port_result, finalize_scan
+        )
+        
         try:
             if not validate_target(target):
                 raise ValueError("Invalid target")
 
+            # Resolve target
+            try:
+                import socket
+                ip = socket.gethostbyname(target)
+            except socket.gaierror:
+                ip = target
+            
+            command = f"scan {target} --ports {ports}"
+            
+            # Create scan record at START
+            scan_uuid, scan_id = create_scan_record(
+                db_path=SCANS_DB,
+                target=target,
+                ip=ip,
+                command=command,
+                user_id=None,
+                scan_type="tcp_connect",
+            )
+            
+            # Notify client of scan_uuid
+            yield f"data: {json.dumps({'type': 'scan_start', 'scan_uuid': scan_uuid, 'target': target, 'ip': ip})}\n\n"
+            
             # Parse ports
             port_list = _parse_ports_arg(ports)
 
@@ -881,9 +989,6 @@ async def stream_scan_results(
             # Calculate total ports for progress tracking
             total_ports = sum(len(group) for group in priority_groups)
             scanned_ports = 0
-
-            # Send initial event
-            yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'message': f'Starting scan on {target} with {total_ports} ports'})}\n\n"
 
             # Import scanner and validators
             from src.cybersec_cli.tools.network.port_scanner import (
@@ -898,62 +1003,115 @@ async def stream_scan_results(
             if not resolved_ip:
                 raise ValueError(f"Could not resolve target: {target}")
 
-            # Scan each priority group
-            for i, group in enumerate(priority_groups):
-                if not group:
-                    continue
+            open_ports_found = []
+            scan_status = "completed"
+            
+            try:
+                # Scan each priority group
+                for i, group in enumerate(priority_groups):
+                    if not group:
+                        continue
 
-                # Send group start event
-                yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group)})}\n\n"
+                    # Send group start event
+                    yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group)})}\n\n"
 
-                # Create scanner for this group with enhanced service detection
-                scanner = PortScanner(
-                    target=target,
-                    resolved_ip=resolved_ip,  # Pass pre-resolved IP
-                    ports=group,
-                    scan_type=ScanType.TCP_CONNECT,
-                    timeout=1.0,
-                    max_concurrent=50,
-                    enhanced_service_detection=enhanced_service_detection,
-                )
+                    # Create scanner for this group with enhanced service detection
+                    scanner = PortScanner(
+                        target=target,
+                        resolved_ip=resolved_ip,
+                        ports=group,
+                        scan_type=ScanType.TCP_CONNECT,
+                        timeout=1.0,
+                        max_concurrent=50,
+                        enhanced_service_detection=enhanced_service_detection,
+                    )
 
-                # Scan ports in this group
-                results = await scanner.scan()
+                    # Scan ports in this group
+                    results = await scanner.scan()
 
-                # Update scanned ports count
-                scanned_ports += len(group)
-                progress_percentage = (
-                    round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0
-                )
+                    # Update scanned ports count
+                    scanned_ports += len(group)
+                    progress_percentage = (
+                        round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0
+                    )
 
-                # Send results for this group
-                open_ports = []
-                for result in results:
-                    if result.state == PortState.OPEN:
-                        try:
-                            from src.cybersec_cli.utils.formatters import get_vulnerability_info
-                            vuln_info = get_vulnerability_info(result.port, result.service)
-                        except Exception:
-                            vuln_info = {}
+                    # Send results for this group
+                    for result in results:
+                        if result.state == PortState.OPEN:
+                            try:
+                                from src.cybersec_cli.utils.formatters import get_vulnerability_info
+                                vuln_info = get_vulnerability_info(result.port, result.service)
+                            except Exception:
+                                vuln_info = {}
 
-                        mitre_list = vuln_info.get("mitre_attack") or PORT_MITRE_MAP.get(result.port, [])
-                        port_info = {
-                            "port": result.port,
-                            "service": result.service or "unknown",
-                            "version": result.version or "unknown",
-                            "banner": result.banner or "",
-                            "confidence": result.confidence,
-                            "protocol": result.protocol,
-                            "mitre_attack": mitre_list,
-                        }
-                        open_ports.append(port_info)
-                        yield f"data: {json.dumps({'type': 'open_port', 'port': port_info, 'progress': progress_percentage})}\n\n"
+                            mitre_list = vuln_info.get("mitre_attack") or PORT_MITRE_MAP.get(result.port, [])
+                            port_data = {
+                                "port": result.port,
+                                "service": result.service or "unknown",
+                                "version": result.version or "unknown",
+                                "banner": result.banner or "",
+                                "confidence": result.confidence,
+                                "protocol": result.protocol,
+                                "risk": getattr(result, "risk", vuln_info.get("severity", "LOW")),
+                                "cvss_score": getattr(result, "cvss_score", vuln_info.get("cvss_score", 0.0)),
+                                "vulnerabilities": vuln_info.get("cves", []),
+                                "tls_info": getattr(result, "tls_info", None),
+                                "http_info": getattr(result, "http_info", None),
+                            }
+                            port_info = {
+                                "port": result.port,
+                                "service": result.service or "unknown",
+                                "version": result.version or "unknown",
+                                "banner": result.banner or "",
+                                "confidence": result.confidence,
+                                "protocol": result.protocol,
+                                "mitre_attack": mitre_list,
+                            }
+                            open_ports_found.append(port_info)
+                            
+                            # Sanitize before DB write — converts any Enum to str
+                            clean_port_data = _sanitize_port_data(port_data)
+                            
+                            # SAVE TO DB immediately
+                            try:
+                                save_port_result(
+                                    db_path=SCANS_DB,
+                                    scan_id=scan_id,
+                                    port_data=clean_port_data,
+                                )
+                            except Exception as e:
+                                logger.warning(f"Failed to save port {result.port}: {e}")
+                            
+                            yield f"data: {json.dumps({'type': 'open_port', 'port': port_info, 'progress': progress_percentage, 'scan_uuid': scan_uuid})}\n\n"
 
-                # Send group completion event with progress
-                yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': len(open_ports), 'progress': progress_percentage})}\n\n"
+                    # Send group completion event with progress
+                    yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': len([r for r in results if r.state == PortState.OPEN]), 'progress': progress_percentage})}\n\n"
 
-            # Send scan completion event
-            yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed', 'progress': 100})}\n\n"
+                # Send scan completion event
+                yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed', 'progress': 100, 'scan_uuid': scan_uuid})}\n\n"
+
+            except Exception as e:
+                scan_status = "failed"
+                logger.error(f"SSE scan error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            
+            finally:
+                # Always finalize — even on crash
+                try:
+                    raw_output = json.dumps({
+                        "target": target,
+                        "ip": ip,
+                        "scan_type": "tcp_connect",
+                        "open_ports": open_ports_found,
+                    })
+                    finalize_scan(
+                        db_path=SCANS_DB,
+                        scan_id=scan_id,
+                        status=scan_status,
+                        raw_output=raw_output,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to finalize scan {scan_uuid}: {e}")
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
@@ -1001,12 +1159,39 @@ async def stream_scan_results_new(
 ):
     """
     Stream port scan results using Server-Sent Events (SSE) after each priority tier completes.
+    Persists results to database as they are discovered.
     """
 
     async def event_generator():
+        from web.database.queries import (
+            create_scan_record, save_port_result, finalize_scan
+        )
+        
         try:
             if not validate_target(target):
                 raise ValueError("Invalid target")
+
+            # Resolve target
+            try:
+                import socket
+                ip = socket.gethostbyname(target)
+            except socket.gaierror:
+                ip = target
+            
+            command = f"scan {target} --ports {ports}"
+            
+            # Create scan record at START
+            scan_uuid, scan_id = create_scan_record(
+                db_path=SCANS_DB,
+                target=target,
+                ip=ip,
+                command=command,
+                user_id=None,
+                scan_type="tcp_connect",
+            )
+            
+            # Notify client of scan_uuid
+            yield f"data: {json.dumps({'type': 'scan_start', 'scan_uuid': scan_uuid, 'target': target, 'ip': ip})}\n\n"
 
             # Parse ports
             port_list = _parse_ports_arg(ports)
@@ -1018,9 +1203,6 @@ async def stream_scan_results_new(
             # Calculate total ports for progress tracking
             total_ports = sum(len(group) for group in priority_groups)
             scanned_ports = 0
-
-            # Send initial event
-            yield f"data: {json.dumps({'type': 'scan_start', 'target': target, 'total_ports': total_ports, 'progress': 0})}\n\n"
 
             # Import scanner and analyzer
             from src.cybersec_cli.tools.network.port_scanner import (
@@ -1040,164 +1222,214 @@ async def stream_scan_results_new(
             try:
                 from src.cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
             except ImportError:
-                # Fallback if imports fail
                 async def enrich_service_with_live_data(*args): return []
 
-
-            # Track critical ports separately
+            open_ports_found = []
             critical_ports_found = []
+            scan_status = "completed"
+            
+            try:
+                # Scan each priority group
+                for i, group in enumerate(priority_groups):
+                    if not group:
+                        continue
 
-            # Scan each priority group
-            for i, group in enumerate(priority_groups):
-                if not group:
-                    continue
+                    # Send group start event
+                    yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group), 'progress': round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0})}\n\n"
 
-                # Send group start event
-                yield f"data: {json.dumps({'type': 'group_start', 'priority': priority_names[i], 'count': len(group), 'progress': round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0})}\n\n"
+                    # Create scanner for this group with enhanced service detection
+                    scanner = PortScanner(
+                        target=target,
+                        resolved_ip=resolved_ip,
+                        ports=group,
+                        scan_type=ScanType.TCP_CONNECT,
+                        timeout=1.0,
+                        max_concurrent=50,
+                        enhanced_service_detection=enhanced_service_detection,
+                    )
 
-                # Create scanner for this group with enhanced service detection
-                scanner = PortScanner(
-                    target=target,
-                    resolved_ip=resolved_ip,  # Pass pre-resolved IP
-                    ports=group,
-                    scan_type=ScanType.TCP_CONNECT,
-                    timeout=1.0,
-                    max_concurrent=50,
-                    enhanced_service_detection=enhanced_service_detection,
-                )
+                    # Scan ports in this group
+                    results = await scanner.scan()
 
-                # Scan ports in this group
-                results = await scanner.scan()
+                    # Update scanned ports count
+                    scanned_ports += len(group)
+                    progress_percentage = (
+                        round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0
+                    )
 
-                # Update scanned ports count
-                scanned_ports += len(group)
-                progress_percentage = (
-                    round((scanned_ports / total_ports) * 100) if total_ports > 0 else 0
-                )
+                    # Collect open ports for this group with security findings
+                    open_ports = []
+                    for result in results:
+                        if result.state == PortState.OPEN:
+                            # Get vulnerability information for this port
+                            vuln_info = get_vulnerability_info(result.port)
+                            # Live enrichment
+                            if result.service and result.service != "unknown":
+                                try:
+                                    live_cves = await enrich_service_with_live_data(result.service, result.version)
+                                    if live_cves:
+                                        # Normalize to list of dicts
+                                        norm_cves = []
+                                        if isinstance(live_cves, dict):
+                                            norm_cves = [live_cves]
+                                        elif isinstance(live_cves, (list, tuple)):
+                                            for item in live_cves:
+                                                if isinstance(item, dict):
+                                                    norm_cves.append(item)
+                                                else:
+                                                    norm_cves.append({"id": str(item), "severity": "LOW"})
+                                        else:
+                                            norm_cves = [{"id": str(live_cves), "severity": "LOW"}]
 
-                # Collect open ports for this group with security findings
-                open_ports = []
-                for result in results:
-                    if result.state == PortState.OPEN:
-                        # Get vulnerability information for this port
-                        vuln_info = get_vulnerability_info(result.port)
-                        # Live enrichment
-                        if result.service and result.service != "unknown":
+                                        # Merge/Override with live data
+                                        existing_cves = set(vuln_info.get("cves", []))
+                                        for cve in norm_cves:
+                                            cve_id = cve.get("id")
+                                            if cve_id and cve_id not in existing_cves:
+                                                vuln_info.setdefault("cves", []).append(cve_id)
+                                        
+                                        # Update severity if we found higher severity CVEs
+                                        from src.cybersec_cli.utils.formatters import Severity
+                                        max_live_severity = "LOW"
+                                        for c in norm_cves:
+                                            s = c.get("severity", "LOW")
+                                            rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
+                                            if rank.get(s, 0) > rank.get(max_live_severity, 0):
+                                                max_live_severity = s
+                                        
+                                        if max_live_severity in Severity.__members__:
+                                            live_sev_enum = Severity[max_live_severity]
+                                            if live_sev_enum.value > vuln_info["severity"].value:
+                                                vuln_info["severity"] = live_sev_enum
+
+                                except Exception as e:
+                                    logger.warning(f"Live enrichment failed: {e}")
+
+
+                            # Fallback HTTP/TLS inspection if scanner didn't attach it
+                            if not getattr(result, "tls_info", None):
+                                try:
+                                    tls_data = await inspect_tls(target, result.port, timeout=1.5)
+                                    if tls_data and not isinstance(tls_data, Exception):
+                                        result.tls_info = {
+                                            "tls_version": getattr(tls_data, "tls_version", None),
+                                            "cipher_suite": getattr(tls_data, "cipher_suite", None),
+                                            "security_score": getattr(tls_data, "security_score", 0),
+                                            "is_tls": getattr(tls_data, "is_tls", False),
+                                        }
+                                except Exception:
+                                    result.tls_info = result.tls_info or None
+
+                            if not getattr(result, "http_info", None) and (
+                                (result.service and ("http" in result.service))
+                                or result.port in {80, 81, 443, 444}
+                            ):
+                                try:
+                                    http_data = await enrich_http_site(
+                                        target,
+                                        result.port,
+                                        use_https=("https" in (result.service or "") or result.port in {443,444}),
+                                        timeout=15.0,
+                                        screenshot=False,
+                                    )
+                                    if http_data:
+                                        result.http_info = http_data
+                                except Exception:
+                                    result.http_info = result.http_info or None
+
+                            mitre_list = vuln_info.get("mitre_attack") or PORT_MITRE_MAP.get(result.port, [])
+                            port_data = {
+                                "port": result.port,
+                                "service": result.service or "unknown",
+                                "version": result.version or "unknown",
+                                "banner": result.banner or "",
+                                "confidence": result.confidence,
+                                "protocol": result.protocol,
+                                "risk": vuln_info["severity"].name,
+                                "cvss_score": vuln_info.get("cvss_score", 0.0),
+                                "vulnerabilities": vuln_info.get("cves", []),
+                                "tls_info": getattr(result, "tls_info", None),
+                                "http_info": getattr(result, "http_info", None),
+                            }
+                            port_info = {
+                                "port": result.port,
+                                "service": result.service or "unknown",
+                                "version": result.version or "unknown",
+                                "banner": result.banner or "",
+                                "confidence": result.confidence,
+                                "protocol": result.protocol,
+                                "risk": vuln_info["severity"].name,
+                                "cvss_score": vuln_info.get("cvss_score", 0.0),
+                                "vulnerabilities": vuln_info.get("cves", []),
+                                "mitre_attack": mitre_list,
+                                "tls": getattr(result, "tls_info", None),
+                                "http": getattr(result, "http_info", None),
+                                "recommendations": (
+                                    vuln_info.get("recommendation", "").split("\n")
+                                    if vuln_info.get("recommendation")
+                                    else []
+                                ),
+                                "exposure": vuln_info.get("exposure", "Unknown"),
+                                "default_creds": vuln_info.get(
+                                    "default_creds", "Check documentation"
+                                ),
+                            }
+                            open_ports.append(port_info)
+                            open_ports_found.append(port_data)
+                            
+                            # Sanitize before DB write — converts any Enum to str
+                            clean_port_data = _sanitize_port_data(port_data)
+                            
+                            # SAVE TO DB immediately
                             try:
-                                live_cves = await enrich_service_with_live_data(result.service, result.version)
-                                if live_cves:
-                                    # Normalize to list of dicts
-                                    norm_cves = []
-                                    if isinstance(live_cves, dict):
-                                        norm_cves = [live_cves]
-                                    elif isinstance(live_cves, (list, tuple)):
-                                        for item in live_cves:
-                                            if isinstance(item, dict):
-                                                norm_cves.append(item)
-                                            else:
-                                                norm_cves.append({"id": str(item), "severity": "LOW"})
-                                    else:
-                                        norm_cves = [{"id": str(live_cves), "severity": "LOW"}]
-
-                                    # Merge/Override with live data
-                                    existing_cves = set(vuln_info.get("cves", []))
-                                    for cve in norm_cves:
-                                        cve_id = cve.get("id")
-                                        if cve_id and cve_id not in existing_cves:
-                                            vuln_info.setdefault("cves", []).append(cve_id)
-                                    
-                                    # Update severity if we found higher severity CVEs
-                                    from src.cybersec_cli.utils.formatters import Severity
-                                    max_live_severity = "LOW"
-                                    for c in norm_cves:
-                                        s = c.get("severity", "LOW")
-                                        rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
-                                        if rank.get(s, 0) > rank.get(max_live_severity, 0):
-                                            max_live_severity = s
-                                    
-                                    if max_live_severity in Severity.__members__:
-                                        live_sev_enum = Severity[max_live_severity]
-                                        if live_sev_enum.value > vuln_info["severity"].value:
-                                            vuln_info["severity"] = live_sev_enum
-
-                            except Exception as e:
-                                logger.warning(f"Live enrichment failed: {e}")
-
-
-                        # Fallback HTTP/TLS inspection if scanner didn't attach it
-                        if not getattr(result, "tls_info", None):
-                            try:
-                                tls_data = await inspect_tls(target, result.port, timeout=1.5)
-                                if tls_data and not isinstance(tls_data, Exception):
-                                    result.tls_info = {
-                                        "tls_version": getattr(tls_data, "tls_version", None),
-                                        "cipher_suite": getattr(tls_data, "cipher_suite", None),
-                                        "security_score": getattr(tls_data, "security_score", 0),
-                                        "is_tls": getattr(tls_data, "is_tls", False),
-                                    }
-                            except Exception:
-                                result.tls_info = result.tls_info or None
-
-                        if not getattr(result, "http_info", None) and (
-                            (result.service and ("http" in result.service))
-                            or result.port in {80, 81, 443, 444}
-                        ):
-                            try:
-                                http_data = await enrich_http_site(
-                                    target,
-                                    result.port,
-                                    use_https=("https" in (result.service or "") or result.port in {443,444}),
-                                    timeout=15.0,
-                                    screenshot=False,
+                                save_port_result(
+                                    db_path=SCANS_DB,
+                                    scan_id=scan_id,
+                                    port_data=clean_port_data,
                                 )
-                                if http_data:
-                                    result.http_info = http_data
-                            except Exception:
-                                result.http_info = result.http_info or None
+                            except Exception as e:
+                                logger.warning(f"Failed to save port {result.port}: {e}")
 
-                        mitre_list = vuln_info.get("mitre_attack") or PORT_MITRE_MAP.get(result.port, [])
-                        port_info = {
-                            "port": result.port,
-                            "service": result.service or "unknown",
-                            "version": result.version or "unknown",
-                            "banner": result.banner or "",
-                            "confidence": result.confidence,
-                            "protocol": result.protocol,
-                            "risk": vuln_info["severity"].name,
-                            "cvss_score": vuln_info.get("cvss_score", 0.0),
-                            "vulnerabilities": vuln_info.get("cves", []),
-                            "mitre_attack": mitre_list,
-                            "tls": getattr(result, "tls_info", None),
-                            "http": getattr(result, "http_info", None),
-                            "recommendations": (
-                                vuln_info.get("recommendation", "").split("\n")
-                                if vuln_info.get("recommendation")
-                                else []
-                            ),
-                            "exposure": vuln_info.get("exposure", "Unknown"),
-                            "default_creds": vuln_info.get(
-                                "default_creds", "Check documentation"
-                            ),
-                        }
-                        open_ports.append(port_info)
+                            # Track critical ports
+                            if priority_names[i] == "critical":
+                                critical_ports_found.append(port_info)
 
-                        # Track critical ports
-                        if priority_names[i] == "critical":
-                            critical_ports_found.append(port_info)
+                    # Send results after each priority tier completes
+                    if open_ports:
+                        yield f"data: {json.dumps({'type': 'tier_results', 'priority': priority_names[i], 'open_ports': open_ports, 'progress': progress_percentage, 'scan_uuid': scan_uuid})}\n\n"
 
-                # Send results after each priority tier completes
-                if open_ports:
-                    yield f"data: {json.dumps({'type': 'tier_results', 'priority': priority_names[i], 'open_ports': open_ports, 'progress': progress_percentage})}\n\n"
+                    # Send group completion event
+                    yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': len(open_ports), 'progress': progress_percentage})}\n\n"
 
-                # Send group completion event
-                yield f"data: {json.dumps({'type': 'group_complete', 'priority': priority_names[i], 'open_count': len(open_ports), 'progress': progress_percentage})}\n\n"
+                # Send critical ports summary first
+                if critical_ports_found:
+                    yield f"data: {json.dumps({'type': 'critical_ports', 'ports': critical_ports_found, 'progress': 100})}\n\n"
 
-            # Send critical ports summary first
-            if critical_ports_found:
-                yield f"data: {json.dumps({'type': 'critical_ports', 'ports': critical_ports_found, 'progress': 100})}\n\n"
+                # Send scan completion event
+                yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed', 'progress': 100, 'scan_uuid': scan_uuid})}\n\n"
 
-            # Send scan completion event
-            yield f"data: {json.dumps({'type': 'scan_complete', 'message': 'Scan completed', 'progress': 100})}\n\n"
+            except Exception as e:
+                scan_status = "failed"
+                logger.error(f"SSE scan error: {e}")
+                yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            
+            finally:
+                # Always finalize — even on crash
+                try:
+                    raw_output = json.dumps({
+                        "target": target,
+                        "ip": ip,
+                        "scan_type": "tcp_connect",
+                        "open_ports": open_ports_found,
+                    })
+                    finalize_scan(
+                        db_path=SCANS_DB,
+                        scan_id=scan_id,
+                        status=scan_status,
+                        raw_output=raw_output,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to finalize scan {scan_uuid}: {e}")
 
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e), 'progress': 0})}\n\n"
@@ -1223,8 +1455,7 @@ except ImportError:
 
 if CELERY_AVAILABLE:
     from typing import Any, Dict, Optional
-
-    from pydantic import BaseModel
+    from pydantic import BaseModel, validator
 
     class ScanRequest(BaseModel):
         """
@@ -1451,6 +1682,91 @@ class ChatRequest(BaseModel):
     messages: List[ChatMessage]
     context: Optional[str] = None
 
+    @validator('context')
+    def validate_context_size(cls, v):
+        MAX_CONTEXT_CHARS = 200_000
+        if v and len(v) > MAX_CONTEXT_CHARS:
+            return v[:MAX_CONTEXT_CHARS] + "\n[context pre-truncated at ingestion]"
+        return v
+
+
+MAX_TOTAL_MESSAGE_CHARS = 20000
+MAX_HISTORY_MESSAGES = 12
+
+# Import token utilities for context truncation
+try:
+    from web.utils.token_utils import get_context_token_budget, truncate_to_token_budget, TokenCounter, GROQ_MODEL_LIMITS, RESPONSE_TOKEN_RESERVE
+    TOKEN_UTILS_AVAILABLE = True
+except ImportError:
+    # Fallback: simple character-based approximation
+    TOKEN_UTILS_AVAILABLE = False
+    def get_context_token_budget(model: str) -> int:
+        return 8000  # Fallback to old char-based limit
+    def truncate_to_token_budget(text: str, budget: int) -> tuple:
+        if len(text) > budget:
+            return text[:budget] + "\n\n[context truncated to fit model limits]", True
+        return text, False
+
+
+def _prepare_chat_messages(request: ChatRequest) -> List[dict]:
+    """Build and trim messages to stay within provider limits."""
+    system_prompt = (
+        "You are an expert cybersecurity assistant for CyberSec-CLI. You help users "
+        "understand their scan results and provide remediation advice."
+    )
+
+    messages: List[dict] = [{"role": "system", "content": system_prompt}]
+
+    if request.context:
+        context = request.context.strip()
+        # Intelligent context summarization
+        from web.utils.context_summarizer import summarize_scan_context
+        model = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+        context = summarize_scan_context(context, model)
+        messages.append({"role": "system", "content": f"Context:\n{context}"})
+
+    history = request.messages[-MAX_HISTORY_MESSAGES:] if request.messages else []
+    for msg in history:
+        messages.append({"role": msg.role, "content": msg.content})
+
+    total_chars = sum(len(m.get("content", "")) for m in messages)
+    if total_chars > MAX_TOTAL_MESSAGE_CHARS and len(messages) > 2:
+        base = messages[:2]
+        running = sum(len(m.get("content", "")) for m in base)
+        trimmed_history: List[dict] = []
+        for msg in reversed(messages[2:]):
+            msg_len = len(msg.get("content", ""))
+            if running + msg_len <= MAX_TOTAL_MESSAGE_CHARS:
+                trimmed_history.append(msg)
+                running += msg_len
+        trimmed_history.reverse()
+        messages = base + trimmed_history
+
+    return messages
+
+
+def _validate_messages_token_count(messages: List[dict], model: str) -> dict:
+    """Pre-flight validation of message token count before calling Groq API."""
+    total_tokens = TokenCounter.count_messages(messages)
+    model_limit = GROQ_MODEL_LIMITS.get(model, 8192)
+    safe_limit = model_limit - RESPONSE_TOKEN_RESERVE
+    
+    if total_tokens > safe_limit:
+        return {
+            "valid": False,
+            "total_tokens": total_tokens,
+            "limit": safe_limit,
+            "error": f"Message payload too large: {total_tokens} tokens "
+                     f"exceeds safe limit of {safe_limit} for model {model}"
+        }
+    return {
+        "valid": True,
+        "total_tokens": total_tokens,
+        "limit": safe_limit,
+        "error": None
+    }
+
+
 @app.post("/api/chat", tags=["AI"], summary="AI Assistant Chat")
 async def chat_endpoint(request: ChatRequest):
     import requests
@@ -1458,15 +1774,30 @@ async def chat_endpoint(request: ChatRequest):
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             return JSONResponse(status_code=500, content={"detail": "GROQ_API_KEY environment variable not set. Please set it to use the AI assistant."})
-            
-        system_prompt = "You are an expert cybersecurity assistant for CyberSec-CLI. You help users understand their scan results and provide remediation advice."
-        if request.context:
-            system_prompt += f"\n\nHere is the context of the user's current security scan:\n{request.context}"
-            
-        messages = [{"role": "system", "content": system_prompt}]
-        for msg in request.messages:
-            messages.append({"role": msg.role, "content": msg.content})
-            
+
+        model = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+        messages = _prepare_chat_messages(request)
+
+        # Pre-flight validation before hitting Groq API
+        validation = _validate_messages_token_count(messages, model)
+        
+        if not validation["valid"]:
+            logger.error(
+                f"[AI Context] Token validation failed: {validation['error']}"
+            )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "detail": "Scan context is too large for AI analysis. "
+                              "Please use a smaller port range or summarize results first.",
+                    "token_info": {
+                        "total": validation["total_tokens"],
+                        "limit": validation["limit"],
+                        "model": model
+                    }
+                }
+            )
+
         loop = asyncio.get_running_loop()
         
         def make_request():
@@ -1477,7 +1808,7 @@ async def chat_endpoint(request: ChatRequest):
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": "llama-3.1-8b-instant",
+                    "model": model,
                     "messages": messages,
                     "temperature": 0.5,
                     "max_tokens": 1024
@@ -1492,16 +1823,41 @@ async def chat_endpoint(request: ChatRequest):
         
         return {"content": ai_message}
     except requests.exceptions.HTTPError as e:
-        logger.error(f"Error in chat endpoint HTTP request: {e}")
-        error_detail = "Failed to communicate with AI provider"
-        if getattr(e, 'response', None) and e.response.status_code == 403:
-            error_detail = "API Key lacks permissions or has incorrect scope."
-        elif getattr(e, 'response', None) and e.response.status_code == 401:
-            error_detail = "Invalid API Key."
-        return JSONResponse(status_code=500, content={"detail": error_detail})
+        status_code = e.response.status_code if getattr(e, "response", None) else 502
+        detail = "Failed to communicate with AI provider"
+        
+        # Specific handling for context-too-large (400/413)
+        if status_code == 400:
+            error_body = {}
+            try:
+                error_body = e.response.json()
+            except:
+                pass
+            error_msg = error_body.get("error", {}).get("message", "")
+            if "context" in error_msg.lower() or "token" in error_msg.lower():
+                return JSONResponse(
+                    status_code=400,
+                    content={"detail": "AI context window exceeded. Try scanning fewer ports."}
+                )
+        
+        if getattr(e, "response", None):
+            try:
+                err_json = e.response.json()
+                detail = (
+                    err_json.get("error", {}).get("message")
+                    or err_json.get("message")
+                    or e.response.text
+                )
+            except Exception:
+                detail = e.response.text
+        logger.error("Error in chat endpoint HTTP request: %s", detail)
+        return JSONResponse(status_code=status_code, content={"detail": detail})
+    except requests.exceptions.RequestException as e:
+        logger.error("Error in chat endpoint HTTP request: %s", e)
+        return JSONResponse(status_code=502, content={"detail": "AI provider unreachable"})
     except Exception as e:
-        logger.error(f"Error in chat endpoint: {e}")
-        return JSONResponse(status_code=500, content={"detail": str(e)})
+        logger.exception("Error in chat endpoint")
+        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 # Admin endpoints for rate limiting
