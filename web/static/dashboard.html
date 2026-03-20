@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan History — CyberSec CLI</title>
+    <link rel="stylesheet" href="/static/css/inter-font.css">
+    <link rel="stylesheet" href="/static/css/fontawesome.min.css">
+    <style>
+        /* ── Reset & Base ─────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary: #0A0B14;
+            --bg-secondary: rgba(255,255,255,0.02);
+            --bg-card: rgba(255,255,255,0.03);
+            --border-color: rgba(255,255,255,0.05);
+            --border-hover: rgba(139,127,235,0.3);
+            --input-bg: rgba(255,255,255,0.03);
+            --input-border: rgba(255,255,255,0.1);
+            --text-primary: #E5E7EB;
+            --text-secondary: #9AA0B4;
+            --text-muted: rgba(255,255,255,0.15);
+            --purple: #8B7FEB;
+            --purple-dark: #7B6FDB;
+            --critical: #FF4444;
+            --high: #FF8C42;
+            --medium: #FFD166;
+            --low: #06D6A0;
+            --radius: 12px;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            min-height: 100vh;
+        }
+
+        /* ── Nav ──────────────────────────────────────── */
+        nav {
+            background: rgba(255,255,255,0.02);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 56px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            font-size: 1rem;
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+        .nav-brand img { height: 28px; width: auto; }
+        .nav-links { display: flex; gap: 0.25rem; }
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.4rem 0.9rem;
+            border-radius: 8px;
+            font-size: 0.88rem;
+            transition: all 0.2s;
+        }
+        .nav-links a:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+        .nav-links a.active { color: var(--purple); background: rgba(139,127,235,0.1); }
+
+        /* ── Layout ───────────────────────────────────── */
+        .page { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+        .page-header {
+            margin-bottom: 2rem;
+        }
+        .page-header h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        .page-header p { color: var(--text-secondary); font-size: 0.9rem; }
+
+        /* ── API Key Banner ───────────────────────────── */
+        #apiKeyBanner {
+            background: rgba(139,127,235,0.08);
+            border: 1px solid rgba(139,127,235,0.2);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        #apiKeyBanner.hidden { display: none; }
+        #apiKeyBanner i { color: var(--purple); font-size: 1.1rem; }
+        #apiKeyBanner p {
+            flex: 1;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+        }
+        #apiKeyBanner p strong { color: var(--text-primary); }
+        .key-input-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+        .key-input-row input {
+            flex: 1;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: monospace;
+            outline: none;
+        }
+        .key-input-row input:focus { border-color: var(--purple); }
+        .btn {
+            padding: 0.5rem 1.1rem;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+            color: white;
+        }
+        .btn-primary:hover { opacity: 0.88; }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }
+        .btn-ghost:hover { color: var(--text-primary); border-color: rgba(255,255,255,0.15); }
+
+        /* ── Stats Bar ────────────────────────────────── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.5rem;
+            transition: border-color 0.2s;
+        }
+        .stat-card:hover { border-color: var(--border-hover); }
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+        .stat-value.critical { color: var(--critical); }
+        .stat-value.purple { color: var(--purple); }
+
+        /* ── Filters ──────────────────────────────────── */
+        .filters-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filter-input {
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            min-width: 180px;
+        }
+        .filter-input:focus { border-color: var(--purple); }
+        select.filter-input { cursor: pointer; }
+        .filter-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        /* ── Table ────────────────────────────────────── */
+        .table-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            overflow: hidden;
+            margin-bottom: 2rem;
+        }
+        .table-card-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .table-card-header h2 {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .table-count {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            padding: 0.75rem 1.5rem;
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border-color);
+            white-space: nowrap;
+        }
+        td {
+            padding: 0.9rem 1.5rem;
+            font-size: 0.88rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            vertical-align: middle;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr.scan-row {
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        tr.scan-row:hover { background: rgba(255,255,255,0.02); }
+        tr.scan-row.selected { background: rgba(139,127,235,0.06); }
+
+        .target-cell { font-weight: 500; }
+        .target-ip { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+        .time-cell { color: var(--text-secondary); font-size: 0.82rem; }
+
+        /* ── Risk Badges ──────────────────────────────── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.2rem 0.55rem;
+            border-radius: 6px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+        }
+        .badge-critical { background: rgba(255,68,68,0.15); color: var(--critical); }
+        .badge-high     { background: rgba(255,140,66,0.15); color: var(--high); }
+        .badge-medium   { background: rgba(255,209,102,0.15); color: var(--medium); }
+        .badge-low      { background: rgba(6,214,160,0.15); color: var(--low); }
+        .badge-none     { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+        .badge-completed { background: rgba(6,214,160,0.1); color: var(--low); }
+        .badge-failed   { background: rgba(255,68,68,0.1); color: var(--critical); }
+        .badge-running  { background: rgba(139,127,235,0.1); color: var(--purple); }
+
+        /* ── Risk Summary Dots ────────────────────────── */
+        .risk-summary { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
+        .risk-dot {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.78rem;
+        }
+        .risk-dot .dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .dot-critical { background: var(--critical); }
+        .dot-high     { background: var(--high); }
+        .dot-medium   { background: var(--medium); }
+        .dot-low      { background: var(--low); }
+
+        /* ── Detail Panel ─────────────────────────────── */
+        #detailPanel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            margin-bottom: 2rem;
+            overflow: hidden;
+            display: none;
+        }
+        #detailPanel.visible { display: block; }
+        .detail-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .detail-header h2 { font-size: 0.95rem; font-weight: 600; }
+        .detail-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0.25rem;
+            transition: color 0.2s;
+        }
+        .detail-close:hover { color: var(--text-primary); }
+        .detail-meta {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        .detail-meta-item { font-size: 0.82rem; }
+        .detail-meta-item .label {
+            color: var(--text-secondary);
+            margin-bottom: 0.2rem;
+        }
+        .detail-meta-item .value { font-weight: 500; }
+        .port-list { padding: 1rem 1.5rem; }
+        .port-item-d {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.75rem;
+            transition: border-color 0.2s;
+        }
+        .port-item-d:hover { border-color: var(--border-hover); }
+        .port-item-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 0.5rem;
+        }
+        .port-number {
+            font-size: 1rem;
+            font-weight: 700;
+            color: var(--purple);
+            min-width: 60px;
+        }
+        .port-service { font-weight: 500; }
+        .port-version { font-size: 0.8rem; color: var(--text-secondary); }
+        .port-cvss {
+            margin-left: auto;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+        .cve-list { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+        .cve-tag {
+            font-size: 0.72rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 5px;
+            background: rgba(255,255,255,0.05);
+            color: var(--text-secondary);
+            font-family: monospace;
+        }
+        .cve-tag.critical { background: rgba(255,68,68,0.12); color: var(--critical); }
+        .cve-tag.high     { background: rgba(255,140,66,0.12); color: var(--high); }
+
+        /* ── Bottom Grid ──────────────────────────────── */
+        .bottom-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 768px) { .bottom-grid { grid-template-columns: 1fr; } }
+
+        /* ── Empty State ──────────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-secondary);
+        }
+        .empty-state i { font-size: 2rem; margin-bottom: 1rem; opacity: 0.4; }
+        .empty-state p { font-size: 0.9rem; }
+
+        /* ── Loading ──────────────────────────────────── */
+        .loading-row td {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        /* ── Scrollbar ────────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+
+        /* ── Timeline Chart ───────────────────────────── */
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .chart-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+        }
+        .chart-card-header h2 {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+        .chart-toggles {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .chart-toggle {
+            padding: 0.3rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.78rem;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .chart-toggle:hover {
+            color: var(--text-primary);
+            border-color: rgba(255,255,255,0.15);
+        }
+        .chart-toggle.active {
+            background: rgba(139,127,235,0.15);
+            border-color: rgba(139,127,235,0.3);
+            color: var(--purple);
+        }
+        .chart-range {
+            display: flex;
+            gap: 0.3rem;
+        }
+        .chart-range button {
+            padding: 0.25rem 0.6rem;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-family: 'Inter', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .chart-range button.active {
+            background: rgba(139,127,235,0.1);
+            border-color: rgba(139,127,235,0.25);
+            color: var(--purple);
+        }
+        .chart-range button:hover { color: var(--text-primary); }
+        .chart-wrapper {
+            position: relative;
+            height: 220px;
+        }
+        .chart-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 220px;
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            gap: 0.5rem;
+        }
+        .chart-empty i { font-size: 1.5rem; opacity: 0.3; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────── -->
+<nav>
+    <a href="/" class="nav-brand">
+        <img src="/static/img/logo.png" alt="CyberSec CLI">
+        CyberSec CLI
+    </a>
+    <div class="nav-links">
+        <a href="/">Port Scanner</a>
+        <a href="/dashboard" class="active">Dashboard</a>
+    </div>
+</nav>
+
+<!-- ── Page Content ────────────────────────────────── -->
+<div class="page">
+
+    <div class="page-header">
+        <h1>Scan History</h1>
+        <p>Browse, filter and analyze past network scans</p>
+    </div>
+
+    <!-- API Key Banner -->
+    <div id="apiKeyBanner">
+        <i class="fa fa-key"></i>
+        <div style="flex:1">
+            <p><strong>API Key Required</strong> — Enter your API key to load scan history.</p>
+            <div class="key-input-row">
+                <input type="password" id="apiKeyInput" placeholder="Paste your API key here..." />
+                <button class="btn btn-primary" onclick="saveApiKey()">Connect</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-grid" id="statsGrid">
+        <div class="stat-card">
+            <div class="stat-label">Total Scans</div>
+            <div class="stat-value purple" id="statTotalScans">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Open Ports Found</div>
+            <div class="stat-value" id="statOpenPorts">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Critical Findings</div>
+            <div class="stat-value critical" id="statCritical">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">CVEs Detected</div>
+            <div class="stat-value" id="statCVEs">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Highest CVSS</div>
+            <div class="stat-value" id="statHighCVSS">—</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Unique Targets</div>
+            <div class="stat-value" id="statTargets">—</div>
+        </div>
+    </div>
+
+    <!-- Timeline Chart -->
+    <div class="chart-card">
+        <div class="chart-card-header">
+            <h2>
+                <i class="fa fa-chart-line" style="color:var(--purple);margin-right:0.5rem"></i>
+                Scan Activity
+            </h2>
+            <div style="display:flex;gap:0.75rem;align-items:center;flex-wrap:wrap">
+                <!-- Metric toggles -->
+                <div class="chart-toggles">
+                    <button class="chart-toggle active" data-metric="scan_count"
+                            onclick="setChartMetric('scan_count', this)">Scans</button>
+                    <button class="chart-toggle" data-metric="open_ports"
+                            onclick="setChartMetric('open_ports', this)">Open Ports</button>
+                    <button class="chart-toggle" data-metric="critical"
+                            onclick="setChartMetric('critical', this)">Critical</button>
+                    <button class="chart-toggle" data-metric="cves"
+                            onclick="setChartMetric('cves', this)">CVEs</button>
+                </div>
+                <!-- Day range -->
+                <div class="chart-range">
+                    <button class="active" data-days="7"
+                            onclick="setChartRange(7, this)">7d</button>
+                    <button data-days="14"
+                            onclick="setChartRange(14, this)">14d</button>
+                    <button data-days="30"
+                            onclick="setChartRange(30, this)">30d</button>
+                </div>
+            </div>
+        </div>
+        <div class="chart-wrapper">
+            <canvas id="timelineChart"></canvas>
+            <div class="chart-empty" id="chartEmpty" style="display:none">
+                <i class="fa fa-chart-bar"></i>
+                <span>No scan activity in this period</span>
+                <span style="font-size:0.78rem;opacity:0.6">Run some scans to see data here</span>
+            </div>
+        </div>
+    </div>
+    <!-- /Timeline Chart -->
+
+    <!-- Filters -->
+    <div class="filters-row">
+        <span class="filter-label">Filter:</span>
+        <input type="text" class="filter-input" id="filterTarget"
+               placeholder="Search target..." oninput="debounceLoad()">
+        <select class="filter-input" id="filterSeverity" onchange="loadScans()">
+            <option value="">All severities</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+        </select>
+        <select class="filter-input" id="filterCVEs" onchange="loadScans()">
+            <option value="">All scans</option>
+            <option value="true">Has CVEs only</option>
+        </select>
+        <input type="number" class="filter-input" id="filterMinCVSS"
+               placeholder="Min CVSS (e.g. 7.0)" min="0" max="10" step="0.1"
+               oninput="debounceLoad()" style="max-width:180px">
+        <button class="btn btn-ghost" onclick="clearFilters()">
+            <i class="fa fa-times"></i> Clear
+        </button>
+    </div>
+
+    <!-- Scan History Table -->
+    <div class="table-card">
+        <div class="table-card-header">
+            <h2><i class="fa fa-history" style="color:var(--purple);margin-right:0.5rem"></i>Scan History</h2>
+            <span class="table-count" id="scanCount">Loading...</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Time</th>
+                    <th>Ports</th>
+                    <th>Risk Distribution</th>
+                    <th>CVSS</th>
+                    <th>CVEs</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="scansTableBody">
+                <tr class="loading-row">
+                    <td colspan="7">
+                        <i class="fa fa-circle-notch fa-spin"></i> Loading...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Detail Panel (shown on row click) -->
+    <div id="detailPanel">
+        <div class="detail-header">
+            <h2 id="detailTitle">Scan Detail</h2>
+            <button class="detail-close" onclick="closeDetail()">
+                <i class="fa fa-times"></i>
+            </button>
+        </div>
+        <div class="detail-meta" id="detailMeta"></div>
+        <div class="port-list" id="portList"></div>
+    </div>
+
+    <!-- Bottom Grid: Top CVEs + Top Targets -->
+    <div class="bottom-grid">
+        <div class="table-card">
+            <div class="table-card-header">
+                <h2><i class="fa fa-bug" style="color:var(--critical);margin-right:0.5rem"></i>Top CVEs</h2>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>CVE ID</th>
+                        <th>Seen</th>
+                        <th>Max CVSS</th>
+                        <th>Severity</th>
+                    </tr>
+                </thead>
+                <tbody id="cvesTableBody">
+                    <tr class="loading-row"><td colspan="4">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-card">
+            <div class="table-card-header">
+                <h2><i class="fa fa-crosshairs" style="color:var(--purple);margin-right:0.5rem"></i>Top Targets</h2>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Target</th>
+                        <th>Scans</th>
+                        <th>Last Seen</th>
+                        <th>Max CVSS</th>
+                    </tr>
+                </thead>
+                <tbody id="targetsTableBody">
+                    <tr class="loading-row"><td colspan="4">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div><!-- /page -->
+
+<script>
+// ── State ────────────────────────────────────────────
+let API_KEY = localStorage.getItem('cybersec_api_key') || '';
+let selectedScanUuid = null;
+let debounceTimer = null;
+let timelineChart = null;
+let chartMetric = 'scan_count';
+let chartDays = 7;
+let timelineData = [];
+
+// ── Init ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    if (API_KEY) {
+        document.getElementById('apiKeyBanner').classList.add('hidden');
+        loadAll();
+    } else {
+        showEmptyState();
+    }
+});
+
+function saveApiKey() {
+    const val = document.getElementById('apiKeyInput').value.trim();
+    if (!val) return;
+    API_KEY = val;
+    localStorage.setItem('cybersec_api_key', val);
+    document.getElementById('apiKeyBanner').classList.add('hidden');
+    loadAll();
+}
+
+function loadAll() {
+    loadStats();
+    loadScans();
+    loadTopCVEs();
+    loadTopTargets();
+    loadTimeline();
+}
+
+// ── API Helper ───────────────────────────────────────
+async function apiFetch(path) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (API_KEY) headers['Authorization'] = `Bearer ${API_KEY}`;
+    const res = await fetch(path, { headers });
+    if (res.status === 401) {
+        // Key invalid — show banner again
+        document.getElementById('apiKeyBanner').classList.remove('hidden');
+        localStorage.removeItem('cybersec_api_key');
+        API_KEY = '';
+        throw new Error('Unauthorized');
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+}
+
+// ── Stats ────────────────────────────────────────────
+async function loadStats() {
+    try {
+        const data = await apiFetch('/api/stats');
+        document.getElementById('statTotalScans').textContent =
+            (data.total_scans ?? 0).toLocaleString();
+        document.getElementById('statOpenPorts').textContent =
+            (data.total_open_ports ?? 0).toLocaleString();
+        document.getElementById('statCritical').textContent =
+            (data.total_critical ?? 0).toLocaleString();
+        document.getElementById('statCVEs').textContent =
+            (data.total_cves ?? 0).toLocaleString();
+        document.getElementById('statHighCVSS').textContent =
+            data.highest_cvss ? data.highest_cvss.toFixed(1) : '0.0';
+        document.getElementById('statTargets').textContent =
+            (data.unique_targets ?? 0).toLocaleString();
+    } catch (e) {
+        console.error('Stats load failed:', e);
+    }
+}
+
+// ── Scan History Table ───────────────────────────────
+function debounceLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(loadScans, 400);
+}
+
+function clearFilters() {
+    document.getElementById('filterTarget').value = '';
+    document.getElementById('filterSeverity').value = '';
+    document.getElementById('filterCVEs').value = '';
+    document.getElementById('filterMinCVSS').value = '';
+    loadScans();
+}
+
+async function loadScans() {
+    const target   = document.getElementById('filterTarget').value.trim();
+    const severity = document.getElementById('filterSeverity').value;
+    const hasCVEs  = document.getElementById('filterCVEs').value;
+    const minCVSS  = document.getElementById('filterMinCVSS').value;
+
+    const params = new URLSearchParams({ limit: 100 });
+    if (target)   params.set('target', target);
+    if (severity) params.set('severity', severity);
+    if (hasCVEs)  params.set('has_cves', hasCVEs);
+    if (minCVSS)  params.set('min_cvss', minCVSS);
+
+    const tbody = document.getElementById('scansTableBody');
+    tbody.innerHTML = `<tr class="loading-row">
+        <td colspan="7"><i class="fa fa-circle-notch fa-spin"></i> Loading...</td>
+    </tr>`;
+
+    try {
+        const scans = await apiFetch(`/api/scans?${params}`);
+        document.getElementById('scanCount').textContent =
+            `${scans.length} scan${scans.length !== 1 ? 's' : ''}`;
+        renderScansTable(scans);
+    } catch (e) {
+        if (e.message !== 'Unauthorized') {
+            tbody.innerHTML = `<tr class="loading-row">
+                <td colspan="7" style="color:var(--critical)">
+                    Failed to load scans
+                </td>
+            </tr>`;
+        }
+    }
+}
+
+function renderScansTable(scans) {
+    const tbody = document.getElementById('scansTableBody');
+    if (!scans.length) {
+        tbody.innerHTML = `<tr><td colspan="7">
+            <div class="empty-state">
+                <i class="fa fa-search-minus"></i>
+                <p>No scans match your filters</p>
+            </div>
+        </td></tr>`;
+        return;
+    }
+    tbody.innerHTML = scans.map(s => {
+        const timeStr  = formatTime(s.timestamp);
+        const maxRisk  = getMaxRisk(s);
+        const statusBadge = `<span class="badge badge-${s.status || 'completed'}">${s.status || 'completed'}</span>`;
+        const cvssStr  = s.max_cvss_score ? s.max_cvss_score.toFixed(1) : '—';
+        const cveStr   = s.cve_count > 0
+            ? `<span style="color:var(--high)">${s.cve_count}</span>`
+            : `<span style="color:var(--text-secondary)">0</span>`;
+
+        return `<tr class="scan-row ${selectedScanUuid === s.uuid ? 'selected' : ''}"
+                    onclick="selectScan('${s.uuid}', this)">
+            <td>
+                <div class="target-cell">${escHtml(s.target)}</div>
+                <div class="target-ip">${escHtml(s.ip || '')}</div>
+            </td>
+            <td class="time-cell">${timeStr}</td>
+            <td>${s.open_port_count ?? 0}</td>
+            <td>${renderRiskDots(s)}</td>
+            <td>${cvssStr}</td>
+            <td>${cveStr}</td>
+            <td>${statusBadge}</td>
+        </tr>`;
+    }).join('');
+}
+
+function renderRiskDots(s) {
+    const parts = [];
+    if (s.critical_count > 0)
+        parts.push(`<span class="risk-dot"><span class="dot dot-critical"></span>${s.critical_count}</span>`);
+    if (s.high_count > 0)
+        parts.push(`<span class="risk-dot"><span class="dot dot-high"></span>${s.high_count}</span>`);
+    if (s.medium_count > 0)
+        parts.push(`<span class="risk-dot"><span class="dot dot-medium"></span>${s.medium_count}</span>`);
+    if (s.low_count > 0)
+        parts.push(`<span class="risk-dot"><span class="dot dot-low"></span>${s.low_count}</span>`);
+    return parts.length
+        ? `<div class="risk-summary">${parts.join('')}</div>`
+        : `<span style="color:var(--text-muted);font-size:0.8rem">none</span>`;
+}
+
+// ── Scan Detail Panel ────────────────────────────────
+async function selectScan(uuid, rowEl) {
+    // Deselect if clicking same row
+    if (selectedScanUuid === uuid) {
+        closeDetail();
+        return;
+    }
+
+    // Update selected state
+    document.querySelectorAll('.scan-row').forEach(r => r.classList.remove('selected'));
+    rowEl.classList.add('selected');
+    selectedScanUuid = uuid;
+
+    const panel = document.getElementById('detailPanel');
+    panel.classList.add('visible');
+    document.getElementById('detailTitle').textContent = 'Loading...';
+    document.getElementById('detailMeta').innerHTML = '';
+    document.getElementById('portList').innerHTML =
+        `<div style="text-align:center;padding:2rem;color:var(--text-secondary)">
+            <i class="fa fa-circle-notch fa-spin"></i> Loading scan detail...
+        </div>`;
+
+    // Scroll to panel
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+        const data = await apiFetch(`/api/scans/${uuid}`);
+        renderDetail(data);
+    } catch (e) {
+        document.getElementById('portList').innerHTML =
+            `<p style="padding:1rem;color:var(--critical)">Failed to load scan detail</p>`;
+    }
+}
+
+function closeDetail() {
+    document.getElementById('detailPanel').classList.remove('visible');
+    document.querySelectorAll('.scan-row').forEach(r => r.classList.remove('selected'));
+    selectedScanUuid = null;
+}
+
+function renderDetail(data) {
+    document.getElementById('detailTitle').textContent =
+        `${data.target} — ${data.summary?.open_port_count ?? 0} open ports`;
+
+    // Meta row
+    const s = data.summary || {};
+    document.getElementById('detailMeta').innerHTML = `
+        <div class="detail-meta-item">
+            <div class="label">Target</div>
+            <div class="value">${escHtml(data.target)}</div>
+        </div>
+        <div class="detail-meta-item">
+            <div class="label">IP</div>
+            <div class="value">${escHtml(data.ip || '—')}</div>
+        </div>
+        <div class="detail-meta-item">
+            <div class="label">Scan Time</div>
+            <div class="value">${formatTime(data.timestamp)}</div>
+        </div>
+        <div class="detail-meta-item">
+            <div class="label">Scan Type</div>
+            <div class="value">${escHtml(data.scan_type || 'tcp_connect')}</div>
+        </div>
+        <div class="detail-meta-item">
+            <div class="label">Ports Scanned</div>
+            <div class="value">${(s.total_ports_scanned ?? 0).toLocaleString()}</div>
+        </div>
+        <div class="detail-meta-item">
+            <div class="label">Max CVSS</div>
+            <div class="value">${s.max_cvss_score ? s.max_cvss_score.toFixed(1) : '0.0'}</div>
+        </div>
+    `;
+
+    // Ports list
+    const ports = data.open_ports || [];
+    if (!ports.length) {
+        document.getElementById('portList').innerHTML =
+            `<div class="empty-state"><i class="fa fa-check-circle"></i>
+             <p>No open ports found in this scan</p></div>`;
+        return;
+    }
+
+    document.getElementById('portList').innerHTML = ports.map(p => {
+        const riskClass = (p.risk || 'low').toLowerCase();
+        const cveHtml = (p.vulnerabilities || []).map(v => {
+            const sev = (v.severity || '').toLowerCase();
+            return `<span class="cve-tag ${sev}">${escHtml(v.cve_id)}</span>`;
+        }).join('');
+
+        return `<div class="port-item-d">
+            <div class="port-item-header">
+                <span class="port-number">${p.port}</span>
+                <span class="port-service">${escHtml(p.service || 'unknown')}</span>
+                <span class="port-version">${escHtml(p.version || '')}</span>
+                <span class="badge badge-${riskClass}" style="margin-left:0.5rem">${p.risk || 'LOW'}</span>
+                <span class="port-cvss">CVSS ${p.cvss_score ? p.cvss_score.toFixed(1) : '0.0'}</span>
+            </div>
+            ${cveHtml ? `<div class="cve-list">${cveHtml}</div>` : ''}
+            ${p.banner ? `<div style="font-size:0.78rem;color:var(--text-secondary);
+                margin-top:0.4rem;font-family:monospace">${escHtml(p.banner)}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ── Top CVEs Table ───────────────────────────────────
+async function loadTopCVEs() {
+    try {
+        const data = await apiFetch('/api/cves/top?limit=10');
+        const tbody = document.getElementById('cvesTableBody');
+        if (!data.length) {
+            tbody.innerHTML = `<tr><td colspan="4">
+                <div class="empty-state"><p>No CVEs detected yet</p></div>
+            </td></tr>`;
+            return;
+        }
+        tbody.innerHTML = data.map(c => {
+            const sev = (c.severity || 'LOW').toLowerCase();
+            return `<tr>
+                <td style="font-family:monospace;font-size:0.82rem">
+                    ${escHtml(c.cve_id)}
+                </td>
+                <td>${c.occurrences}</td>
+                <td>${c.max_cvss ? Number(c.max_cvss).toFixed(1) : '—'}</td>
+                <td><span class="badge badge-${sev}">${c.severity || 'LOW'}</span></td>
+            </tr>`;
+        }).join('');
+    } catch (e) {
+        document.getElementById('cvesTableBody').innerHTML =
+            `<tr class="loading-row"><td colspan="4">Failed to load</td></tr>`;
+    }
+}
+
+// ── Top Targets Table ────────────────────────────────
+async function loadTopTargets() {
+    try {
+        const data = await apiFetch('/api/targets?limit=10');
+        const tbody = document.getElementById('targetsTableBody');
+        if (!data.length) {
+            tbody.innerHTML = `<tr><td colspan="4">
+                <div class="empty-state"><p>No targets scanned yet</p></div>
+            </td></tr>`;
+            return;
+        }
+        tbody.innerHTML = data.map(t => `<tr>
+            <td>
+                <div style="font-weight:500">${escHtml(t.target)}</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary)">${escHtml(t.ip || '')}</div>
+            </td>
+            <td>${t.scan_count}</td>
+            <td class="time-cell">${formatTime(t.last_scanned)}</td>
+            <td>${t.highest_cvss ? Number(t.highest_cvss).toFixed(1) : '—'}</td>
+        </tr>`).join('');
+    } catch (e) {
+        document.getElementById('targetsTableBody').innerHTML =
+            `<tr class="loading-row"><td colspan="4">Failed to load</td></tr>`;
+    }
+}
+
+// ── Helpers ──────────────────────────────────────────
+function formatTime(ts) {
+    if (!ts) return '—';
+    try {
+        const d = new Date(ts);
+        const now = new Date();
+        const diff = now - d;
+        if (diff < 60000)    return 'just now';
+        if (diff < 3600000)  return `${Math.floor(diff/60000)}m ago`;
+        if (diff < 86400000) return `${Math.floor(diff/3600000)}h ago`;
+        if (diff < 604800000)return `${Math.floor(diff/86400000)}d ago`;
+        return d.toLocaleDateString();
+    } catch { return ts; }
+}
+
+function getMaxRisk(s) {
+    if (s.critical_count > 0) return 'critical';
+    if (s.high_count > 0)     return 'high';
+    if (s.medium_count > 0)   return 'medium';
+    if (s.low_count > 0)      return 'low';
+    return 'none';
+}
+
+function escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function showEmptyState() {
+    ['scansTableBody','cvesTableBody','targetsTableBody'].forEach(id => {
+        document.getElementById(id).innerHTML =
+            `<tr><td colspan="7">
+                <div class="empty-state">
+                    <i class="fa fa-lock"></i>
+                    <p>Enter API key above to load data</p>
+                </div>
+            </td></tr>`;
+    });
+    document.getElementById('scanCount').textContent = '—';
+}
+
+// ── Timeline Chart ───────────────────────────────────
+const METRIC_CONFIG = {
+    scan_count: {
+        label: 'Scans',
+        color: '#8B7FEB',
+        fill: 'rgba(139,127,235,0.12)',
+    },
+    open_ports: {
+        label: 'Open Ports',
+        color: '#06D6A0',
+        fill: 'rgba(6,214,160,0.12)',
+    },
+    critical: {
+        label: 'Critical Findings',
+        color: '#FF4444',
+        fill: 'rgba(255,68,68,0.12)',
+    },
+    cves: {
+        label: 'CVEs Detected',
+        color: '#FF8C42',
+        fill: 'rgba(255,140,66,0.12)',
+    },
+};
+
+async function loadTimeline() {
+    try {
+        timelineData = await apiFetch(
+            `/api/scans/timeline?days=${chartDays}`
+        );
+        renderChart();
+    } catch (e) {
+        if (e.message !== 'Unauthorized') {
+            console.error('Timeline load failed:', e);
+        }
+    }
+}
+
+function setChartMetric(metric, btn) {
+    chartMetric = metric;
+    document.querySelectorAll('.chart-toggle').forEach(b =>
+        b.classList.remove('active')
+    );
+    btn.classList.add('active');
+    renderChart();
+}
+
+function setChartRange(days, btn) {
+    chartDays = days;
+    document.querySelectorAll('.chart-range button').forEach(b =>
+        b.classList.remove('active')
+    );
+    btn.classList.add('active');
+    loadTimeline();
+}
+
+function renderChart() {
+    const canvas  = document.getElementById('timelineChart');
+    const empty   = document.getElementById('chartEmpty');
+    const cfg     = METRIC_CONFIG[chartMetric];
+
+    // Check if all values are zero
+    const hasData = timelineData.some(d => d[chartMetric] > 0);
+
+    if (!hasData) {
+        canvas.style.display = 'none';
+        empty.style.display  = 'flex';
+        return;
+    }
+
+    canvas.style.display = 'block';
+    empty.style.display  = 'none';
+
+    const labels = timelineData.map(d => {
+        // Format date label: "Mar 3" style
+        const dt = new Date(d.date + 'T12:00:00');
+        return dt.toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric'
+        });
+    });
+
+    const values = timelineData.map(d => d[chartMetric]);
+
+    // Destroy previous chart instance if exists
+    if (timelineChart) {
+        timelineChart.destroy();
+        timelineChart = null;
+    }
+
+    timelineChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: cfg.label,
+                data: values,
+                backgroundColor: timelineData.map(d =>
+                    d[chartMetric] > 0 ? cfg.fill : 'transparent'
+                ),
+                borderColor: timelineData.map(d =>
+                    d[chartMetric] > 0 ? cfg.color : 'transparent'
+                ),
+                borderWidth: 1.5,
+                borderRadius: 4,
+                borderSkipped: false,
+            }],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(10,11,20,0.95)',
+                    borderColor: 'rgba(255,255,255,0.08)',
+                    borderWidth: 1,
+                    titleColor: '#E5E7EB',
+                    bodyColor: '#9AA0B4',
+                    padding: 10,
+                    callbacks: {
+                        title: (items) => items[0].label,
+                        label: (item) =>
+                            ` ${cfg.label}: ${item.raw}`,
+                    },
+                },
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(255,255,255,0.03)',
+                        drawBorder: false,
+                    },
+                    ticks: {
+                        color: '#9AA0B4',
+                        font: { size: 11, family: 'Inter' },
+                        // Show fewer labels on 30d to avoid crowding
+                        maxTicksLimit: chartDays <= 7 ? 7 : 
+                                       chartDays <= 14 ? 7 : 10,
+                    },
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: 'rgba(255,255,255,0.04)',
+                        drawBorder: false,
+                    },
+                    ticks: {
+                        color: '#9AA0B4',
+                        font: { size: 11, family: 'Inter' },
+                        precision: 0,
+                        maxTicksLimit: 5,
+                    },
+                },
+            },
+        },
+    });
+}
+</script>
+</body>
+</html>

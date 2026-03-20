@@ -10,9 +10,10 @@ from celery import Celery
 celery_app = Celery("cybersec_cli")
 
 # Configure Celery with Redis as broker and result backend
+redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
 celery_app.conf.update(
-    broker_url=os.getenv("REDIS_URL", "redis://localhost:6379"),
-    result_backend=os.getenv("REDIS_URL", "redis://localhost:6379"),
+    broker_url=redis_url,
+    result_backend=redis_url,
     # Task serialization
     task_serializer="json",
     accept_content=["json"],

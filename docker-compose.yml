@@ -46,8 +46,9 @@ services:
     command: ["/app/worker-startup.sh", "celery", "-A", "tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     environment:
       # Required
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - DATABASE_URL=${DATABASE_URL:-postgresql://cybersec:cybersec123@postgres:5432/cybersec}
+      - PYTHONPATH=/app
       
       # Optional (set these in .env file)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -92,6 +93,12 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "tasks.celery_app", "inspect", "ping", "-d", "celery@$HOSTNAME"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     cap_add:
       - NET_RAW  # Required for raw socket access (SYN scans)
     cap_drop:
@@ -109,7 +116,7 @@ services:
       - "8000:8000"
     environment:
       # Required
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       - DATABASE_URL=${DATABASE_URL:-postgresql://cybersec:cybersec123@postgres:5432/cybersec}
       
       # Optional (set these in .env file)

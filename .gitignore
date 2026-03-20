@@ -1,9 +1,11 @@
-# Environment variables
+# Environment variables (CRITICAL - never commit real credentials)
 .env
 .env.local
 .env.*.local
 .env.production.local
 .env.railway
+.env.staging
+.env.dev
 
 # Python
 __pycache__/

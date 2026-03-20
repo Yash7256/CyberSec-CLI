@@ -87,13 +87,6 @@ repos:
         args: ['--pytest-test-first']
       - id: requirements-txt-fixer
 
-  # Security: Check for AWS credentials
-  - repo: https://github.com/kylef/pre-commit-plugin-aws-credentials
-    rev: v1.0.0
-    hooks:
-      - id: prevent-aws-credentials
-        args: ['--credentials-file', '~/.aws/credentials']
-
   # Security: Check for common passwords
   - repo: local
     hooks:

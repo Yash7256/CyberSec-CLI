@@ -28,23 +28,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set working directory
 WORKDIR /app
 
-# Copy application code
-COPY src/ src/
-COPY web/ web/
+# Copy dependency manifests first (better cache reuse)
+COPY requirements.txt ./
+COPY web/requirements.txt ./web_requirements.txt
 COPY setup.py .
 COPY README.md .
 
-# Copy requirements
-COPY requirements.txt ./
-COPY web/requirements.txt ./web_requirements.txt
+# Copy application code
+COPY src/ src/
+COPY web/ web/
+COPY tasks/ tasks/
 
 # Install requirements separately to avoid conflicts
 RUN pip install --upgrade pip setuptools wheel && \
     pip install -r requirements.txt && \
     pip install -r web_requirements.txt
 
-# Install the package in editable mode
-RUN pip install -e .
+# Install the package in editable mode and verify import works
+RUN pip install -e . && \
+    python - <<'PY'
+import cybersec_cli
+print("Package OK:", getattr(cybersec_cli, "__version__", "unknown"))
+PY
 
 # Create startup scripts
 RUN echo '#!/bin/bash\n\n# Determine DB host: prefer DB_HOST, fallback to host extracted from DATABASE_URL, default to "postgres"\nif [ -z "${DB_HOST}" ]; then\n  if [ -n "${DATABASE_URL}" ]; then\n    DB_HOST=$(echo "$DATABASE_URL" | sed -E "s#^[^:]+://([^@]+@)?([^:/]+).*#\\2#")\n  else\n    DB_HOST=postgres\n  fi\nfi\n\n# Wait for database to be ready\nuntil nc -z $DB_HOST 5432; do\n  echo "Waiting for PostgreSQL at $DB_HOST..."\n  sleep 2\ndone\n\n# Run database migrations\npython scripts/init_db.py || echo "Database migration failed, will retry on next start"\n\n# Start the application\nexec "$@"' > /app/web-startup.sh && chmod +x /app/web-startup.sh && \
