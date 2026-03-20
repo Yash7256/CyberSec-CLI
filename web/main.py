@@ -779,24 +779,6 @@ def save_scan_result(target: str, ip: Optional[str], command: str, output: str, 
         return ""
 
 
-def list_scans(limit: int = 50):
-    try:
-        with sqlite3.connect(SCANS_DB) as conn:
-            c = conn.cursor()
-            c.execute(
-                "SELECT id, timestamp, target, ip, command FROM scans ORDER BY id DESC LIMIT ?",
-                (limit,),
-            )
-            rows = c.fetchall()
-        return [
-            dict(id=r[0], timestamp=r[1], target=r[2], ip=r[3], command=r[4])
-            for r in rows
-        ]
-    except Exception:
-        logger.exception("Failed to list scans")
-        return []
-
-
 def get_scan_output(scan_uuid: str, user_id: Optional[str] = None) -> Optional[str]:
     try:
         with sqlite3.connect(SCANS_DB) as conn:
