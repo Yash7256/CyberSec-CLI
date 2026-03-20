@@ -73,6 +73,7 @@ class SecretsConfig(BaseModel):
 
     secret_key: Optional[str] = Field(default=None)
     api_key_salt: Optional[str] = Field(default=None)
+    api_key_salt_previous: Optional[str] = Field(default=None)
     websocket_api_key: Optional[str] = Field(default=None)
 
     def __init__(self, **data):
@@ -81,6 +82,8 @@ class SecretsConfig(BaseModel):
             data["secret_key"] = os.getenv("SECRET_KEY")
         if "api_key_salt" not in data or data["api_key_salt"] is None:
             data["api_key_salt"] = os.getenv("API_KEY_SALT")
+        if "api_key_salt_previous" not in data or data["api_key_salt_previous"] is None:
+            data["api_key_salt_previous"] = os.getenv("API_KEY_SALT_PREVIOUS")
         if "websocket_api_key" not in data or data["websocket_api_key"] is None:
             data["websocket_api_key"] = os.getenv("WEBSOCKET_API_KEY")
 
@@ -107,10 +110,36 @@ class SecretsConfig(BaseModel):
 
         # Validate api_key_salt
         salt = data.get("api_key_salt")
-        if salt is not None and len(salt) < 16:
-            raise ValueError(
-                f"API_KEY_SALT is too short ({len(salt)} chars). Minimum 16 characters required."
-            )
+        weak_values = {
+            "generate-with-openssl-rand-hex-16",
+            "generate-with-openssl-rand-hex-32",
+            "changeme",
+            "development",
+            "test",
+            "",
+        }
+        if salt is not None:
+            if salt.lower() in weak_values:
+                raise ValueError(
+                    "API_KEY_SALT is set to a placeholder value. "
+                    "Generate one with: openssl rand -hex 32"
+                )
+            if len(salt) < 32:
+                raise ValueError(
+                    f"API_KEY_SALT is too short ({len(salt)} chars). Minimum 32 characters required."
+                )
+
+        prev_salt = data.get("api_key_salt_previous")
+        if prev_salt:
+            if prev_salt.lower() in weak_values:
+                raise ValueError(
+                    "API_KEY_SALT_PREVIOUS is set to a placeholder value. "
+                    "Leave it empty or set a real previous salt."
+                )
+            if len(prev_salt) < 32:
+                raise ValueError(
+                    f"API_KEY_SALT_PREVIOUS is too short ({len(prev_salt)} chars). Minimum 32 characters required."
+                )
 
         super().__init__(**data)
 

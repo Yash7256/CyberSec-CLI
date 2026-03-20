@@ -1,0 +1,20 @@
+include:
+  - 'src'
+  - 'web'
+exclude:
+  - 'tests'
+  - 'benchmarks'
+  - 'node_modules'
+  - '.venv'
+  - 'venv'
+  - 'scripts'
+skips:
+  - B101
+  - B403
+  - B404
+  - B603
+  - B604
+  - B110
+  - B112
+  - B104
+  - B311

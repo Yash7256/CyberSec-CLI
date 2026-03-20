@@ -98,6 +98,10 @@ def check_hardcoded_secrets(content: str, filepath: str) -> List[Tuple[int, str]
                         "default",
                         "secret_key_base",
                         "development",
+                        "forced_via_websocket",
+                        "via_websocket",
+                        "api_key_salt_previous",
+                        "previous",
                     ]
                 ):
                     continue

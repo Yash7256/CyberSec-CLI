@@ -7,6 +7,7 @@ import os
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Any, Dict, Optional
 
 # Import Redis client for storing API keys
@@ -35,15 +36,78 @@ API_KEY_PREFIX = os.getenv("API_KEY_PREFIX", "cs_")
 API_KEY_LENGTH = int(os.getenv("API_KEY_LENGTH", "32"))
 DEFAULT_KEY_TTL = int(os.getenv("API_KEY_TTL", "2592000"))  # 30 days in seconds
 
-# Salt for API key hashing — generated once per process if env var is absent
-_API_KEY_SALT = os.getenv("API_KEY_SALT")
-if not _API_KEY_SALT:
-    logger.warning(
-        "API_KEY_SALT environment variable not set. Using a random salt. "
-        "This means existing API keys will become invalid on restart. "
-        "Set API_KEY_SALT to a secure random string for production use."
-    )
-    _API_KEY_SALT = secrets.token_hex(32)
+# Known-bad salt placeholders (case-insensitive)
+_PLACEHOLDER_SALTS = {
+    "",
+    "salt",
+    "changeme",
+    "development",
+    "test",
+    "generate-with-openssl-rand-hex-16",
+    "generate-with-openssl-rand-hex-32",
+}
+
+
+@lru_cache(maxsize=1)
+def _get_primary_salt() -> str:
+    """
+    Load the primary API key salt from environment.
+
+    Fails fast if unset or weak so we never silently rotate salts on restart.
+    """
+
+    salt = os.environ.get("API_KEY_SALT", "")
+    if not salt:
+        raise RuntimeError(
+            "API_KEY_SALT environment variable is not set. "
+            "Generate one with: openssl rand -hex 32. "
+            "WARNING: changing this value invalidates existing API keys."
+        )
+
+    if salt.lower() in _PLACEHOLDER_SALTS:
+        raise RuntimeError(
+            "API_KEY_SALT is set to a placeholder value. "
+            "Set it to a 64-character hex string from: openssl rand -hex 32"
+        )
+
+    if len(salt) < 32:
+        raise RuntimeError(
+            f"API_KEY_SALT is too short ({len(salt)} chars). Minimum 32 characters required."
+        )
+
+    return salt
+
+
+@lru_cache(maxsize=1)
+def _get_previous_salt() -> str:
+    """
+    Optional previous salt for transition windows.
+
+    Ignored if unset or weak. Never generated automatically.
+    """
+
+    salt = os.environ.get("API_KEY_SALT_PREVIOUS", "")
+    if not salt:
+        return ""
+
+    if salt.lower() in _PLACEHOLDER_SALTS or len(salt) < 32:
+        logger.warning("API_KEY_SALT_PREVIOUS is present but invalid; ignoring it")
+        return ""
+
+    return salt
+
+
+def clear_api_key_salt_cache() -> None:
+    """Reset cached salt values (useful for tests)."""
+
+    _get_primary_salt.cache_clear()
+    _get_previous_salt.cache_clear()
+
+
+def _hash_with_salt(api_key: str, salt: str) -> str:
+    """Deterministically hash an API key with the provided salt."""
+
+    return hashlib.sha256(f"{api_key}{salt}".encode()).hexdigest()
 
 
 @dataclass
@@ -136,64 +200,58 @@ class APIKeyAuth:
         if not api_key:
             return None
 
-        # Hash the provided key for comparison
-        hashed_key = self._hash_key(api_key)
+        hashed_primary = self._hash_key(api_key)
+        key_data_str = self._fetch_key_data(hashed_primary)
 
-        if self.redis_client:
-            try:
-                # Retrieve key data from Redis
-                key_data_str = self.redis_client.get(f"api_key:{hashed_key}")
-                if not key_data_str:
-                    logger.warning(f"Invalid API key attempted: {hashed_key[:8]}...")
-                    return None
+        # Transition window: try previous salt, then migrate to primary hash
+        if not key_data_str:
+            previous_salt = _get_previous_salt()
+            if previous_salt:
+                hashed_previous = self._hash_key(api_key, salt=previous_salt)
+                key_data_str = self._fetch_key_data(hashed_previous)
+                if key_data_str:
+                    self._migrate_key_hash(api_key, hashed_previous, hashed_primary, key_data_str)
 
-                if isinstance(key_data_str, (bytes, bytearray)):
-                    key_data_str = key_data_str.decode("utf-8", errors="replace")
-
-                try:
-                    key_data = json.loads(key_data_str)
-                except Exception:
-                    logger.error("Failed to parse stored API key data")
-                    return None
-
-                # Check expiry (Redis TTL should handle this, but verify defensively)
-                expires_at_str = key_data.get("expires_at")
-                if expires_at_str:
-                    try:
-                        exp_dt = datetime.fromisoformat(
-                            expires_at_str.replace("Z", "+00:00")
-                        )
-                        if datetime.utcnow() > exp_dt.replace(tzinfo=None):
-                            self.redis_client.delete(f"api_key:{hashed_key}")
-                            return None
-                    except Exception:
-                        # If parsing fails, deny access for safety
-                        return None
-
-                return APIKey(
-                    key=api_key,
-                    user_id=key_data.get("user_id", ""),
-                    created_at=datetime.fromisoformat(
-                        key_data.get("created_at", datetime.utcnow().isoformat())
-                    ),
-                    expires_at=(
-                        datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                        if expires_at_str
-                        else None
-                    ),
-                    scopes=key_data.get("scopes", []),
-                    metadata=key_data.get("api_metadata", {}),
-                )
-            except Exception as e:
-                logger.error(f"Error verifying API key: {e}")
-                return None
-        else:
-            # Fallback implementation without Redis
-            # In a real system, you'd need persistent storage
-            logger.warning(
-                "Redis not available, API key verification may not work properly"
-            )
+        if not key_data_str:
+            logger.warning(f"Invalid API key attempted: {hashed_primary[:8]}...")
             return None
+
+        if isinstance(key_data_str, (bytes, bytearray)):
+            key_data_str = key_data_str.decode("utf-8", errors="replace")
+
+        try:
+            key_data = json.loads(key_data_str)
+        except Exception:
+            logger.error("Failed to parse stored API key data")
+            return None
+
+        # Check expiry (Redis TTL should handle this, but verify defensively)
+        expires_at_str = key_data.get("expires_at")
+        if expires_at_str:
+            try:
+                exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                if datetime.utcnow() > exp_dt.replace(tzinfo=None):
+                    if self.redis_client:
+                        self.redis_client.delete(f"api_key:{hashed_primary}")
+                    return None
+            except Exception:
+                # If parsing fails, deny access for safety
+                return None
+
+        return APIKey(
+            key=api_key,
+            user_id=key_data.get("user_id", ""),
+            created_at=datetime.fromisoformat(
+                key_data.get("created_at", datetime.utcnow().isoformat())
+            ),
+            expires_at=(
+                datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                if expires_at_str
+                else None
+            ),
+            scopes=key_data.get("scopes", []),
+            metadata=key_data.get("api_metadata", {}),
+        )
 
     def revoke_api_key(self, api_key: str) -> bool:
         """
@@ -217,6 +275,15 @@ class APIKeyAuth:
                     logger.info(f"API key revoked: {hashed_key[:8]}...")
                     return True
                 else:
+                    previous_salt = _get_previous_salt()
+                    if previous_salt:
+                        previous_hash = self._hash_key(api_key, salt=previous_salt)
+                        result = self.redis_client.delete(f"api_key:{previous_hash}")
+                        if result > 0:
+                            logger.info(
+                                f"API key revoked (previous salt): {previous_hash[:8]}..."
+                            )
+                            return True
                     logger.warning(
                         f"Attempted to revoke non-existent API key: {hashed_key[:8]}..."
                     )
@@ -228,7 +295,7 @@ class APIKeyAuth:
             logger.warning("Redis not available, cannot revoke API key")
             return False
 
-    def _hash_key(self, api_key: str) -> str:
+    def _hash_key(self, api_key: str, salt: Optional[str] = None) -> str:
         """
         Hash an API key for secure storage.
 
@@ -238,8 +305,66 @@ class APIKeyAuth:
         Returns:
             Hashed key string
         """
-        # Use SHA-256 with module-level salt for consistent hashing
-        return hashlib.sha256(f"{api_key}{_API_KEY_SALT}".encode()).hexdigest()
+        chosen_salt = salt or _get_primary_salt()
+        return _hash_with_salt(api_key, chosen_salt)
+
+    def _fetch_key_data(self, hashed_key: str) -> Optional[str]:
+        """Fetch stored key data by hashed key."""
+
+        if not self.redis_client:
+            logger.warning(
+                "Redis not available, API key verification may not work properly"
+            )
+            return None
+
+        try:
+            return self.redis_client.get(f"api_key:{hashed_key}")
+        except Exception as e:
+            logger.error(f"Error verifying API key: {e}")
+            return None
+
+    def _migrate_key_hash(
+        self, api_key: str, old_hash: str, new_hash: str, key_data_str: str
+    ) -> None:
+        """
+        Re-store a key using the new salt during a transition window.
+
+        Uses remaining TTL based on the stored expires_at timestamp when possible.
+        """
+
+        if not self.redis_client:
+            return
+
+        try:
+            key_data = json.loads(
+                key_data_str.decode("utf-8") if isinstance(key_data_str, (bytes, bytearray)) else key_data_str
+            )
+        except Exception:
+            logger.error("Failed to parse stored API key data during migration")
+            return
+
+        expires_at_str = key_data.get("expires_at")
+        ttl_seconds: Optional[int] = DEFAULT_KEY_TTL
+
+        if expires_at_str:
+            try:
+                exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+                remaining = (exp_dt.replace(tzinfo=None) - datetime.utcnow()).total_seconds()
+                if remaining <= 0:
+                    # Already expired; remove the old key and skip re-store
+                    self.redis_client.delete(f"api_key:{old_hash}")
+                    return
+                ttl_seconds = int(remaining)
+            except Exception:
+                ttl_seconds = DEFAULT_KEY_TTL
+
+        try:
+            # Write under new hash, then remove old hash
+            self.redis_client.set(f"api_key:{new_hash}", json.dumps(key_data), ttl=ttl_seconds)
+            self.redis_client.delete(f"api_key:{old_hash}")
+            logger.info("Migrated API key to new salt during verification")
+        except Exception as exc:
+            logger.error(f"Failed to migrate API key to new salt: {exc}")
 
     def validate_key_scopes(self, api_key: str, required_scopes: list) -> bool:
         """

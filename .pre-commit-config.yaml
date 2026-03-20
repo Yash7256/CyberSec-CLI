@@ -2,7 +2,7 @@
 repos:
   # Security: Detect secrets in code
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
+    rev: v1.5.0
     hooks:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
@@ -54,7 +54,7 @@ repos:
 
   # Security: Check for common password files
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.5.4
+    rev: v1.5.6
     hooks:
       - id: forbid-crlf
       - id: remove-crlf
@@ -63,7 +63,7 @@ repos:
 
   # Security: Prevent committing large files
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
         args: ['--maxkb=500']
@@ -122,7 +122,7 @@ repos:
     rev: 1.7.6
     hooks:
       - id: bandit
-        args: ['-c', 'pyproject.toml']
+        args: ['-c', '.bandit']
         files: .*\.py$
         exclude: >
           (?x)^(
@@ -136,7 +136,7 @@ repos:
           )
 
 # Additional security checks
-default_stages: [commit, push]
+default_stages: [pre-commit, pre-push]
 fail_fast: true
 
 exclude: >

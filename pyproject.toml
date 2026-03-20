@@ -1,0 +1,19 @@
+[project]
+name = "cybersec-cli"
+version = "1.0.0"
+description = "Cybersecurity CLI tool for network scanning and vulnerability assessment"
+
+[tool.bandit]
+exclude_dirs = ["tests", "benchmarks", "node_modules", ".venv", "venv", "scripts"]
+targets = ["src", "web"]
+skip = [
+    "B101",  # assert used for testing
+    "B403",  # blacklist for pickle
+    "B404",  # subprocess is used intentionally for CLI operations
+    "B603",  # subprocess.run without shell=True
+    "B604",  # subprocess with shell=True
+    "B110",  # try/except/pass in API error handling
+    "B112",  # try/except/continue in data parsing
+    "B104",  # hardcoded bind to 0.0.0.0 (CLI tool)
+    "B311",  # random module for testing/demo data
+]

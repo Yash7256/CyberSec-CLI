@@ -226,7 +226,9 @@ services:
     restart: unless-stopped
 
   postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
+    # Pinned — to upgrade: check https://github.com/prometheus-community/postgres_exporter/releases
+    # Last reviewed: 2026-03-20
+    image: prometheuscommunity/postgres-exporter:v0.15.1
     container_name: cybersec-postgres-exporter
     environment:
       - DATA_SOURCE_NAME=${DATA_SOURCE_NAME:-postgresql://cybersec:cybersec123@postgres:5432/cybersec?sslmode=disable}
@@ -239,7 +241,10 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:latest
+    # Pinned — to upgrade: check https://github.com/prometheus/prometheus/releases
+    # Prometheus v3 available — test thoroughly before upgrading
+    # Last reviewed: 2026-03-20
+    image: prom/prometheus:v2.51.2
     container_name: cybersec-prometheus
     ports:
       - "9090:9090"
@@ -262,7 +267,10 @@ services:
       - postgres-exporter
 
   grafana:
-    image: grafana/grafana-enterprise:latest
+    # Pinned — to upgrade: check https://github.com/grafana/grafana/releases
+    # Grafana has breaking changes between minor versions — test dashboards in staging first
+    # Last reviewed: 2026-03-20
+    image: grafana/grafana-enterprise:11.3.0
     container_name: cybersec-grafana
     ports:
       - "3000:3000"

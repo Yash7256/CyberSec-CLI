@@ -70,10 +70,10 @@ API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=False)
 
 async def get_current_user(api_key: str = Security(API_KEY_HEADER)) -> str:
     """Extract and verify user identity from API key.
-    
+
     The Authorization header should contain: Bearer <api_key>
     or just the raw api_key (for backwards compatibility).
-    
+
     Returns the user_id associated with the API key.
     Raises HTTPException(401) if the key is invalid or missing.
     """
@@ -83,19 +83,19 @@ async def get_current_user(api_key: str = Security(API_KEY_HEADER)) -> str:
             detail="Missing authentication credentials",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    
+
     # Handle "Bearer <token>" format
     scheme, _, token = api_key.partition(" ")
     if scheme.lower() == "bearer":
         api_key = token.strip()
-    
+
     if not api_key:
         raise HTTPException(
             status_code=401,
             detail="Invalid authentication credentials",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    
+
     # Verify the API key and get user info
     key_info = verify_api_key(api_key)
     if key_info is None:
@@ -104,7 +104,7 @@ async def get_current_user(api_key: str = Security(API_KEY_HEADER)) -> str:
             detail="Invalid or expired API key",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    
+
     return key_info.user_id
 
 
@@ -189,8 +189,9 @@ except ImportError:
         ]
 
 
-# Optional Redis-backed rate limiting (if aioredis is available and REDIS_URL set)
+# Optional Redis-backed rate limiting (if redis.asyncio is available and REDIS_URL set)
 REDIS_URL = os.getenv("REDIS_URL")
+# Async Redis client for lightweight counters (WebSocket limits, etc.)
 _redis = None
 
 
@@ -290,9 +291,9 @@ allowed_origins = get_allowed_origins()
 
 
 async def init_redis():
-    """Initialize aioredis client if REDIS_URL is set. Safe to call multiple times.
+    """Initialize async Redis client if REDIS_URL is set. Safe to call multiple times.
 
-    This function will set the module-level `_redis` variable when aioredis is available.
+    This function sets the module-level `_redis` variable using redis.asyncio.
     """
     global _redis
     if not REDIS_URL:
@@ -302,9 +303,9 @@ async def init_redis():
         # already initialized
         return
     try:
-        import aioredis
+        import redis.asyncio as redis_asyncio
 
-        _redis = aioredis.from_url(REDIS_URL)
+        _redis = redis_asyncio.from_url(REDIS_URL, decode_responses=True)
         logger.info("Redis configured for rate limiting")
     except Exception as e:
         _redis = None
@@ -476,7 +477,7 @@ def init_db():
     c.execute("CREATE INDEX IF NOT EXISTS idx_scans_uuid ON scans(uuid)")
     c.execute("CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id)")
     conn.commit()
-    
+
     # Apply retention policy: delete scans older than 30 days
     try:
         c.execute("DELETE FROM scans WHERE timestamp < datetime('now', '-30 days')")
@@ -486,9 +487,9 @@ def init_db():
         conn.commit()
     except Exception as e:
         logger.warning(f"Failed to apply retention policy: {e}")
-    
+
     conn.close()
-    
+
     # Initialize v2 normalized schema
     try:
         from web.database.schema import init_db_v2
@@ -558,8 +559,8 @@ def _sanitize_port_data(d: dict) -> dict:
             result[k] = _sanitize_port_data(v)
         elif isinstance(v, list):
             result[k] = [
-                str(i.name) if isinstance(i, enum.Enum) else 
-                str(i.value) if hasattr(i, 'value') else i 
+                str(i.name) if isinstance(i, enum.Enum) else
+                str(i.value) if hasattr(i, 'value') else i
                 for i in v
             ]
         else:
@@ -640,7 +641,7 @@ async def api_info():
     # Initialize TokenCounter lazily to check availability
     from web.utils.token_utils import TokenCounter
     TokenCounter.initialize()
-    
+
     return {
         "name": "CyberSec CLI API",
         "version": "1.0.0",
@@ -764,14 +765,14 @@ def save_scan_result(target: str, ip: Optional[str], command: str, output: str, 
             )
             scan_id = c.lastrowid
             conn.commit()
-            
+
             # Insert normalized data
             try:
                 from web.database.queries import _insert_normalized_data
                 _insert_normalized_data(conn, scan_id, output)
             except Exception as e:
                 logger.warning(f"Failed to normalize scan data: {e}")
-            
+
             return scan_uuid
     except Exception:
         logger.exception("Failed to save scan result")
@@ -998,7 +999,7 @@ async def stream_scan_results(
         from web.database.queries import (
             create_scan_record, save_port_result, finalize_scan
         )
-        
+
         try:
             if not validate_target(target):
                 raise ValueError("Invalid target")
@@ -1009,9 +1010,9 @@ async def stream_scan_results(
                 ip = socket.gethostbyname(target)
             except socket.gaierror:
                 ip = target
-            
+
             command = f"scan {target} --ports {ports}"
-            
+
             # Create scan record at START
             scan_uuid, scan_id = create_scan_record(
                 db_path=SCANS_DB,
@@ -1021,10 +1022,10 @@ async def stream_scan_results(
                 user_id=None,
                 scan_type="tcp_connect",
             )
-            
+
             # Notify client of scan_uuid
             yield f"data: {json.dumps({'type': 'scan_start', 'scan_uuid': scan_uuid, 'target': target, 'ip': ip})}\n\n"
-            
+
             # Parse ports
             port_list = _parse_ports_arg(ports)
 
@@ -1043,7 +1044,7 @@ async def stream_scan_results(
                 ScanType,
             )
             from src.cybersec_cli.core.validators import resolve_target_ip
-            
+
             # Resolve target once to prevent DNS rebinding
             resolved_ip = resolve_target_ip(target)
             if not resolved_ip:
@@ -1051,7 +1052,7 @@ async def stream_scan_results(
 
             open_ports_found = []
             scan_status = "completed"
-            
+
             try:
                 # Scan each priority group
                 for i, group in enumerate(priority_groups):
@@ -1114,10 +1115,10 @@ async def stream_scan_results(
                                 "mitre_attack": mitre_list,
                             }
                             open_ports_found.append(port_info)
-                            
+
                             # Sanitize before DB write — converts any Enum to str
                             clean_port_data = _sanitize_port_data(port_data)
-                            
+
                             # SAVE TO DB immediately
                             try:
                                 save_port_result(
@@ -1127,7 +1128,7 @@ async def stream_scan_results(
                                 )
                             except Exception as e:
                                 logger.warning(f"Failed to save port {result.port}: {e}")
-                            
+
                             yield f"data: {json.dumps({'type': 'open_port', 'port': port_info, 'progress': progress_percentage, 'scan_uuid': scan_uuid})}\n\n"
 
                     # Send group completion event with progress
@@ -1140,7 +1141,7 @@ async def stream_scan_results(
                 scan_status = "failed"
                 logger.error(f"SSE scan error: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-            
+
             finally:
                 # Always finalize — even on crash
                 try:
@@ -1212,7 +1213,7 @@ async def stream_scan_results_new(
         from web.database.queries import (
             create_scan_record, save_port_result, finalize_scan
         )
-        
+
         try:
             if not validate_target(target):
                 raise ValueError("Invalid target")
@@ -1223,9 +1224,9 @@ async def stream_scan_results_new(
                 ip = socket.gethostbyname(target)
             except socket.gaierror:
                 ip = target
-            
+
             command = f"scan {target} --ports {ports}"
-            
+
             # Create scan record at START
             scan_uuid, scan_id = create_scan_record(
                 db_path=SCANS_DB,
@@ -1235,7 +1236,7 @@ async def stream_scan_results_new(
                 user_id=None,
                 scan_type="tcp_connect",
             )
-            
+
             # Notify client of scan_uuid
             yield f"data: {json.dumps({'type': 'scan_start', 'scan_uuid': scan_uuid, 'target': target, 'ip': ip})}\n\n"
 
@@ -1258,12 +1259,12 @@ async def stream_scan_results_new(
             )
             from src.cybersec_cli.utils.formatters import get_vulnerability_info
             from src.cybersec_cli.core.validators import resolve_target_ip
-            
+
             # Resolve target once to prevent DNS rebinding
             resolved_ip = resolve_target_ip(target)
             if not resolved_ip:
                 raise ValueError(f"Could not resolve target: {target}")
-            
+
             # Import live enrichment
             try:
                 from src.cybersec_cli.utils.cve_enrichment import enrich_service_with_live_data
@@ -1273,7 +1274,7 @@ async def stream_scan_results_new(
             open_ports_found = []
             critical_ports_found = []
             scan_status = "completed"
-            
+
             try:
                 # Scan each priority group
                 for i, group in enumerate(priority_groups):
@@ -1333,7 +1334,7 @@ async def stream_scan_results_new(
                                             cve_id = cve.get("id")
                                             if cve_id and cve_id not in existing_cves:
                                                 vuln_info.setdefault("cves", []).append(cve_id)
-                                        
+
                                         # Update severity if we found higher severity CVEs
                                         from src.cybersec_cli.utils.formatters import Severity
                                         max_live_severity = "LOW"
@@ -1342,7 +1343,7 @@ async def stream_scan_results_new(
                                             rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
                                             if rank.get(s, 0) > rank.get(max_live_severity, 0):
                                                 max_live_severity = s
-                                        
+
                                         if max_live_severity in Severity.__members__:
                                             live_sev_enum = Severity[max_live_severity]
                                             if live_sev_enum.value > vuln_info["severity"].value:
@@ -1422,10 +1423,10 @@ async def stream_scan_results_new(
                             }
                             open_ports.append(port_info)
                             open_ports_found.append(port_data)
-                            
+
                             # Sanitize before DB write — converts any Enum to str
                             clean_port_data = _sanitize_port_data(port_data)
-                            
+
                             # SAVE TO DB immediately
                             try:
                                 save_port_result(
@@ -1458,7 +1459,7 @@ async def stream_scan_results_new(
                 scan_status = "failed"
                 logger.error(f"SSE scan error: {e}")
                 yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-            
+
             finally:
                 # Always finalize — even on crash
                 try:
@@ -1796,7 +1797,7 @@ def _validate_messages_token_count(messages: List[dict], model: str) -> dict:
     total_tokens = TokenCounter.count_messages(messages)
     model_limit = GROQ_MODEL_LIMITS.get(model, 8192)
     safe_limit = model_limit - RESPONSE_TOKEN_RESERVE
-    
+
     if total_tokens > safe_limit:
         return {
             "valid": False,
@@ -1826,7 +1827,7 @@ async def chat_endpoint(request: ChatRequest):
 
         # Pre-flight validation before hitting Groq API
         validation = _validate_messages_token_count(messages, model)
-        
+
         if not validation["valid"]:
             logger.error(
                 f"[AI Context] Token validation failed: {validation['error']}"
@@ -1845,7 +1846,7 @@ async def chat_endpoint(request: ChatRequest):
             )
 
         loop = asyncio.get_running_loop()
-        
+
         def make_request():
             response = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
@@ -1863,15 +1864,15 @@ async def chat_endpoint(request: ChatRequest):
             )
             response.raise_for_status()
             return response.json()
-            
+
         data = await loop.run_in_executor(None, make_request)
         ai_message = data["choices"][0]["message"]["content"]
-        
+
         return {"content": ai_message}
     except requests.exceptions.HTTPError as e:
         status_code = e.response.status_code if getattr(e, "response", None) else 502
         detail = "Failed to communicate with AI provider"
-        
+
         # Specific handling for context-too-large (400/413)
         if status_code == 400:
             error_body = {}
@@ -1885,7 +1886,7 @@ async def chat_endpoint(request: ChatRequest):
                     status_code=400,
                     content={"detail": "AI context window exceeded. Try scanning fewer ports."}
                 )
-        
+
         if getattr(e, "response", None):
             try:
                 err_json = e.response.json()
@@ -2032,7 +2033,7 @@ async def websocket_endpoint(websocket: WebSocket):
         )
         await websocket.close(code=1008)
         return
-    
+
     try:
         token = websocket.query_params.get("token")
         # Use timing-safe comparison to prevent timing attacks
@@ -2175,7 +2176,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     raw_target = parts[1]
                     # Normalize target for comparison
                     target = raw_target.strip().lower()
-                    
+
                     # If denylisted, block immediately (case-insensitive)
                     if is_in_file(deny_path, target):
                         await websocket.send_text(
@@ -2404,7 +2405,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         except asyncio.TimeoutError:
                             process.kill()
                             await process.wait()
-                    
+
                     if scan_started:
                         try:
                             await scan_concurrency.record_scan_end(client_host)
@@ -2456,9 +2457,9 @@ async def websocket_endpoint(websocket: WebSocket):
 async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
     """Perform OS fingerprinting on a target host."""
     from src.cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
-    
+
     await rate_limit_dependency(request)
-    
+
     try:
         if not validate_target(req_data.target):
             raise HTTPException(status_code=400, detail="Invalid target")
@@ -2480,16 +2481,16 @@ async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
             service_detection=req_data.service_detection,
             enhanced_service_detection=req_data.enhanced_service_detection,
         )
-        
+
         # Perform the scan
         results = await scanner.scan()
-        
+
         # Get OS information from the scanner
         os_info = scanner._perform_os_detection() if req_data.os_detection else {}
-        
+
         # Count open ports
         open_ports_count = len([r for r in results if r.state.name == "OPEN"])
-        
+
         # Prepare response
         response_data = {
             "target": scanner.target,
@@ -2498,12 +2499,12 @@ async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
             "open_ports_count": open_ports_count,
             "scan_results": [r.to_dict() for r in results]
         }
-        
+
         # Log the scan
         save_scan_result(req_data.target, scanner.ip, f"scan {req_data.target} --os", json.dumps(response_data))
-        
+
         return response_data
-        
+
     except Exception as e:
         logger.error(f"OS fingerprinting error: {e}")
         raise HTTPException(status_code=500, detail="OS fingerprinting failed. Please try again later.")

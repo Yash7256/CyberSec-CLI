@@ -13,13 +13,24 @@ sys.path.insert(0, src_path)
 # Also add the project root to the Python path to allow importing from cybersec_cli.core directory
 sys.path.insert(0, project_root)
 
-# Now import modules after adding paths to sys.path
-from cybersec_cli.core.scan_cache import ScanCache  # noqa: E402
-from cybersec_cli.config import RateLimitConfig, ScanningConfig  # noqa: E402
+# Try to import modules, but don't fail if missing dependencies
+try:
+    from cybersec_cli.core.scan_cache import ScanCache  # noqa: E402
+    HAS_SCAN_CACHE = True
+except ImportError:
+    HAS_SCAN_CACHE = False
+
+try:
+    from cybersec_cli.config import RateLimitConfig, ScanningConfig  # noqa: E402
+    HAS_CONFIG = True
+except ImportError:
+    HAS_CONFIG = False
+
 try:
     from cybersec_cli.tools.network.port_scanner import PortScanner  # noqa: E402
+    HAS_PORT_SCANNER = True
 except ImportError:
-    pytest.skip("module not available", allow_module_level=True)
+    HAS_PORT_SCANNER = False
 
 @pytest.fixture
 def mocker():
@@ -74,6 +85,9 @@ def mock_redis_client():
 @pytest.fixture
 def mock_config():
     """Mock configuration object."""
+    if not HAS_CONFIG:
+        pytest.skip("Config modules not available (missing dependencies)")
+
     config = MagicMock()
     config.scanning = ScanningConfig(
         default_timeout=30,
@@ -106,7 +120,10 @@ def mock_scan_result():
 
 @pytest.fixture
 def mock_cache(mock_redis_client, mocker):
-    """Mock ScanCache instance."""
+    """Mock ScanCache instance or skip if ScanCache unavailable."""
+    if not HAS_SCAN_CACHE:
+        pytest.skip("ScanCache not available")
+
     with mocker.patch("cybersec_cli.core.scan_cache.redis_client", mock_redis_client):
         cache = ScanCache()
         cache._initialized = True  # Bypass initialization
@@ -140,7 +157,10 @@ def mock_rate_limiter():
 
 @pytest.fixture
 def mock_scanner(mock_config, mock_cache, mock_rate_limiter):
-    """Mock Scanner instance."""
+    """Mock Scanner instance or skip if PortScanner unavailable."""
+    if not HAS_PORT_SCANNER:
+        pytest.skip("PortScanner not available (missing dependencies)")
+
     # Create a PortScanner with mocked dependencies
     with patch("cybersec_cli.tools.network.port_scanner.scan_cache", mock_cache), patch(
         "cybersec_cli.tools.network.port_scanner.HAS_SCAN_CACHE", True
