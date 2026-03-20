@@ -259,6 +259,36 @@ else:
     logger = logging.getLogger(__name__)
 
 
+def get_allowed_origins() -> List[str]:
+    """Return a validated list of allowed CORS origins.
+
+    Falls back to common localhost ports for safety; never allows wildcards.
+    """
+
+    raw = os.environ.get("ALLOWED_ORIGINS", "")
+    if not raw.strip():
+        return [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:5173",
+        ]
+
+    origins = [origin.strip().rstrip("/") for origin in raw.split(",") if origin.strip()]
+
+    for origin in origins:
+        if "*" in origin:
+            raise ValueError(
+                f"Wildcard in ALLOWED_ORIGINS is not permitted: {origin}. "
+                "Set explicit origins."
+            )
+
+    return origins
+
+
+allowed_origins = get_allowed_origins()
+
+
 async def init_redis():
     """Initialize aioredis client if REDIS_URL is set. Safe to call multiple times.
 
@@ -572,14 +602,30 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS middleware - allow all origins in development
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        "X-Request-ID",
+    ],
+    expose_headers=["X-Request-ID"],
+    max_age=600,
 )
+
+
+@app.on_event("startup")
+async def log_cors_config():
+    logger.info("CORS allowed origins (%d): %s", len(allowed_origins), allowed_origins)
+    if not allowed_origins:
+        logger.warning(
+            "CORS: no allowed origins configured — all cross-origin requests will be blocked"
+        )
 
 
 @app.get("/", tags=["Root"])

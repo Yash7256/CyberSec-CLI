@@ -3,12 +3,13 @@ Configuration management for Cybersec CLI.
 """
 
 import os
+import secrets
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -64,6 +65,56 @@ class SecurityConfig(BaseModel):
 
     class Config:
         env_prefix = "SECURITY_"
+        extra = "ignore"
+
+
+class SecretsConfig(BaseModel):
+    """Secrets validation - blocks weak/placeholder values at startup."""
+
+    secret_key: Optional[str] = Field(default=None)
+    api_key_salt: Optional[str] = Field(default=None)
+    websocket_api_key: Optional[str] = Field(default=None)
+
+    def __init__(self, **data):
+        # Load from environment if not provided
+        if "secret_key" not in data or data["secret_key"] is None:
+            data["secret_key"] = os.getenv("SECRET_KEY")
+        if "api_key_salt" not in data or data["api_key_salt"] is None:
+            data["api_key_salt"] = os.getenv("API_KEY_SALT")
+        if "websocket_api_key" not in data or data["websocket_api_key"] is None:
+            data["websocket_api_key"] = os.getenv("WEBSOCKET_API_KEY")
+
+        # Validate secret_key
+        sk = data.get("secret_key")
+        if sk is not None:
+            weak_values = {
+                "your-secret-key-here",
+                "secret",
+                "changeme",
+                "development",
+                "test",
+                "",
+            }
+            if sk.lower() in weak_values or sk == "generate-with-openssl-rand-hex-32":
+                raise ValueError(
+                    "SECRET_KEY is set to a placeholder value. "
+                    "Generate one with: openssl rand -hex 32"
+                )
+            if len(sk) < 32:
+                raise ValueError(
+                    f"SECRET_KEY is too short ({len(sk)} chars). Minimum 32 characters required."
+                )
+
+        # Validate api_key_salt
+        salt = data.get("api_key_salt")
+        if salt is not None and len(salt) < 16:
+            raise ValueError(
+                f"API_KEY_SALT is too short ({len(salt)} chars). Minimum 16 characters required."
+            )
+
+        super().__init__(**data)
+
+    class Config:
         extra = "ignore"
 
 
@@ -174,6 +225,7 @@ class Config(BaseModel):
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     cors: CORSConfig = Field(default_factory=CORSConfig)
+    secrets: SecretsConfig = Field(default_factory=SecretsConfig)
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "Config":
