@@ -7,7 +7,7 @@ import asyncio
 import logging
 import sqlite3
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -66,7 +66,7 @@ def add_scheduled_scan(target: str, cron_expression: str) -> int:
     try:
         with sqlite3.connect(SCHEDULER_DB) as conn:
             c = conn.cursor()
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
             c.execute(
                 """
             INSERT INTO scheduled_scans (target, cron_expression, created_at)
@@ -187,7 +187,7 @@ def _add_job_to_scheduler(scan_id: int, target: str, cron_expression: str):
             # Update last_run
             with sqlite3.connect(SCHEDULER_DB) as conn:
                 c = conn.cursor()
-                now = datetime.utcnow().isoformat() + "Z"
+                now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
                 c.execute(
                     "UPDATE scheduled_scans SET last_run = ? WHERE id = ?", (now, scan_id)
                 )

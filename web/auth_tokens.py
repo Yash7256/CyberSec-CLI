@@ -7,7 +7,7 @@ import logging
 import secrets
 import sqlite3
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -65,10 +65,10 @@ def create_token(
         try:
             raw_token = secrets.token_urlsafe(32)
             token_hash = _hash_token(raw_token)
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
             expires_at = (
-                datetime.utcnow() + timedelta(days=expires_in_days)
-            ).isoformat() + "Z"
+                datetime.now(timezone.utc) + timedelta(days=expires_in_days)
+            ).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
 
             with sqlite3.connect(TOKENS_DB) as conn:
                 c = conn.cursor()
@@ -96,7 +96,7 @@ def create_token(
                 """,
                     (
                         token_hash,
-                        name or f'Token-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}',
+                        name or f'Token-{datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")}',
                         now,
                         expires_at,
                     ),
@@ -151,11 +151,11 @@ def validate_token(token: str) -> bool:
 
             if expires_at:
                 exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-                if datetime.utcnow() > exp_dt.replace(tzinfo=None):
+                if datetime.now(timezone.utc) > exp_dt.replace(tzinfo=None):
                     return False
 
             # Update last_used
-            now = datetime.utcnow().isoformat() + "Z"
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
             c.execute("UPDATE auth_tokens SET last_used = ? WHERE id = ?", (now, token_id))
             conn.commit()
 

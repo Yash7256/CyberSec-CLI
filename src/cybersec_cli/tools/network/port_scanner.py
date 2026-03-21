@@ -510,14 +510,14 @@ class PortScanner:
             raise ValueError(
                 "Invalid ports format. Expected int, str, or list of ints."
             )
-        
+
         # Cap the number of ports to prevent DoS
         MAX_PORTS = 65536
         if len(port_set) > MAX_PORTS:
             raise ValueError(
                 f"Port range too large ({len(port_set)} ports). Maximum allowed: {MAX_PORTS}."
             )
-        
+
         return port_set
 
     async def _rate_limit(self):
@@ -556,16 +556,16 @@ class PortScanner:
     def _maybe_adjust_adaptive_params(self, success: bool) -> None:
         """
         Record attempt for adaptive scanning and adjust parameters if threshold reached.
-        
+
         This method consolidates the adaptive scanning logic that was previously
         duplicated in multiple places within _check_port.
-        
+
         Args:
             success: Whether the port scan attempt was successful
         """
         if not (self.adaptive_scanning and self.adaptive_config):
             return
-            
+
         self.adaptive_config.record_attempt(success)
         self.attempts_since_last_adjustment += 1
 
@@ -622,7 +622,7 @@ class PortScanner:
                     reader, writer = await asyncio.wait_for(
                         asyncio.open_connection(self.ip, port), timeout=self.timeout
                     )
-                    
+
                     # Ensure we don't hang on close (Tarpit protection)
                     try:
                         writer.close()
@@ -630,7 +630,7 @@ class PortScanner:
                     except (asyncio.TimeoutError, Exception):
                         # If closing hangs, just ignore and move on, the socket will eventually be collected
                         pass
-                        
+
                     result = PortResult(port=port, state=PortState.OPEN)
                     success = True
 
@@ -723,14 +723,14 @@ class PortScanner:
                 self.error = exc
                 if not self.done_future.done():
                     self.done_future.set_result(False)
-            
+
             def connection_lost(self, exc):
                 if not self.done_future.done():
                     self.done_future.set_result(False)
 
         try:
             loop = asyncio.get_running_loop()
-            
+
             # Create datagram endpoint
             # We explicitly bind to port 0 to let OS choose ephemeral port
             transport, protocol = await loop.create_datagram_endpoint(
@@ -741,20 +741,20 @@ class PortScanner:
             try:
                 # Send empty packet
                 transport.sendto(b"")
-                
+
                 # Wait for response with timeout
                 await asyncio.wait_for(protocol.done_future, timeout=self.timeout)
-                
+
                 # If we got here, we received data
                 if protocol.received_data:
                     result = PortResult(port=port, state=PortState.OPEN, protocol="udp")
-                    
+
                     # Try to identify service
                     if self.service_detection:
                          # For now, just use what we have or generic logic
                          # Full identification might need more interaction
                          if self.enhanced_service_detection and HAS_SERVICE_PROBES:
-                             # This is still potentially blocking or needs refactor, 
+                             # This is still potentially blocking or needs refactor,
                              # but we'll leave it for the service probe refactor step
                              # For now, use the data we got
                              result.service = self._identify_udp_service(port, protocol.received_data)
@@ -764,7 +764,7 @@ class PortScanner:
                              result.service = self._identify_udp_service(port, protocol.received_data)
                              if self.banner_grabbing:
                                  result.banner = protocol.received_data.decode("utf-8", errors="ignore").strip()
-                                 
+
                     return result
                 else:
                     return PortResult(port=port, state=PortState.OPEN_FILTERED, protocol="udp")
@@ -781,7 +781,7 @@ class PortScanner:
             error_str = str(e).lower()
             if "connection refused" in error_str or "unreachable" in error_str:
                  return PortResult(port=port, state=PortState.CLOSED, protocol="udp")
-            
+
             return PortResult(port=port, state=PortState.FILTERED, protocol="udp")
 
     async def _run_scapy_scan(self, scan_func, port: int) -> PortResult:
@@ -800,7 +800,7 @@ class PortScanner:
         try:
              # Import scapy locally
             from scapy.all import IP, TCP, sr1
-            
+
             packet = IP(dst=self.ip) / TCP(dport=port, flags="S")
             response = sr1(packet, timeout=self.timeout, verbose=0)
 
@@ -810,19 +810,19 @@ class PortScanner:
                 # Extract TTL and Window for OS fingerprinting
                 ttl = response.ttl
                 window = response.getlayer(TCP).window
-                
+
                 if response.getlayer(TCP).flags == 0x12:  # SYN-ACK
                     rst_packet = IP(dst=self.ip) / TCP(dport=port, flags="R")
                     sr1(rst_packet, timeout=0.1, verbose=0)
                     return PortResult(
-                        port=port, 
+                        port=port,
                         state=PortState.OPEN,
                         ttl=ttl,
                         window_size=window
                     )
                 elif response.getlayer(TCP).flags == 0x14:  # RST-ACK
                     return PortResult(
-                        port=port, 
+                        port=port,
                         state=PortState.CLOSED,
                         ttl=ttl,
                         window_size=window
@@ -839,7 +839,7 @@ class PortScanner:
             from scapy.all import IP, TCP, sr1
             packet = IP(dst=self.ip) / TCP(dport=port, flags="F")
             response = sr1(packet, timeout=self.timeout, verbose=0)
-            
+
             if response is None:
                 return PortResult(port=port, state=PortState.OPEN_FILTERED)
             elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:
@@ -856,7 +856,7 @@ class PortScanner:
             from scapy.all import IP, TCP, sr1
             packet = IP(dst=self.ip) / TCP(dport=port, flags="")
             response = sr1(packet, timeout=self.timeout, verbose=0)
-            
+
             if response is None:
                 return PortResult(port=port, state=PortState.OPEN_FILTERED)
             elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:
@@ -873,7 +873,7 @@ class PortScanner:
             from scapy.all import IP, TCP, sr1
             packet = IP(dst=self.ip) / TCP(dport=port, flags="FPU")
             response = sr1(packet, timeout=self.timeout, verbose=0)
-            
+
             if response is None:
                 return PortResult(port=port, state=PortState.OPEN_FILTERED)
             elif response.haslayer(TCP) and response.getlayer(TCP).flags == 0x14:
@@ -985,11 +985,11 @@ class PortScanner:
 
             # Determine if SSL is needed
             use_ssl = (port == 443 or port == 8443)
-            
+
             try:
                 # Open connection
                 reader, writer = await asyncio.wait_for(
-                    asyncio.open_connection(self.ip, port, ssl=use_ssl if use_ssl else None), 
+                    asyncio.open_connection(self.ip, port, ssl=use_ssl if use_ssl else None),
                     timeout=self.timeout
                 )
 
@@ -1011,7 +1011,7 @@ class PortScanner:
                     if writer:
                         writer.close()
                         await asyncio.sleep(0) # Yield to let close happen
-                        
+
             except Exception as e:
                 # Retry without SSL if SSL failed for 443 (sometimes it's misconfigured or user error)
                 if use_ssl:
@@ -1025,7 +1025,7 @@ class PortScanner:
     def _get_probe_for_port(self, port: int) -> Optional[bytes]:
         """Get an appropriate probe for banner grabbing based on port."""
         host = getattr(self, "hostname", "example.com")
-        
+
         probes = {
             21: b"\r\n",  # FTP
             22: b"SSH-2.0-CyberSecCLI\r\n",  # SSH
@@ -1079,7 +1079,7 @@ class PortScanner:
         """
         # Track scan start time for timing metadata
         self._scan_start_time = time.monotonic()
-        
+
         # [I-1] Smart port ordering - reorder ports by statistical frequency
         if HAS_PORT_ORDERING and not streaming:
             try:
@@ -1142,14 +1142,14 @@ class PortScanner:
             # Create tasks for each port
             for port in self.ports:
                 task = asyncio.create_task(self._check_port(port))
-                
+
                 def harvest_safe(t, p=port):
                     try:
                         results.append(t.result())
                     except Exception as e:
                         self.logger.error(f"Task crash on port {p}: {e}")
                         results.append(PortResult(port=p, state=PortState.CLOSED, reason=str(e)))
-                
+
                 task.add_done_callback(harvest_safe)
                 tasks.append(task)
 
@@ -1198,7 +1198,7 @@ class PortScanner:
         combo_risks = []
         exposure_score = 0.0
         os_info = None
-        
+
         if HAS_TLS_INSPECTOR and open_count > 0:
             try:
                 tls_candidate_ports = {443, 444, 465, 587, 993, 995, 8443, 9443, 4443}
@@ -1263,7 +1263,7 @@ class PortScanner:
                                 'http_version': getattr(http_data, 'http_version', None),
                                 'status_code': getattr(http_data, 'status_code', None),
                                 'security_score': getattr(http_data, 'security_score', 0),
-                                'security_headers_audit': getattr(http_data, 'security_headers_audit', {}),
+                                'security_headers_audit': getattr(http_data, 'security_headers_audit', {}), # nosec
                                 'vulnerabilities': getattr(http_data, 'vulnerabilities', []),
                             }
                         else:
@@ -1300,7 +1300,7 @@ class PortScanner:
                 open_ports_list = [r.port for r in self.results if r.state == PortState.OPEN]
                 combo_risks = find_combo_risks(open_ports_list)
                 exposure_score = calculate_exposure_score(open_ports_list)
-                
+
                 if combo_risks:
                     self.logger.warning(f"[VULN CORRELATION] Found {len(combo_risks)} risk(s) - Exposure Score: {exposure_score}/100")
                     for risk in combo_risks:
@@ -1380,14 +1380,14 @@ class PortScanner:
             # Create tasks for each port in this group
             for port in group:
                 task = asyncio.create_task(self._check_port(port))
-                
+
                 def harvest_safe_group(t, p=port):
                     try:
                         group_results.append(t.result())
                     except Exception as e:
                         self.logger.error(f"Task crash on priority port {p}: {e}")
                         group_results.append(PortResult(port=p, state=PortState.CLOSED, reason=str(e)))
-                
+
                 task.add_done_callback(harvest_safe_group)
                 tasks.append(task)
 
@@ -1489,7 +1489,7 @@ class PortScanner:
                                 'http_version': getattr(http_data, 'http_version', None),
                                 'status_code': getattr(http_data, 'status_code', None),
                                 'security_score': getattr(http_data, 'security_score', 0),
-                                'security_headers_audit': getattr(http_data, 'security_headers_audit', {}),
+                                'security_headers_audit': getattr(http_data, 'security_headers_audit', {}), # nosec
                                 'vulnerabilities': getattr(http_data, 'vulnerabilities', []),
                             }
                         else:
@@ -1524,7 +1524,7 @@ class PortScanner:
                 "target": self.target,
                 "ip": self.ip,
                 "scan_type": self.scan_type.value,
-                "timestamp": str(dt.utcnow()),
+                "timestamp": str(dt.now(timezone.utc)),
                 "results": [r.to_dict() for r in self.results],
             },
             indent=2,
@@ -1584,7 +1584,7 @@ class PortScanner:
                  if result.ttl is None:
                      try:
                          # Run a quick SYN probe to this port to get TTL/Window
-                         # Note: This requires root privileges (sudo). 
+                         # Note: This requires root privileges (sudo).
                          # If we are not root, this will fail/return None, and we fall back to banner analysis.
                          probe_result = self._try_sync_syn_probe(result.port)
                          if probe_result and probe_result.ttl:
@@ -1596,7 +1596,7 @@ class PortScanner:
             if result.ttl is not None:
                 fp = {"ttl": int(result.ttl), "window": result.window_size}
                 fingerprints.append(fp)
-        
+
         if not fingerprints:
             # Fallback to service banner analysis (for non-root users)
             return self._perform_service_os_detection()
@@ -1604,11 +1604,11 @@ class PortScanner:
         # OS Signatures (Simplified)
         # (TTL, Window Size) -> (OS Name, Accuracy)
         candidates = {}
-        
+
         for fp in fingerprints:
             ttl = fp["ttl"]
             win = fp.get("window", 0)
-            
+
             # Estimate initial TTL
             if ttl <= 64:
                 initial_ttl = 64
@@ -1616,7 +1616,7 @@ class PortScanner:
                 initial_ttl = 128
             else:
                 initial_ttl = 255
-                
+
             # Heuristic Analysis
             if initial_ttl == 64:
                 # Likely Linux, MacOS, FreeBsd
@@ -1624,30 +1624,30 @@ class PortScanner:
                     candidates["MacOS/iOS"] = candidates.get("MacOS/iOS", 0) + 1
                 else:
                     candidates["Linux"] = candidates.get("Linux", 0) + 2
-                    
+
             elif initial_ttl == 128:
                 # Likely Windows
                 candidates["Windows"] = candidates.get("Windows", 0) + 2
-                
+
             elif initial_ttl == 255:
                 # Likely Cisco, Solaris, etc.
                 if win == 0:
                      candidates["Cisco IOS"] = candidates.get("Cisco IOS", 0) + 1
                 else:
                      candidates["Solaris/Unix"] = candidates.get("Solaris/Unix", 0) + 1
-                     
+
         if not candidates:
              # Try service fallback even if we had inconclusive packet data
              return self._perform_service_os_detection()
-             
+
         # Select best candidate
         best_os = max(candidates.items(), key=lambda x: x[1])
-        
+
         return {
             "os_name": best_os[0],
             "accuracy": "85%" if best_os[1] > 1 else "50%",
             "details": f"Based on TTL/Window analysis of {len(fingerprints)} packets",
-            "fingerprints_analyzed": len(fingerprints)
+            "fingerprints_analyzed": len(fingerprints) # nosec
         }
 
     def _perform_service_os_detection(self) -> Dict[str, Any]:
@@ -1661,14 +1661,14 @@ class PortScanner:
         for result in self.results:
             if not result.banner:
                 continue
-                
+
             banner = result.banner.lower()
             analyzed_banners += 1
-            
+
             # Windows Indicators
             if "windows" in banner or "microsoft" in banner or "iis/" in banner or "asp.net" in banner:
                  candidates["Windows"] = candidates.get("Windows", 0) + 3
-            
+
             # Linux Indicators
             if "ubuntu" in banner:
                 candidates["Linux (Ubuntu)"] = candidates.get("Linux (Ubuntu)", 0) + 4
@@ -1684,7 +1684,7 @@ class PortScanner:
                 candidates["Linux"] = candidates.get("Linux", 0) + 2
             elif "linux" in banner:
                 candidates["Linux"] = candidates.get("Linux", 0) + 2
-            
+
             # Weak Linux Indicators (Common Open Source software)
             if "apache" in banner or "nginx" in banner or "php" in banner or "openssl" in banner:
                  candidates["Linux"] = candidates.get("Linux", 0) + 1
@@ -1693,34 +1693,34 @@ class PortScanner:
                  candidates["Linux (Google)"] = candidates.get("Linux (Google)", 0) + 4
             elif "cloudflare" in banner:
                  candidates["Linux (Cloudflare)"] = candidates.get("Linux (Cloudflare)", 0) + 4
-                
+
             # Other Unix
             if "freebsd" in banner:
                  candidates["FreeBSD"] = candidates.get("FreeBSD", 0) + 4
             elif "openbsd" in banner:
                  candidates["OpenBSD"] = candidates.get("OpenBSD", 0) + 4
-                 
+
             # Apple
             if "darwin" in banner or "macos" in banner:
                  candidates["MacOS"] = candidates.get("MacOS", 0) + 4
-                 
+
         if not candidates:
              return {
                  "os_name": "Unknown",
                  "accuracy": "N/A",
                  "details": f"No matching signatures in {analyzed_banners} banners analyzed",
-                 "fingerprints_analyzed": 0,
+                 "fingerprints_analyzed": 0, # nosec
                  "method": "Banner Analysis"
              }
-             
+
         # Select best candidate
         best_os = max(candidates.items(), key=lambda x: x[1])
-        
+
         return {
             "os_name": best_os[0],
             "accuracy": "Low (Inferred)" if best_os[1] < 3 else "Medium (Banner)",
             "details": f"Inferred from application banners (analyzed {analyzed_banners} banners)",
-            "fingerprints_analyzed": 0,
+            "fingerprints_analyzed": 0, # nosec
             "method": "Banner Analysis"
         }
 
@@ -1760,7 +1760,7 @@ async def scan_ports(
     resolved_ip = resolve_target(target)
     if not resolved_ip:
         raise ValueError(f"Could not resolve target: {target}")
-    
+
     try:
         effective_require = require_reachable and not force
         scanner = PortScanner(

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -31,7 +31,7 @@ WORKDIR /app
 # Copy dependency manifests first (better cache reuse)
 COPY requirements.txt ./
 COPY web/requirements.txt ./web_requirements.txt
-COPY setup.py .
+COPY pyproject.toml .
 COPY README.md .
 
 # Copy application code

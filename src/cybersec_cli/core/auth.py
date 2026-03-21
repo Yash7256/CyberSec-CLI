@@ -6,7 +6,7 @@ import logging
 import os
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
@@ -56,6 +56,7 @@ def _get_primary_salt() -> str:
     Fails fast if unset or weak so we never silently rotate salts on restart.
     """
 
+    # SECURITY: API_KEY_SALT must be provided securely via environment; never hardcode.
     salt = os.environ.get("API_KEY_SALT", "")
     if not salt:
         raise RuntimeError(
@@ -86,6 +87,7 @@ def _get_previous_salt() -> str:
     Ignored if unset or weak. Never generated automatically.
     """
 
+    # SECURITY: Previous salt is optional and should only be set during migrations.
     salt = os.environ.get("API_KEY_SALT_PREVIOUS", "")
     if not salt:
         return ""
@@ -158,13 +160,13 @@ class APIKeyAuth:
         hashed_key = self._hash_key(api_key)
 
         # Prepare key data
-        expires_at = datetime.utcnow()
+        expires_at = datetime.now(timezone.utc)
         if ttl:
             expires_at = expires_at + timedelta(seconds=ttl)
 
         key_data = {
             "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": expires_at.isoformat(),
             "scopes": scopes or [],
             "api_metadata": metadata or {},
@@ -230,7 +232,7 @@ class APIKeyAuth:
         if expires_at_str:
             try:
                 exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                if datetime.utcnow() > exp_dt.replace(tzinfo=None):
+                if datetime.now(timezone.utc) > exp_dt:
                     if self.redis_client:
                         self.redis_client.delete(f"api_key:{hashed_primary}")
                     return None
@@ -242,7 +244,7 @@ class APIKeyAuth:
             key=api_key,
             user_id=key_data.get("user_id", ""),
             created_at=datetime.fromisoformat(
-                key_data.get("created_at", datetime.utcnow().isoformat())
+                key_data.get("created_at", datetime.now(timezone.utc).isoformat()).replace("Z", "+00:00")
             ),
             expires_at=(
                 datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
@@ -306,10 +308,11 @@ class APIKeyAuth:
             Hashed key string
         """
         chosen_salt = salt or _get_primary_salt()
+        # SECURITY: Uses SHA-256 with a per-deployment salt; keep salt secret and stable.
         return _hash_with_salt(api_key, chosen_salt)
 
     def _fetch_key_data(self, hashed_key: str) -> Optional[str]:
-        """Fetch stored key data by hashed key."""
+        """Fetch stored key data by hashed key from Redis or in-memory fallback."""
 
         if not self.redis_client:
             logger.warning(
@@ -349,7 +352,7 @@ class APIKeyAuth:
         if expires_at_str:
             try:
                 exp_dt = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
-                remaining = (exp_dt.replace(tzinfo=None) - datetime.utcnow()).total_seconds()
+                remaining = (exp_dt - datetime.now(timezone.utc)).total_seconds()
                 if remaining <= 0:
                     # Already expired; remove the old key and skip re-store
                     self.redis_client.delete(f"api_key:{old_hash}")
@@ -474,7 +477,7 @@ try:
         id = Column(String, primary_key=True)
         user_id = Column(String, nullable=False)
         hashed_key = Column(String, nullable=False, unique=True)
-        created_at = Column(DateTime, default=datetime.utcnow)
+        created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
         expires_at = Column(DateTime)
         scopes = Column(Text)  # JSON string of scopes
         api_metadata = Column(Text)  # JSON string of metadata

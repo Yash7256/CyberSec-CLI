@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Cybersec CLI - Main entry point for the cybersecurity assistant.
+Module: cybersec_cli.main
+Description: Main entry point for the CyberSec CLI interactive application.
+              Provides an interactive terminal UI for network scanning,
+              security analysis, and AI-powered threat detection.
+
+Dependencies:
+    - click: CLI framework
+    - rich: Terminal UI formatting
+    - cybersec_cli.config: Configuration management
+    - cybersec_cli.commands: CLI command handlers
+
+Usage:
+    Run as module: python -m cybersec_cli
+    Run directly: python src/cybersec_cli/main.py
+    Install and run: cybersec
+
+Entry Points:
+    - Interactive mode: Default - shows rich UI with banner and command prompt
+    - Batch mode: Pass scan targets as arguments
+
+Environment Variables:
+    - Load from .env file via cybersec_cli.config
+    - See config.py for all configurable options
 """
 import asyncio
 import logging
@@ -17,6 +39,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+# SECURITY: settings may include API keys and secrets loaded from environment; avoid logging.
 from cybersec_cli.config import settings
 from cybersec_cli.ui.banner import get_banner_content
 from cybersec_cli.ui.themes import load_theme
@@ -38,18 +61,26 @@ except ImportError as e:
 
 class CyberSecCLI:
     def __init__(self):
+        """Initialize CLI state containers and layout holder."""
         self.running = True
         self.current_context = {}
         self.command_history = []
         self.layout = None
 
     async def start(self):
-        """Start the interactive CLI session."""
+        """Start the interactive CLI session.
+
+        Builds the initial layout and enters the async REPL loop until the user exits.
+        Side effects: initializes Rich Live display and prompt history file.
+        """
         self.setup_layout()
         await self.interactive_loop()
 
     def setup_layout(self):
-        """Set up the Rich layout with banner and content areas."""
+        """Set up the Rich layout with banner and content areas.
+
+        Composes header/content/footer panels and seeds initial welcome text.
+        """
         from rich.layout import Layout
         from rich.panel import Panel
         from rich.text import Text
@@ -98,7 +129,11 @@ class CyberSecCLI:
         self.layout["footer"].update(Text.from_markup(f"[dim]{status}[/]"))
 
     async def interactive_loop(self):
-        """Main interactive loop for the CLI."""
+        """Main interactive loop for the CLI.
+
+        Reads user input with prompt_toolkit, renders Rich layout, and dispatches
+        commands via register_commands handlers. Persists history to ~/.cybersec_history.
+        """
         from prompt_toolkit import PromptSession
         from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
         from prompt_toolkit.history import FileHistory

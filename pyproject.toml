@@ -1,19 +1,39 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "cybersec-cli"
 version = "1.0.0"
-description = "Cybersecurity CLI tool for network scanning and vulnerability assessment"
+description = "AI-Powered Cybersecurity Assistant CLI"
+requires-python = ">=3.10"
+readme = "README.md"
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.28.0",
+    "python-nmap>=0.7.1",
+    "scapy>=2.5.0",
+    "cryptography>=41.0.0",
+    "tqdm>=4.65.0",
+    "pyfiglet>=1.0.0",
+    "prompt-toolkit>=3.0.0",
+    "colorama>=0.4.0",
+    "sqlalchemy>=2.0.0",
+    "aiohttp>=3.8.0",
+    "python-jose>=3.3.0",
+    "tabulate>=0.9.0",
+    "pydantic>=2.0.0",
+]
+
+[project.scripts]
+cybersec = "cybersec_cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.bandit]
 exclude_dirs = ["tests", "benchmarks", "node_modules", ".venv", "venv", "scripts"]
 targets = ["src", "web"]
-skip = [
-    "B101",  # assert used for testing
-    "B403",  # blacklist for pickle
-    "B404",  # subprocess is used intentionally for CLI operations
-    "B603",  # subprocess.run without shell=True
-    "B604",  # subprocess with shell=True
-    "B110",  # try/except/pass in API error handling
-    "B112",  # try/except/continue in data parsing
-    "B104",  # hardcoded bind to 0.0.0.0 (CLI tool)
-    "B311",  # random module for testing/demo data
-]
+skip = ["B101","B403","B404","B603","B604","B110","B112","B104","B311"]

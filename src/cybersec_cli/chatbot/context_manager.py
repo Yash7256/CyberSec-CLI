@@ -6,7 +6,7 @@ Manages session state, tool execution, and context preservation.
 import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -35,15 +35,15 @@ class SessionState(BaseModel):
     """Represents the state of a user session."""
 
     session_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    last_active: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    last_active: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     context: Dict[str, Any] = Field(default_factory=dict)
     active_tools: List[str] = Field(default_factory=list)
     preferences: Dict[str, Any] = Field(default_factory=dict)
 
     def update_activity(self):
         """Update the last active timestamp."""
-        self.last_active = datetime.utcnow()
+        self.last_active = datetime.now(timezone.utc)
 
     def to_dict(self) -> Dict:
         """Convert session state to dictionary."""
@@ -188,10 +188,10 @@ class ContextManager:
             )
 
         # Execute the tool
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         try:
             result = await tool["function"](**parameters)
-            execution_time = (datetime.utcnow() - start_time).total_seconds()
+            execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
 
             return ToolResult(
                 success=True,
@@ -206,7 +206,7 @@ class ContextManager:
                 success=False,
                 output=None,
                 error=str(e),
-                execution_time=(datetime.utcnow() - start_time).total_seconds(),
+                execution_time=(datetime.now(timezone.utc) - start_time).total_seconds(),
                 metadata={"tool": tool_name},
             )
 

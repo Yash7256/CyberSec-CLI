@@ -3,7 +3,7 @@ Port analysis module for cybersecurity scanning results.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 
@@ -221,7 +221,7 @@ def analyze_scan_results(open_ports: List[PortResult]) -> List[Dict[str, Any]]:
             finding["service"] = port_result.service
             finding["banner"] = port_result.banner
             finding["state"] = port_result.state
-            finding["last_updated"] = datetime.utcnow().isoformat()
+            finding["last_updated"] = datetime.now(timezone.utc).isoformat()
             findings.append(finding)
 
         # Check for suspicious services on non-standard ports

@@ -1,3 +1,21 @@
+"""
+Module: api/main.py
+Description: Lightweight FastAPI API server for CyberSec CLI.
+              Provides WebSocket connectivity and basic health endpoints.
+              Note: This is a minimal API - the main web server is in web/main.py.
+
+Dependencies:
+    - fastapi: Web framework
+    - uvicorn: ASGI server
+
+Usage:
+    Run: uvicorn api.main:app --host 0.0.0.0 --port 8000
+    Or: python -m api.main
+
+Environment Variables:
+    - ALLOWED_ORIGINS: CORS allowed origins (comma-separated)
+"""
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -6,15 +24,17 @@ import logging
 import os
 from typing import List
 
-# Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="CyberSec CLI API",
-              description="API for CyberSec CLI application",
-              version="1.0.0")
+app = FastAPI(
+    title="CyberSec CLI API",
+    description="Lightweight API for CyberSec CLI - WebSocket and health endpoints",
+    version="1.0.0"
+)
 
 # CORS middleware - load allowed origins from environment
+# SECURITY: Origins list controls which browsers may send credentialed requests.
 # Format: ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "")
 origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
@@ -40,13 +60,16 @@ class ConnectionManager:
         self.active_connections: List[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
+        """Accept and register a new WebSocket connection."""
         await websocket.accept()
         self.active_connections.append(websocket)
 
     async def disconnect(self, websocket: WebSocket):
+        """Remove a WebSocket connection from the active list."""
         self.active_connections.remove(websocket)
 
     async def broadcast(self, message: str):
+        """Send a text message to all active connections, pruning failures."""
         for connection in self.active_connections:
             try:
                 await connection.send_text(message)
@@ -62,11 +85,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 # Health check endpoint
 @app.get("/health")
 async def health_check():
+    """Simple liveness probe for orchestration/monitoring."""
     return {"status": "healthy"}
 
 # WebSocket endpoint
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """Echo/broadcast WebSocket endpoint for real-time messaging."""
     await manager.connect(websocket)
     try:
         while True:

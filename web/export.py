@@ -6,7 +6,7 @@ Provides functions to generate and serve reports in different formats.
 import csv
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Dict, Optional
@@ -41,7 +41,7 @@ def export_scan_json(
     try:
         report = {
             "target": target,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00"),
             "scan_output": scan_output,
             "enrichment": enrichment or {},
         }
@@ -64,7 +64,7 @@ def export_scan_csv(
 
         # Basic info
         writer.writerow(["Target", target])
-        writer.writerow(["Timestamp", datetime.utcnow().isoformat() + "Z"])
+        writer.writerow(["Timestamp", datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")])
         writer.writerow(["", ""])
 
         # Scan output (first few lines as summary)
@@ -130,7 +130,7 @@ def export_scan_pdf(
         story.append(Paragraph(f"<b>Target:</b> {target}", meta_style))
         story.append(
             Paragraph(
-                f'<b>Timestamp:</b> {datetime.utcnow().isoformat() + "Z"}', meta_style
+                f'<b>Timestamp:</b> {datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")}', meta_style
             )
         )
         story.append(Spacer(1, 0.2 * inch))
@@ -190,7 +190,7 @@ def save_report(
     try:
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         safe_target = target.replace(".", "_").replace("/", "_")
 
         if fmt == "json":

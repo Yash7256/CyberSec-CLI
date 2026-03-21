@@ -6,7 +6,7 @@ import logging
 import os
 import sys
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
@@ -20,7 +20,7 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record):
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00"),
             "level": record.levelname,
             "component": getattr(record, "component", "unknown"),
             "message": record.getMessage(),
@@ -91,7 +91,7 @@ class AuditLogHandler(logging.Handler):
         """Write audit log entry to file"""
         try:
             log_entry = {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00"),
                 "level": record.levelname,
                 "component": getattr(record, "component", "audit"),
                 "message": record.getMessage(),

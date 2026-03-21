@@ -7,7 +7,7 @@ import json
 import logging
 import signal
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Set
 
 import click
@@ -153,7 +153,7 @@ class AnomalyMonitor:
     def _generate_json_report(self) -> str:
         """Generate a JSON report of detected anomalies."""
         report = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "runtime_seconds": time.time() - self.stats["start_time"],
             "interface": self.interface,
             "anomalies_detected": self.stats["anomalies_detected"],

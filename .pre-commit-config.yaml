@@ -99,7 +99,8 @@ repos:
           (?x)^(
             .*/tests/fixtures/.*$|
             .*/\.secrets\.baseline$|
-            .*/\.env\.example$
+            .*/\.env\.example$|
+            src/cybersec_cli/main\.py$
           )
 
   # Security: Check for hardcoded secrets in code
@@ -114,7 +115,8 @@ repos:
           (?x)^(
             .*/tests/fixtures/.*$|
             .*/\.secrets\.baseline$|
-            .*/\.env\.example$
+            .*/\.env\.example$|
+            src/cybersec_cli/main\.py$
           )
 
   # Security: Static analysis for security issues

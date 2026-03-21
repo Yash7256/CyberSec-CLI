@@ -1,4 +1,3 @@
-version: '3.8'
 
 services:
   redis:
@@ -176,7 +175,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/info"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -190,7 +189,7 @@ services:
     user: "1000:1000"  # Match the cybersec user UID
 
   nginx:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     container_name: cybersec-nginx
     ports:
       - "80:80"
@@ -213,7 +212,7 @@ services:
       start_period: 40s
 
   redis-exporter:
-    image: oliver006/redis_exporter:latest
+    image: oliver006/redis_exporter:v1.62.0
     container_name: cybersec-redis-exporter
     environment:
       - REDIS_ADDR=${REDIS_ADDR:-redis:6379}
@@ -228,7 +227,7 @@ services:
   postgres-exporter:
     # Pinned — to upgrade: check https://github.com/prometheus-community/postgres_exporter/releases
     # Last reviewed: 2026-03-20
-    image: prometheuscommunity/postgres-exporter:v0.15.1
+    image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: cybersec-postgres-exporter
     environment:
       - DATA_SOURCE_NAME=${DATA_SOURCE_NAME:-postgresql://cybersec:cybersec123@postgres:5432/cybersec?sslmode=disable}
@@ -244,7 +243,7 @@ services:
     # Pinned — to upgrade: check https://github.com/prometheus/prometheus/releases
     # Prometheus v3 available — test thoroughly before upgrading
     # Last reviewed: 2026-03-20
-    image: prom/prometheus:v2.51.2
+    image: prom/prometheus:v2.48.1
     container_name: cybersec-prometheus
     ports:
       - "9090:9090"
@@ -270,14 +269,15 @@ services:
     # Pinned — to upgrade: check https://github.com/grafana/grafana/releases
     # Grafana has breaking changes between minor versions — test dashboards in staging first
     # Last reviewed: 2026-03-20
-    image: grafana/grafana-enterprise:11.3.0
+    image: grafana/grafana:11.3.0
     container_name: cybersec-grafana
     ports:
       - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.yml
-      - ./monitoring/alerts.yml:/etc/grafana/provisioning/alerting/alerts.yml
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana-provisioning.yml:/etc/grafana/provisioning/dashboards/dashboard.yml
+      - ./monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/dashboard.json
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false

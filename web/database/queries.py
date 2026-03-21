@@ -4,6 +4,7 @@ All functions return dicts, not sqlite3.Row objects.
 """
 
 import sqlite3
+from web.database.connection import get_sqlite_conn
 from typing import Optional, List, Dict, Any
 
 
@@ -22,19 +23,20 @@ def list_scans(
     """
     conditions = []
     params = []
-    
+
     if user_id:
+        # SECURITY: Enforce user scoping so callers only see their own scans.
         conditions.append("s.user_id = ?")
         params.append(user_id)
-    
+
     if target:
         conditions.append("s.target LIKE ?")
         params.append(f"%{target}%")
-    
+
     if min_cvss is not None:
         conditions.append("ss.max_cvss_score >= ?")
         params.append(min_cvss)
-    
+
     if severity:
         col_map = {
             "CRITICAL": "ss.critical_count",
@@ -45,16 +47,16 @@ def list_scans(
         col = col_map.get(severity.upper())
         if col:
             conditions.append(f"{col} > 0")
-    
+
     if has_cves is not None:
         conditions.append("ss.has_cves = ?")
         params.append(1 if has_cves else 0)
-    
+
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     params.append(limit)
-    
-    query = f"""
-        SELECT 
+
+    query = f"""  # nosec B608
+        SELECT
             s.uuid, s.timestamp, s.target, s.ip, s.command,
             s.scan_type, s.status, s.output_format,
             ss.open_port_count, ss.max_cvss_score,
@@ -67,7 +69,7 @@ def list_scans(
         ORDER BY s.id DESC
         LIMIT ?
     """
-    
+
     c = conn.cursor()
     c.execute(query, params)
     cols = [d[0] for d in c.description]
@@ -84,9 +86,10 @@ def get_scan_detail(
     Does NOT load raw_output blob — reconstructs from normalized tables.
     """
     c = conn.cursor()
-    
+
     # Get scan + summary
     if user_id:
+        # SECURITY: Restrict detail fetch to caller's scans unless user_id is null.
         c.execute("""
             SELECT s.*, ss.*
             FROM scans s
@@ -100,19 +103,19 @@ def get_scan_detail(
             LEFT JOIN scan_summary ss ON ss.scan_id = s.id
             WHERE s.uuid = ?
         """, (scan_uuid,))
-    
+
     row = c.fetchone()
     if not row:
         return None
-    
+
     cols = [d[0] for d in c.description]
     scan = dict(zip(cols, row))
     scan_id = scan["id"]
-    
+
     # For text-format scans, return raw_output directly
     if scan.get("output_format") == "text":
         return {"uuid": scan_uuid, "output": scan.get("raw_output", "")}
-    
+
     # Get ports
     c.execute("""
         SELECT id, port, protocol, service, version, banner,
@@ -123,13 +126,13 @@ def get_scan_detail(
     """, (scan_id,))
     port_cols = [d[0] for d in c.description]
     ports = [dict(zip(port_cols, r)) for r in c.fetchall()]
-    
+
     # Get CVEs per port
     port_ids = [p["id"] for p in ports]
     cve_map = {}
     if port_ids:
         placeholders = ",".join("?" * len(port_ids))
-        c.execute(f"""
+        c.execute(f"""  # nosec B608
             SELECT port_id, cve_id, cvss_score, severity
             FROM scan_cves
             WHERE port_id IN ({placeholders})
@@ -141,12 +144,12 @@ def get_scan_detail(
                 "cvss_score": cvss,
                 "severity": sev,
             })
-    
+
     # Attach CVEs to ports
     for port in ports:
         port["vulnerabilities"] = cve_map.get(port["id"], [])
         del port["id"]  # Internal ID not needed in response
-    
+
     return {
         "uuid":     scan_uuid,
         "target":   scan["target"],
@@ -176,8 +179,8 @@ def get_scan_stats(conn: sqlite3.Connection, user_id: Optional[str] = None) -> D
     c = conn.cursor()
     where = "WHERE s.user_id = ?" if user_id else ""
     params = [user_id] if user_id else []
-    
-    c.execute(f"""
+
+    c.execute(f"""  # nosec B608
         SELECT
             COUNT(DISTINCT s.id)            AS total_scans,
             SUM(ss.open_port_count)         AS total_open_ports,
@@ -189,7 +192,7 @@ def get_scan_stats(conn: sqlite3.Connection, user_id: Optional[str] = None) -> D
         LEFT JOIN scan_summary ss ON ss.scan_id = s.id
         {where}
     """, params)
-    
+
     cols = [d[0] for d in c.description]
     row = c.fetchone()
     return dict(zip(cols, row)) if row else {}
@@ -214,6 +217,7 @@ def create_scan_record(
     command: str,
     user_id: Optional[str] = None,
     scan_type: Optional[str] = None,
+    scan_uuid: Optional[str] = None,
 ) -> tuple:
     """
     Create a placeholder scan row at scan START.
@@ -221,23 +225,23 @@ def create_scan_record(
     Status is 'running' until finalized.
     """
     import uuid as uuid_lib
-    from datetime import datetime
-    
-    scan_uuid = str(uuid_lib.uuid4())
-    ts = datetime.utcnow().isoformat() + "Z"
-    
-    with sqlite3.connect(db_path) as conn:
+    from datetime import datetime, timezone
+
+    scan_uuid = scan_uuid or str(uuid_lib.uuid4())
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+
+    with get_sqlite_conn(db_path) as conn:
         c = conn.cursor()
         c.execute("""
-            INSERT INTO scans 
-            (uuid, user_id, timestamp, target, ip, command, 
+            INSERT INTO scans
+            (uuid, user_id, timestamp, target, ip, command,
              scan_type, status, schema_version, output_format)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'running', 2, 'json')
-        """, (scan_uuid, user_id, ts, target, ip or "", 
+        """, (scan_uuid, user_id, ts, target, ip or "",
               command, scan_type))
         scan_id = c.lastrowid
         conn.commit()
-    
+
     return scan_uuid, scan_id
 
 
@@ -250,7 +254,7 @@ def save_port_result(
     Save a single open port result immediately when discovered.
     Returns port_id (scan_ports.id).
     Called once per open port during scanning.
-    
+
     port_data keys (all optional except port):
         port, protocol, service, version, banner,
         risk, cvss_score, confidence,
@@ -277,13 +281,13 @@ def save_port_result(
         risk = str(risk_raw) if risk_raw else ""
     cvss   = float(port_data.get("cvss_score") or 0.0)
     conf   = float(port_data.get("confidence") or 0.0)
-    
+
     tls    = port_data.get("tls_info") or {}
     tls_ver = tls.get("tls_version") if tls else None
-    
+
     http   = port_data.get("http_info") or {}
     http_st = http.get("status_code") if http else None
-    
+
     risk_map = {
         "critical": "CRITICAL", "high": "HIGH",
         "medium": "MEDIUM",     "low": "LOW",
@@ -291,10 +295,10 @@ def save_port_result(
         "MEDIUM": "MEDIUM",     "LOW": "LOW",
     }
     norm_risk = risk_map.get(risk, risk or "LOW")
-    
-    with sqlite3.connect(db_path) as conn:
+
+    with get_sqlite_conn(db_path) as conn:
         c = conn.cursor()
-        
+
         c.execute("""
             INSERT INTO scan_ports
             (scan_id, port, protocol, service, version, banner,
@@ -303,7 +307,7 @@ def save_port_result(
         """, (scan_id, port, proto, svc, ver, banner,
               norm_risk, cvss, conf, tls_ver, http_st))
         port_id = c.lastrowid
-        
+
         vulns = port_data.get("vulnerabilities") or []
         for cve in vulns:
             if not cve:
@@ -314,23 +318,23 @@ def save_port_result(
             else:
                 cve_id   = cve.get("cve_id", "")
                 cve_cvss = float(cve.get("cvss_score") or cvss)
-            
+
             if not cve_id:
                 continue
-            
+
             if cve_cvss >= 9.0:   sev = "CRITICAL"
             elif cve_cvss >= 7.0: sev = "HIGH"
             elif cve_cvss >= 4.0: sev = "MEDIUM"
             else:                 sev = "LOW"
-            
+
             c.execute("""
-                INSERT INTO scan_cves 
+                INSERT INTO scan_cves
                 (port_id, scan_id, cve_id, cvss_score, severity)
                 VALUES (?, ?, ?, ?, ?)
             """, (port_id, scan_id, cve_id, cve_cvss, sev))
-        
+
         conn.commit()
-    
+
     return port_id
 
 
@@ -346,9 +350,9 @@ def finalize_scan(
     - Saves raw_output if provided
     - Rebuilds scan_summary from actual scan_ports rows
     """
-    with sqlite3.connect(db_path) as conn:
+    with get_sqlite_conn(db_path) as conn:
         c = conn.cursor()
-        
+
         c.execute("""
             SELECT
                 COUNT(*)                                    AS open_port_count,
@@ -361,12 +365,13 @@ def finalize_scan(
         """, (scan_id,))
         row = c.fetchone()
         open_count, max_cvss, crit, high, med, low = row
-        
+
+        # Inline summary rebuild ensures derived metrics stay consistent with scan_ports rows.
         c.execute("""
             SELECT COUNT(*) FROM scan_cves WHERE scan_id = ?
         """, (scan_id,))
         cve_count = c.fetchone()[0]
-        
+
         c.execute("""
             INSERT OR REPLACE INTO scan_summary
             (scan_id, open_port_count, max_cvss_score,
@@ -376,10 +381,10 @@ def finalize_scan(
         """, (scan_id, open_count, round(max_cvss, 2),
               crit, high, med, low,
               cve_count, 1 if cve_count > 0 else 0))
-        
+
         if raw_output:
             c.execute("""
-                UPDATE scans 
+                UPDATE scans
                 SET status = ?, raw_output = ?
                 WHERE id = ?
             """, (status, raw_output, scan_id))
@@ -387,5 +392,5 @@ def finalize_scan(
             c.execute("""
                 UPDATE scans SET status = ? WHERE id = ?
             """, (status, scan_id))
-        
+
         conn.commit()

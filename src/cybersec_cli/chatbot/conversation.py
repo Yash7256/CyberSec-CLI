@@ -5,7 +5,7 @@ Handles conversation history and context management.
 
 import json
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Deque, Dict, List
 
@@ -17,7 +17,7 @@ class Message(BaseModel):
 
     role: str  # 'system', 'user', 'assistant', or 'tool'
     content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict = Field(default_factory=dict)
 
     def to_dict(self) -> Dict:
@@ -79,7 +79,7 @@ class Conversation:
             "messages": [msg.to_dict() for msg in self.messages],
             "context": self.context,
             "metadata": {
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "message_count": len(self.messages),
             },
         }

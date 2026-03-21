@@ -36,7 +36,7 @@ def run_async(coro):
 def _get_db_path() -> str:
     """Get the scans DB path — mirrors web/main.py SCANS_DB."""
     reports_dir = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), 
+        os.path.dirname(os.path.dirname(__file__)),
         "reports"
     )
     return os.path.join(reports_dir, "scans.db")
@@ -128,12 +128,14 @@ logger = get_logger("celery") if HAS_STRUCTURED_LOGGING else logging.getLogger(_
 
 
 def _safe_start_timer() -> float:
+    """Start a monotonic timer using whichever start_timer implementation is available."""
     timer_fn = start_timer
     assert callable(timer_fn)
     return timer_fn()
 
 
 def _safe_stop_timer(start_time: float) -> float:
+    """Stop a timer previously started with _safe_start_timer and return elapsed seconds."""
     timer_fn = stop_timer
     assert callable(timer_fn)
     return timer_fn(start_time)
@@ -186,12 +188,12 @@ def _parse_ports_spec(ports: str) -> List[int]:
             logger.warning(f"Invalid port value skipped: {ports!r}")
             return []
         port_list = [port]
-    
+
     if len(port_list) > MAX_PORTS:
         raise ValueError(
             f"Port range too large ({len(port_list)} ports). Maximum allowed: {MAX_PORTS}."
         )
-    
+
     return port_list
 
 
@@ -199,6 +201,7 @@ class ScanTask(Task):
     """Base class for scan tasks with common functionality."""
 
     def __init__(self):
+        """Store per-task context so Celery can access target/port state."""
         self.scan_id = None
         self.target = None
         self.ports = None
@@ -247,6 +250,7 @@ async def _perform_scan_task_async(
                 ip=None,
                 command=f"scan {target} --ports {ports}",
                 scan_type=config.get("scan_type", "tcp_connect") if config else "tcp_connect",
+                scan_uuid=scan_id,
             )
             logger.info(f"Created scan record {scan_uuid_db} for task {scan_id}")
         except Exception as e:
@@ -467,7 +471,7 @@ async def _perform_scan_task_async(
                         ),
                     }
                     all_results.append(port_info)
-                    
+
                     # SAVE TO DB immediately for streaming writes
                     if HAS_DB_MODULES and scan_id_db:
                         try:
@@ -583,7 +587,7 @@ async def _perform_scan_task_async(
         raise self.retry(exc=exc, countdown=60, max_retries=3)
 
 
-@celery_app.task(bind=True, base=ScanTask, max_retries=3)
+@celery_app.task(bind=True, base=ScanTask, max_retries=3, soft_time_limit=120, time_limit=150)
 def perform_scan_task(
     self,
     scan_id: str,
@@ -591,4 +595,9 @@ def perform_scan_task(
     ports: str = "1-1000",
     config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    """Celery wrapper to run the async scan task in a synchronous worker context.
+
+    Dispatches to `_perform_scan_task_async` and returns its result.
+    Retries are handled via Celery (max_retries=3).
+    """
     return run_async(_perform_scan_task_async(self, scan_id, target, ports, config))

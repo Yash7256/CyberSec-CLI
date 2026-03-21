@@ -1,7 +1,32 @@
+"""
+Module: web/main.py
+Description: Main FastAPI web server for CyberSec CLI web interface.
+              Provides REST API endpoints, WebSocket streaming, and serves
+              the frontend UI for the cybersecurity scanning platform.
+
+Dependencies:
+    - fastapi: Web framework
+    - asyncpg: PostgreSQL async driver (optional)
+    - sqlite3: Local database
+    - src.cybersec_cli: Core scanning logic
+
+Usage:
+    Run directly: python web/main.py
+    Or via uvicorn: uvicorn web.main:app --host 0.0.0.0 --port 8000
+    Or via Docker: docker-compose up web
+
+Environment Variables:
+    - DATABASE_URL: PostgreSQL connection string
+    - SECRET_KEY: Web server secret
+    - API_KEY_SALT: Salt for API key hashing
+    - REDIS_URL: Redis connection for caching
+    - ALLOWED_ORIGINS: CORS allowed origins (comma-separated)
+"""
+
 import asyncio
 try:
     import asyncpg
-except ImportError:  # Optional dependency for PostgreSQL support
+except ImportError:
     asyncpg = None
 import functools
 import hmac
@@ -18,7 +43,7 @@ import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
@@ -59,12 +84,14 @@ PORT_MITRE_MAP = {
 
 
 def _timing_safe_compare(a: Optional[str], b: Optional[str]) -> bool:
+    """Constant-time compare for two strings to avoid timing leaks on secrets."""
     if not isinstance(a, str) or not isinstance(b, str):
         return False
     return hmac.compare_digest(a, b)
 
 
 # API key security scheme
+# SECURITY: This header carries bearer API keys; never log its raw value.
 API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=False)
 
 
@@ -198,7 +225,8 @@ _redis = None
 async def _redis_check_and_increment_rate(client: str) -> bool:
     """Increment per-minute rate counter in Redis and return True if under limit.
 
-    If Redis is not configured, return False so callers will fallback to in-memory logic.
+    Tracks requests per client in a 60s window; rolls back increment if limit exceeded.
+    Falls back to in-memory logic when Redis is unavailable.
     """
     if _redis is None:
         logger.debug("Redis not configured; skipping redis rate check")
@@ -209,7 +237,7 @@ async def _redis_check_and_increment_rate(client: str) -> bool:
         if cnt == 1:
             await _redis.expire(key, 60)
         if cnt > WS_RATE_LIMIT:
-            # decrement back and deny
+            # Inline guard: roll back the increment when over limit to avoid drift
             await _redis.decr(key)
             return False
         return True
@@ -221,7 +249,8 @@ async def _redis_check_and_increment_rate(client: str) -> bool:
 async def _redis_increment_active(client: str) -> bool:
     """Increment active scans counter in Redis and return True if under concurrency limit.
 
-    If Redis is not configured, return False so callers will fallback to in-memory logic.
+    Tracks concurrent WebSocket scans per client; sets 10m expiry to avoid leaked counts.
+    Falls back to in-memory logic when Redis is unavailable.
     """
     if _redis is None:
         logger.debug("Redis not configured; skipping redis active increment")
@@ -242,6 +271,7 @@ async def _redis_increment_active(client: str) -> bool:
 
 
 async def _redis_decrement_active(client: str):
+    """Decrement active scan counter for a client; ignore failures."""
     if _redis is None:
         logger.debug("Redis not configured; skipping redis active decrement")
         return
@@ -291,9 +321,10 @@ allowed_origins = get_allowed_origins()
 
 
 async def init_redis():
-    """Initialize async Redis client if REDIS_URL is set. Safe to call multiple times.
+    """Initialize async Redis client if REDIS_URL is set.
 
-    This function sets the module-level `_redis` variable using redis.asyncio.
+    Creates a shared redis.asyncio client for rate/concurrency limits.
+    Safe to call multiple times; subsequent calls are no-ops.
     """
     global _redis
     if not REDIS_URL:
@@ -331,8 +362,13 @@ async def init_rate_limiter():
 
 
 async def rate_limit_dependency(request: Request):
-    """Apply rate limiting to protected routes."""
+    """Apply rate limiting to protected routes.
+
+    Raises HTTP 429 when the SmartRateLimiter detects the client is on cooldown.
+    """
     if not (HAS_RATE_LIMITER and rate_limiter):
+        return
+    if hasattr(rate_limiter, 'redis') and rate_limiter.redis is None:
         return
 
     client_id = request.client.host if request.client else "unknown"
@@ -447,6 +483,8 @@ REPORTS_DIR = os.path.join(os.path.dirname(BASE_DIR), "reports")
 os.makedirs(REPORTS_DIR, exist_ok=True)
 SCANS_DB = os.path.join(REPORTS_DIR, "scans.db")
 
+from web.database.connection import get_sqlite_conn, is_postgres, get_postgres_conn, init_postgres
+
 async def _run_blocking(func, *args, **kwargs):
     """Run blocking work in a dedicated thread pool."""
     if os.getenv("PYTEST_CURRENT_TEST"):
@@ -458,6 +496,7 @@ async def _run_blocking(func, *args, **kwargs):
 
 
 def init_db():
+    """Ensure scans table exists and basic indexes are created in SQLite."""
     conn = sqlite3.connect(SCANS_DB)
     c = conn.cursor()
     c.execute(
@@ -501,7 +540,7 @@ def init_db():
 
 
 def ensure_allowlists():
-    # Ensure allowlist/denylist files exist (empty by default)
+    """Ensure allowlist/denylist files exist (empty by default) under reports/."""
     try:
         repo_reports = os.path.join(os.path.dirname(BASE_DIR), "reports")
         os.makedirs(repo_reports, exist_ok=True)
@@ -550,17 +589,14 @@ def _sanitize_port_data(d: dict) -> dict:
     import enum
     result = {}
     for k, v in d.items():
-        # Handle Enum types - use .name (not .value which may be a tuple)
-        if hasattr(v, 'name') and isinstance(v, enum.Enum):
+        if isinstance(v, enum.Enum):
             result[k] = str(v.name)
-        elif hasattr(v, 'value'):
-            result[k] = str(v.value)
         elif isinstance(v, dict):
             result[k] = _sanitize_port_data(v)
         elif isinstance(v, list):
             result[k] = [
                 str(i.name) if isinstance(i, enum.Enum) else
-                str(i.value) if hasattr(i, 'value') else i
+                _sanitize_port_data(i) if isinstance(i, dict) else i
                 for i in v
             ]
         else:
@@ -569,6 +605,7 @@ def _sanitize_port_data(d: dict) -> dict:
 
 
 def _parse_ports_arg(ports_str: str) -> List[int]:
+    """Parse a comma/range ports string into a validated list of port integers."""
     ports: List[int] = []
     for part in ports_str.split(","):
         part = part.strip()
@@ -621,7 +658,17 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-async def log_cors_config():
+async def startup():
+    """Initialize DB, Redis, rate limiter, and log CORS config on startup."""
+    await _run_blocking(init_db)
+    logger.info("Database initialized (scans table ready)")
+    await init_postgres()
+    if is_postgres():
+        logger.info("PostgreSQL initialized and ready")
+
+    await init_redis()
+    await init_rate_limiter()
+
     logger.info("CORS allowed origins (%d): %s", len(allowed_origins), allowed_origins)
     if not allowed_origins:
         logger.warning(
@@ -663,6 +710,20 @@ async def api_info():
     }
 
 
+@app.get("/api/status", tags=["Health"])
+async def health_status():
+    """Lightweight healthcheck endpoint for Docker/K8s probes."""
+    checks = {"api": "ok", "db": "unknown"}
+    try:
+        with sqlite3.connect(SCANS_DB) as conn:
+            conn.execute("SELECT 1")
+        checks["db"] = "ok"
+    except Exception:
+        checks["db"] = "error"
+    overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": overall, "checks": checks}
+
+
 @app.get("/favicon.ico", tags=["Static"])
 async def favicon():
     """Return 204 No Content for favicon requests."""
@@ -675,6 +736,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def _parse_and_validate_scan_command(raw_command: str) -> List[str]:
+    """Parse a raw CLI command string and enforce only 'scan' with valid flags."""
     tokens = shlex.split(raw_command)
     if not tokens or tokens[0].lower() != "scan":
         raise ValueError("Only 'scan' commands are allowed")
@@ -719,6 +781,7 @@ def _parse_and_validate_scan_command(raw_command: str) -> List[str]:
 
 
 def _validate_scan_flag_value(flag: str, value: str) -> None:
+    """Validate known scan flags, raising ValueError when an invalid value is provided."""
     if flag in ("-p", "--ports"):
         _parse_ports_arg(value)
         return
@@ -754,10 +817,11 @@ def _validate_scan_flag_value(flag: str, value: str) -> None:
 
 
 def save_scan_result(target: str, ip: Optional[str], command: str, output: str, user_id: Optional[str] = None) -> str:
+    """Persist a scan row and normalized data, returning the generated scan UUID."""
     try:
         with sqlite3.connect(SCANS_DB) as conn:
             c = conn.cursor()
-            ts = datetime.utcnow().isoformat() + "Z"
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
             scan_uuid = str(uuid.uuid4())
             c.execute(
                 "INSERT INTO scans (uuid, user_id, timestamp, target, ip, command, output, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, 2)",
@@ -780,10 +844,12 @@ def save_scan_result(target: str, ip: Optional[str], command: str, output: str, 
 
 
 def get_scan_output(scan_uuid: str, user_id: Optional[str] = None) -> Optional[str]:
+    """Return stored output text for a scan uuid, optionally scoped to a user."""
     try:
         with sqlite3.connect(SCANS_DB) as conn:
             c = conn.cursor()
             if user_id:
+                # SECURITY: Limit access to outputs owned by the requesting user.
                 c.execute("SELECT output FROM scans WHERE uuid = ? AND (user_id = ? OR user_id IS NULL)", (scan_uuid, user_id))
             else:
                 c.execute("SELECT output FROM scans WHERE uuid = ?", (scan_uuid,))
@@ -795,6 +861,7 @@ def get_scan_output(scan_uuid: str, user_id: Optional[str] = None) -> Optional[s
 
 
 def list_scans(limit: int = 50, user_id: Optional[str] = None):
+    """List recent scans; filters by user_id when provided."""
     try:
         with sqlite3.connect(SCANS_DB) as conn:
             c = conn.cursor()
@@ -816,21 +883,6 @@ def list_scans(limit: int = 50, user_id: Optional[str] = None):
     except Exception:
         logger.exception("Failed to list scans")
         return []
-    entries = []
-    try:
-        with open(reports_file, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entries.append(json.loads(line))
-                except Exception:
-                    continue
-    except Exception as e:
-        logger.error(f"Error reading audit file: {e}")
-        return []
-    return entries
 
 
 async def get_forced_scans():
@@ -878,17 +930,25 @@ async def api_list_scans(
     target: str = None,
     has_cves: bool = None,
 ):
-    from web.database.queries import list_scans as db_list_scans
-    with sqlite3.connect(SCANS_DB) as conn:
-        return db_list_scans(
-            conn,
-            user_id=current_user,
-            limit=limit,
-            min_cvss=min_cvss,
-            severity=severity,
-            target=target,
-            has_cves=has_cves,
-        )
+    """Return recent scans for the authenticated user with optional filters.
+
+    Args:
+        limit: Max rows to return (capped by DB query).
+        current_user: User id from API key authentication.
+        min_cvss: Minimum CVSS score filter.
+        severity: Severity filter string.
+        target: Target substring filter.
+        has_cves: When true, only scans with CVEs are returned.
+    """
+    from web.database.adapter import list_scans as db_list_scans
+    return await db_list_scans(
+        user_id=current_user,
+        limit=limit,
+        min_cvss=min_cvss,
+        severity=severity,
+        target=target,
+        has_cves=has_cves,
+    )
 
 
 @app.get(
@@ -917,9 +977,9 @@ async def api_list_scans(
     },
 )
 async def api_get_scan(scan_id: str, current_user: str = Depends(get_current_user)):
-    from web.database.queries import get_scan_detail
-    with sqlite3.connect(SCANS_DB) as conn:
-        result = get_scan_detail(conn, scan_id, current_user)
+    """Fetch a single scan detail for the authenticated user."""
+    from web.database.adapter import get_scan_detail
+    result = await get_scan_detail(scan_id, current_user)
     if result is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     return result
@@ -933,6 +993,9 @@ async def api_get_scan(scan_id: str, current_user: str = Depends(get_current_use
     dependencies=[Depends(rate_limit_dependency)],
 )
 async def get_stats(current_user: str = Depends(get_current_user)):
+    """Return aggregate scan statistics for the authenticated user."""
+    from web.database.adapter import list_scans
+    import sqlite3
     with sqlite3.connect(SCANS_DB) as conn:
         from web.database.queries import get_scan_stats
         return get_scan_stats(conn, current_user)
@@ -969,7 +1032,8 @@ async def get_stats(current_user: str = Depends(get_current_user)):
     },
 )
 async def stream_scan_results(
-    target: str, ports: str = "1-1000", enhanced_service_detection: bool = True
+    target: str, ports: str = "1-1000", enhanced_service_detection: bool = True,
+    current_user: str = Depends(get_current_user)
 ):
     """
     Stream port scan results using Server-Sent Events (SSE).
@@ -978,7 +1042,7 @@ async def stream_scan_results(
     """
 
     async def event_generator():
-        from web.database.queries import (
+        from web.database.adapter import (
             create_scan_record, save_port_result, finalize_scan
         )
 
@@ -1007,6 +1071,8 @@ async def stream_scan_results(
 
             # Notify client of scan_uuid
             yield f"data: {json.dumps({'type': 'scan_start', 'scan_uuid': scan_uuid, 'target': target, 'ip': ip})}\n\n"
+            if HAS_METRICS and metrics_collector:
+                metrics_collector.increment_scan(status="started", user_type="api")
 
             # Parse ports
             port_list = _parse_ports_arg(ports)
@@ -1184,7 +1250,8 @@ async def stream_scan_results(
     },
 )
 async def stream_scan_results_new(
-    target: str, ports: str = "1-1000", enhanced_service_detection: bool = True
+    target: str, ports: str = "1-1000", enhanced_service_detection: bool = True,
+    current_user: str = Depends(get_current_user)
 ):
     """
     Stream port scan results using Server-Sent Events (SSE) after each priority tier completes.
@@ -1192,7 +1259,7 @@ async def stream_scan_results_new(
     """
 
     async def event_generator():
-        from web.database.queries import (
+        from web.database.adapter import (
             create_scan_record, save_port_result, finalize_scan
         )
 
@@ -1295,42 +1362,19 @@ async def stream_scan_results_new(
                             # Live enrichment
                             if result.service and result.service != "unknown":
                                 try:
-                                    live_cves = await enrich_service_with_live_data(result.service, result.version)
-                                    if live_cves:
-                                        # Normalize to list of dicts
-                                        norm_cves = []
-                                        if isinstance(live_cves, dict):
-                                            norm_cves = [live_cves]
-                                        elif isinstance(live_cves, (list, tuple)):
-                                            for item in live_cves:
-                                                if isinstance(item, dict):
-                                                    norm_cves.append(item)
-                                                else:
-                                                    norm_cves.append({"id": str(item), "severity": "LOW"})
-                                        else:
-                                            norm_cves = [{"id": str(live_cves), "severity": "LOW"}]
-
-                                        # Merge/Override with live data
+                                    live_result = await enrich_service_with_live_data(
+                                        result.service, result.version,
+                                        confidence=result.confidence
+                                    )
+                                    if live_result and live_result.get("cve_status", "").startswith("SUCCESS"):
+                                        live_vuln_ids = live_result.get("vulnerabilities", [])
                                         existing_cves = set(vuln_info.get("cves", []))
-                                        for cve in norm_cves:
-                                            cve_id = cve.get("id")
+                                        for cve_id in live_vuln_ids:
                                             if cve_id and cve_id not in existing_cves:
                                                 vuln_info.setdefault("cves", []).append(cve_id)
-
-                                        # Update severity if we found higher severity CVEs
-                                        from src.cybersec_cli.utils.formatters import Severity
-                                        max_live_severity = "LOW"
-                                        for c in norm_cves:
-                                            s = c.get("severity", "LOW")
-                                            rank = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}
-                                            if rank.get(s, 0) > rank.get(max_live_severity, 0):
-                                                max_live_severity = s
-
-                                        if max_live_severity in Severity.__members__:
-                                            live_sev_enum = Severity[max_live_severity]
-                                            if live_sev_enum.value > vuln_info["severity"].value:
-                                                vuln_info["severity"] = live_sev_enum
-
+                                        live_cvss = live_result.get("cvss_score", 0)
+                                        if live_cvss > vuln_info.get("cvss_score", 0):
+                                            vuln_info["cvss_score"] = live_cvss
                                 except Exception as e:
                                     logger.warning(f"Live enrichment failed: {e}")
 
@@ -1457,6 +1501,8 @@ async def stream_scan_results_new(
                         status=scan_status,
                         raw_output=raw_output,
                     )
+                    if HAS_METRICS and metrics_collector:
+                        metrics_collector.increment_scan(status=scan_status, user_type="api")
                 except Exception as e:
                     logger.error(f"Failed to finalize scan {scan_uuid}: {e}")
 
@@ -1530,7 +1576,8 @@ if CELERY_AVAILABLE:
         },
     )
     async def create_async_scan(
-        scan_request: ScanRequest, force: bool = False, request: Request = None
+        scan_request: ScanRequest, force: bool = False, request: Request = None,
+        current_user: str = Depends(get_current_user)
     ):
         """
         Create an asynchronous scan task using Celery.
@@ -1797,9 +1844,11 @@ def _validate_messages_token_count(messages: List[dict], model: str) -> dict:
 
 
 @app.post("/api/chat", tags=["AI"], summary="AI Assistant Chat")
-async def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(request: ChatRequest, current_user: str = Depends(get_current_user)):
+    """Forward chat messages to Groq API after local validation."""
     import requests
     try:
+        # SECURITY: Groq API key must come from environment; never log or expose.
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             return JSONResponse(status_code=500, content={"detail": "GROQ_API_KEY environment variable not set. Please set it to use the AI assistant."})
@@ -1990,7 +2039,7 @@ async def get_rate_limit_dashboard():
         },
     },
 )
-async def get_metrics():
+async def get_metrics(current_user: str = Depends(get_current_user)):
     """Prometheus metrics endpoint"""
     if not HAS_METRICS or not metrics_collector:
         raise HTTPException(status_code=500, detail="Metrics not available")
@@ -2001,6 +2050,7 @@ async def get_metrics():
 # WebSocket endpoint for command execution
 @app.websocket("/ws/command")
 async def websocket_endpoint(websocket: WebSocket):
+    """Interactive command WebSocket endpoint for real-time CLI bridging."""
     await manager.connect(websocket)
     # If WS_API_KEY is set, require the client to provide it as ?token=KEY
     # WebSocket authentication is REQUIRED - refuse all connections if not configured
@@ -2077,7 +2127,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     client_host = None
 
                 audit_entry = {
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00"),
                     "target": target,
                     "resolved_ip": resolved_ip,
                     "original_command": command,
@@ -2375,6 +2425,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             await _run_blocking(
                                 save_scan_result, parts[1], stored_ip, command, full_output
                             )
+                            if HAS_METRICS and metrics_collector:
+                                metrics_collector.increment_scan(status="completed", user_type="websocket")
                     except Exception:
                         logger.exception("Failed to persist scan result")
 
@@ -2436,7 +2488,7 @@ async def websocket_endpoint(websocket: WebSocket):
         },
     },
 )
-async def os_fingerprint(req_data: OSFingerprintRequest, request: Request):
+async def os_fingerprint(req_data: OSFingerprintRequest, request: Request, current_user: str = Depends(get_current_user)):
     """Perform OS fingerprinting on a target host."""
     from src.cybersec_cli.tools.network.port_scanner import PortScanner, ScanType
 

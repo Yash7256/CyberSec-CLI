@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # Load environment variables from .env file if it exists
 load_dotenv()
@@ -24,10 +24,7 @@ class AIConfig(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 2000
 
-    class Config:
-        env_prefix = "AI_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "AI_", extra = "ignore")
 
 class ScanningConfig(BaseModel):
     """Scanning-related configuration."""
@@ -38,10 +35,7 @@ class ScanningConfig(BaseModel):
     adaptive_scanning: bool = True  # Enable adaptive concurrency control
     enhanced_service_detection: bool = True  # Enable enhanced service detection
 
-    class Config:
-        env_prefix = "SCAN_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "SCAN_", extra = "ignore")
 
 class UIConfig(BaseModel):
     """UI-related configuration."""
@@ -51,10 +45,7 @@ class UIConfig(BaseModel):
     color_output: bool = True
     animation_speed: str = "normal"  # slow, normal, fast, off
 
-    class Config:
-        env_prefix = "UI_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "UI_", extra = "ignore")
 
 class SecurityConfig(BaseModel):
     """Security-related configuration."""
@@ -63,10 +54,7 @@ class SecurityConfig(BaseModel):
     log_all_commands: bool = True
     encrypt_stored_data: bool = True
 
-    class Config:
-        env_prefix = "SECURITY_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "SECURITY_", extra = "ignore")
 
 class SecretsConfig(BaseModel):
     """Secrets validation - blocks weak/placeholder values at startup."""
@@ -143,9 +131,7 @@ class SecretsConfig(BaseModel):
 
         super().__init__(**data)
 
-    class Config:
-        extra = "ignore"
-
+    model_config = ConfigDict(extra = "ignore")
 
 class RedisConfig(BaseModel):
     """Redis-related configuration."""
@@ -155,10 +141,7 @@ class RedisConfig(BaseModel):
     db: int = 0
     enabled: bool = True
 
-    class Config:
-        env_prefix = "REDIS_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "REDIS_", extra = "ignore")
 
 class DatabaseConfig(BaseModel):
     """Database-related configuration."""
@@ -166,10 +149,7 @@ class DatabaseConfig(BaseModel):
     url: Optional[str] = None
     type: str = "sqlite"  # sqlite, postgresql
 
-    class Config:
-        env_prefix = "DATABASE_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "DATABASE_", extra = "ignore")
 
 class OutputConfig(BaseModel):
     """Output-related configuration."""
@@ -178,10 +158,7 @@ class OutputConfig(BaseModel):
     save_results: bool = True
     export_path: str = "./reports/"
 
-    class Config:
-        env_prefix = "OUTPUT_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "OUTPUT_", extra = "ignore")
 
 class RateLimitConfig(BaseModel):
     """Rate limiting configuration."""
@@ -197,10 +174,7 @@ class RateLimitConfig(BaseModel):
         default_factory=list
     )  # IPs with unlimited access
 
-    class Config:
-        env_prefix = "RATE_LIMIT_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "RATE_LIMIT_", extra = "ignore")
 
 class LoggingConfig(BaseModel):
     """Logging-related configuration."""
@@ -216,10 +190,7 @@ class LoggingConfig(BaseModel):
     log_level_database: str = "ERROR"
     log_format: str = "json"  # json or text
 
-    class Config:
-        env_prefix = "LOGGING_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "LOGGING_", extra = "ignore")
 
 class CORSConfig(BaseModel):
     """CORS configuration."""
@@ -236,10 +207,7 @@ class CORSConfig(BaseModel):
     allow_methods: list = Field(default_factory=lambda: ["*"])
     allow_headers: list = Field(default_factory=lambda: ["*"])
 
-    class Config:
-        env_prefix = "CORS_"
-        extra = "ignore"
-
+    model_config = ConfigDict(env_prefix = "CORS_", extra = "ignore")
 
 class Config(BaseModel):
     """Main configuration model."""

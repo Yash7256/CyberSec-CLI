@@ -186,3 +186,8 @@ htmlcov/
 .zshenv
 .vercel
 .env*.local
+.env
+.env.*
+!.env.example
+certs/privkey.pem
+certs/fullchain.pem

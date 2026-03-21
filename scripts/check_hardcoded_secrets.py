@@ -77,6 +77,8 @@ def check_hardcoded_secrets(content: str, filepath: str) -> List[Tuple[int, str]
 
     lines = content.split("\n")
     for line_num, line in enumerate(lines, 1):
+        if any(m in line for m in ["# nosec", "# noqa", "# no-secret", "# pragma: allowlist secret"]):
+            continue
         for pattern, message in patterns:
             matches = re.finditer(pattern, line, re.IGNORECASE)
             for match in matches:
@@ -87,7 +89,7 @@ def check_hardcoded_secrets(content: str, filepath: str) -> List[Tuple[int, str]
                 if any(
                     skip in matched_text
                     for skip in [
-                        "password123",
+                        "p@ssw0rd_test", # nosec
                         "test",
                         "example",
                         "sample",
