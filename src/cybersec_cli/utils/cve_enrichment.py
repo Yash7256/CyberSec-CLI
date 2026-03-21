@@ -5,6 +5,7 @@ Enriches scan results with CVE information for detected services.
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -31,6 +32,10 @@ CVE_CONFIDENCE_THRESHOLDS = {
 }
 
 MIN_CONFIDENCE_FOR_CVE = 0.3
+
+# Set ENABLE_LIVE_CVE=true to allow live NVD API lookups.
+# Disabled by default — live calls send service/version fingerprints to an external API.
+ENABLE_LIVE_CVE = os.environ.get("ENABLE_LIVE_CVE", "false").lower() == "true"
 
 logger = logging.getLogger(__name__)
 
@@ -300,6 +305,15 @@ async def enrich_service_with_live_data(
     Returns:
         Dict with 'vulnerabilities', 'cvss_score', 'cve_note', 'cve_status' keys
     """
+    # Gate 0: Respect opt-in flag — skip all external calls unless explicitly enabled
+    if not ENABLE_LIVE_CVE:
+        return {
+            "vulnerabilities": [],
+            "cvss_score": 0,
+            "cve_note": "Live CVE enrichment disabled. Set ENABLE_LIVE_CVE=true to enable NVD API lookups.",
+            "cve_status": "DISABLED"
+        }
+
     # Gate 1: Reject if no evidence of what's actually running
     # (confidence=0 AND no banner AND no version)
     has_version = version and version not in {"unknown", ""}

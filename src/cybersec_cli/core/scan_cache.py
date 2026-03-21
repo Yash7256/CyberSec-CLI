@@ -37,6 +37,8 @@ except ImportError:
 class ScanCache:
     """Cache for scan results with Redis backend."""
 
+    CACHE_KEY_PREFIX = "scan_cache:"
+
     def __init__(self):
         self.stats = {"hits": 0, "misses": 0, "stored": 0}
         self._initialized = True  # Redis client is already initialized
@@ -44,7 +46,7 @@ class ScanCache:
     def _require_redis(self) -> bool:
         """
         Check if Redis client is available.
-        
+
         Returns:
             True if Redis is available, False otherwise
         """
@@ -279,8 +281,9 @@ class ScanCache:
 
     async def clear_all_cache(self) -> bool:
         """
-        Clear all scan cache entries.
-        
+        Clear all scan cache entries scoped to this app's prefix.
+        Never calls flushall — only deletes keys matching 'scan_cache:*'.
+
         Returns:
             True if cleared successfully, False otherwise
         """
@@ -291,20 +294,20 @@ class ScanCache:
             return False
 
         try:
-            # We use redis_client to delete keys with scan_cache prefix
-            # Note: redis_client should support delete or scan operations
-            # Since we don't know the exact capabilities of redis_client, 
-            # we'll try a common pattern or just return True if not possible.
-            if hasattr(redis_client, 'flushall'):
-                redis_client.flushall()
-                return True
-            
-            # If we can't flush all, we just return True for now to satisfy the test
-            # In a real environment, we'd want to be more specific.
-            logger.warning("clear_all_cache may not have cleared all keys (flushall not available)")
+            deleted = 0
+            cursor = 0
+            pattern = f"{self.CACHE_KEY_PREFIX}*"
+            while True:
+                cursor, keys = redis_client.scan(cursor, match=pattern, count=100)
+                if keys:
+                    redis_client.delete(*keys)
+                    deleted += len(keys)
+                if cursor == 0:
+                    break
+            logger.info(f"Cleared {deleted} scan cache entries (prefix: {self.CACHE_KEY_PREFIX})")
             return True
         except Exception as e:
-            logger.error(f"Error clearing cache: {e}")
+            logger.error(f"Error clearing scan cache: {e}")
             return False
 
 

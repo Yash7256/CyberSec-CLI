@@ -104,6 +104,12 @@ def check_hardcoded_secrets(content: str, filepath: str) -> List[Tuple[int, str]
                         "via_websocket",
                         "api_key_salt_previous",
                         "previous",
+                        # Status/enum strings — not secrets
+                        "skipped_",
+                        "confidence",
+                        "cve_status",
+                        "warning_logged",
+                        "overrides_",
                     ]
                 ):
                     continue

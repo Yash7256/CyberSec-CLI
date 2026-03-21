@@ -319,6 +319,42 @@ def get_allowed_origins() -> List[str]:
 
 allowed_origins = get_allowed_origins()
 
+# Placeholder secrets guard — block boot if left at defaults
+_PLACEHOLDER_SECRETS = {
+    "your-secret-key-here",
+    "your-secure-api-key-here",
+    "changeme",
+    "secret",
+    "development",
+    "test",
+}
+
+
+def _validate_secrets_on_startup() -> None:
+    """Refuse to start if critical env vars are missing or set to known placeholder values."""
+    ws_key = os.getenv("WEBSOCKET_API_KEY", "")
+    secret_key = os.getenv("SECRET_KEY", "")
+
+    errors = []
+
+    if ws_key.lower() in _PLACEHOLDER_SECRETS:
+        errors.append(
+            "WEBSOCKET_API_KEY is not set or uses a placeholder value. "
+            "Generate one with: openssl rand -hex 32"
+        )
+
+    if secret_key.lower() in _PLACEHOLDER_SECRETS:
+        errors.append(
+            "SECRET_KEY is not set or uses a placeholder value. "
+            "Generate one with: openssl rand -hex 32"
+        )
+
+    if errors:
+        raise RuntimeError(
+            "Startup blocked due to insecure configuration:\n" +
+            "\n".join(f"  - {e}" for e in errors)
+        )
+
 
 async def init_redis():
     """Initialize async Redis client if REDIS_URL is set.
@@ -328,7 +364,13 @@ async def init_redis():
     """
     global _redis
     if not REDIS_URL:
-        logger.debug("REDIS_URL not set; skipping redis initialization")
+        require_redis = os.environ.get("REQUIRE_REDIS", "false").lower() == "true"
+        if require_redis:
+            raise RuntimeError(
+                "REQUIRE_REDIS=true but REDIS_URL is not set. "
+                "Set REDIS_URL to your Redis instance URL."
+            )
+        logger.warning("REDIS_URL not set; skipping Redis initialization. Rate limiting will use in-memory fallback.")
         return
     if _redis is not None:
         # already initialized
@@ -340,8 +382,15 @@ async def init_redis():
         logger.info("Redis configured for rate limiting")
     except Exception as e:
         _redis = None
-        logger.debug(
-            f"Redis not available or failed to initialize: {e}; falling back to in-memory rate limiting"
+        require_redis = os.environ.get("REQUIRE_REDIS", "false").lower() == "true"
+        if require_redis:
+            raise RuntimeError(
+                f"REQUIRE_REDIS=true but Redis is unavailable: {e}. "
+                "Fix REDIS_URL or set REQUIRE_REDIS=false to allow in-memory fallback."
+            ) from e
+        logger.warning(
+            f"Redis not available: {e}. Falling back to in-memory rate limiting. "
+            "Set REQUIRE_REDIS=true to make Redis mandatory."
         )
 
 
@@ -660,6 +709,7 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     """Initialize DB, Redis, rate limiter, and log CORS config on startup."""
+    _validate_secrets_on_startup()
     await _run_blocking(init_db)
     logger.info("Database initialized (scans table ready)")
     await init_postgres()
@@ -838,9 +888,9 @@ def save_scan_result(target: str, ip: Optional[str], command: str, output: str, 
                 logger.warning(f"Failed to normalize scan data: {e}")
 
             return scan_uuid
-    except Exception:
+    except Exception as e:
         logger.exception("Failed to save scan result")
-        return ""
+        raise RuntimeError(f"Failed to persist scan result for target '{target}': {e}") from e
 
 
 def get_scan_output(scan_uuid: str, user_id: Optional[str] = None) -> Optional[str]:
@@ -1532,6 +1582,31 @@ if CELERY_AVAILABLE:
     from typing import Any, Dict, Optional
     from pydantic import BaseModel, validator
 
+    class ScanConfig(BaseModel):
+        """Allowlisted configuration options for a scan task. Unknown keys are rejected."""
+        timeout: Optional[float] = None
+        max_concurrency: Optional[int] = None
+        scan_type: Optional[str] = None
+
+        @validator("timeout")
+        def timeout_range(cls, v):
+            if v is not None and not (0.5 <= v <= 30.0):
+                raise ValueError("timeout must be between 0.5 and 30.0 seconds")
+            return v
+
+        @validator("max_concurrency")
+        def concurrency_range(cls, v):
+            if v is not None and not (1 <= v <= 100):
+                raise ValueError("max_concurrency must be between 1 and 100")
+            return v
+
+        @validator("scan_type")
+        def scan_type_allowed(cls, v):
+            allowed = {"tcp", "udp", "syn", "fin", "null", "xmas"}
+            if v is not None and v.lower() not in allowed:
+                raise ValueError(f"scan_type must be one of: {allowed}")
+            return v.lower() if v else v
+
     class ScanRequest(BaseModel):
         """
         Request model for asynchronous scan operations.
@@ -1539,12 +1614,12 @@ if CELERY_AVAILABLE:
         Attributes:
             target (str): Target hostname or IP address to scan
             ports (str): Port range to scan (e.g., "1-1000", "80,443", "22-25,80,443"). Default: "1-1000"
-            config (Optional[Dict[str, Any]]): Configuration options for the scan
+            config (Optional[ScanConfig]): Allowlisted configuration options for the scan
         """
 
         target: str
         ports: str = "1-1000"
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[ScanConfig] = None
 
     @app.post(
         "/api/scan",
@@ -1609,14 +1684,13 @@ if CELERY_AVAILABLE:
 
         scan_id = str(uuid.uuid4())
 
-        # Add force parameter to config
-        if scan_request.config is None:
-            scan_request.config = {}
-        scan_request.config["force"] = force
+        # Serialize validated config to dict, then inject force
+        config_dict = scan_request.config.dict(exclude_none=True) if scan_request.config else {}
+        config_dict["force"] = force
 
         # Queue the scan task
         task = perform_scan_task.delay(
-            scan_id, scan_request.target, scan_request.ports, scan_request.config
+            scan_id, scan_request.target, scan_request.ports, config_dict
         )
 
         response = {
@@ -1963,9 +2037,8 @@ async def chat_endpoint(request: ChatRequest, current_user: str = Depends(get_cu
         },
     },
 )
-async def reset_client_limits(client_id: str, request: Request):
-    """Reset rate limits for a specific client (admin endpoint)"""
-    # In a real implementation, you would add authentication here
+async def reset_client_limits(client_id: str, request: Request, current_user: str = Depends(get_current_user)):
+    """Reset rate limits for a specific client. Requires valid API key."""
     if HAS_RATE_LIMITER and rate_limiter:
         rate_limiter.reset_client_limits(client_id)
         return {"message": f"Rate limits reset for client {client_id}"}
@@ -1999,8 +2072,8 @@ async def reset_client_limits(client_id: str, request: Request):
         }
     },
 )
-async def get_rate_limit_dashboard():
-    """Get rate limit dashboard data for monitoring"""
+async def get_rate_limit_dashboard(current_user: str = Depends(get_current_user)):
+    """Get rate limit dashboard data for monitoring. Requires valid API key."""
     if HAS_RATE_LIMITER and rate_limiter:
         violations = rate_limiter.get_all_violations()
         abuse_patterns = rate_limiter.get_abuse_patterns()
@@ -2095,7 +2168,13 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             payload = json.loads(data)
             command = payload.get("command", "")
-            force = payload.get("force", False)
+            force = bool(payload.get("force", False))
+            # Force flag is only honoured for non-private, non-reserved targets.
+            # Actual domain guard runs in the scanner; this is an early server-side gate.
+            _FORCE_BLOCKED_TARGETS = {
+                "localhost", "127.0.0.1", "::1", "0.0.0.0",
+                "internal", "intranet", "corp", "localdomain",
+            }
 
             # If this is a forced scan request coming from the client, write an audit entry
             try:
@@ -2262,7 +2341,15 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
                     )
                     continue
-            effective_force = force or ("--force" in parts)
+            _raw_target = parts[1] if len(parts) >= 2 else ""
+            _force_requested = force or ("--force" in parts)
+            if _force_requested and _raw_target.lower() in _FORCE_BLOCKED_TARGETS:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": f"force flag is not permitted for reserved/private target: {_raw_target}",
+                }))
+                continue
+            effective_force = _force_requested
             if len(parts) >= 2 and parts[0].lower() == "scan" and not effective_force:
                 target = parts[1]
                 # Resolve hostname
@@ -2417,7 +2504,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     # Persist scan output if this was a scan command
                     try:
                         if len(parts) >= 2 and parts[0].lower() == "scan":
-                            # Try to determine ip for storage
                             try:
                                 stored_ip = socket.gethostbyname(parts[1])
                             except Exception:
@@ -2427,6 +2513,12 @@ async def websocket_endpoint(websocket: WebSocket):
                             )
                             if HAS_METRICS and metrics_collector:
                                 metrics_collector.increment_scan(status="completed", user_type="websocket")
+                    except RuntimeError as e:
+                        logger.error(f"Scan result persistence failed: {e}")
+                        await websocket.send_text(json.dumps({
+                            "type": "warning",
+                            "message": "Scan completed but result could not be saved. Please retry or check server logs.",
+                        }))
                     except Exception:
                         logger.exception("Failed to persist scan result")
 
@@ -2450,6 +2542,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     # WebSocket cleanup
                     manager.disconnect(websocket)
             except WebSocketDisconnect:
+                if scan_started:
+                    try:
+                        await scan_concurrency.record_scan_end(client_host)
+                    except Exception:
+                        pass
                 manager.disconnect(websocket)
                 break
             except Exception as e:
