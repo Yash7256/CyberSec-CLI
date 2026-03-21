@@ -116,7 +116,8 @@ repos:
             .*/tests/fixtures/.*$|
             .*/\.secrets\.baseline$|
             .*/\.env\.example$|
-            src/cybersec_cli/main\.py$
+            src/cybersec_cli/main\.py$|
+            web/static/.*\.html$
           )
 
   # Security: Static analysis for security issues

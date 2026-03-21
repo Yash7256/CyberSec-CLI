@@ -689,6 +689,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+try:
+    from web.routes.webapp_scanner import router as webapp_router
+    app.include_router(webapp_router)
+except Exception as _e:
+    logger.warning("Web app scanner router not loaded: %s", _e)
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
